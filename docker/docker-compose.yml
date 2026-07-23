@@ -29,6 +29,16 @@ services:
     volumes:
       - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
 
+  # Ollama local — baixa um modelo pequeno (llama3.2:1b) automaticamente
+  # no primeiro start, pra o chat funcionar via curl sem passo manual.
+  ollama:
+    image: ollama/ollama:latest
+    entrypoint: ["sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2:1b; wait"]
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+
   api:
     build:
       context: ..
@@ -38,6 +48,16 @@ services:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-dev-master-key-change-me}
+      # KEYCLOAK_URL: alcançável da rede do compose (fetch de JWKS).
+      # KEYCLOAK_ISSUER_URL: o host que quem pede o token realmente usa
+      # (o navegador/curl no host usam localhost:8080) — precisa bater
+      # com o claim "iss" do token, por isso é diferente de KEYCLOAK_URL
+      # aqui dentro do container.
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
     ports:
       - "${API_PORT:-3000}:3000"
     volumes:
@@ -48,6 +68,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      ollama:
+        condition: service_started
 
   engine:
     build:
@@ -91,6 +113,7 @@ services:
 
 volumes:
   pgdata:
+  ollama_data:
   api_root_node_modules:
   api_app_node_modules:
   api_shared_node_modules:
