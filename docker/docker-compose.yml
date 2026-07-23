@@ -59,6 +59,18 @@ services:
       KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
       ENGINE_KEYCLOAK_CLIENT_ID: ${ENGINE_KEYCLOAK_CLIENT_ID:-engine-service}
+      # Git providers (Fase 2): OAuth Apps do GitHub/GitLab + provisionamento
+      # de repositório local. GIT_OAUTH_STATE_SECRET é separado de
+      # CREDENTIALS_MASTER_KEY de propósito — domínios de segurança
+      # diferentes (HMAC de curta duração vs. derivação AES de longa
+      # duração), rotação independente.
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      GITLAB_OAUTH_CLIENT_ID: ${GITLAB_OAUTH_CLIENT_ID:-}
+      GITLAB_OAUTH_CLIENT_SECRET: ${GITLAB_OAUTH_CLIENT_SECRET:-}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
+      GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-dev-oauth-state-secret-change-me}
+      GIT_LOCAL_REPOS_ROOT: /data/git-repos
     ports:
       - "${API_PORT:-3000}:3000"
     volumes:
@@ -66,6 +78,7 @@ services:
       - api_root_node_modules:/workspace/node_modules
       - api_app_node_modules:/workspace/apps/api/node_modules
       - api_shared_node_modules:/workspace/packages/shared/node_modules
+      - git_local_repos:/data/git-repos
     depends_on:
       postgres:
         condition: service_healthy
@@ -128,6 +141,7 @@ services:
 volumes:
   pgdata:
   ollama_data:
+  git_local_repos:
   api_root_node_modules:
   api_app_node_modules:
   api_shared_node_modules:
