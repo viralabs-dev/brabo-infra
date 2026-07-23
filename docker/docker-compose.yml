@@ -149,6 +149,12 @@ services:
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
       VITE_ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:4000}
+      # Login via Keycloak (client público brabo-web, PKCE) — mesmo
+      # KEYCLOAK_ISSUER_URL usado pela api pra bater com o claim "iss"
+      # do token, já que o browser roda fora da rede do compose.
+      VITE_KEYCLOAK_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
+      VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
+      VITE_KEYCLOAK_CLIENT_ID: brabo-web
     ports:
       - "${WEB_PORT:-5173}:5173"
     volumes:
