@@ -58,6 +58,7 @@ services:
       KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
       KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
+      ENGINE_KEYCLOAK_CLIENT_ID: ${ENGINE_KEYCLOAK_CLIENT_ID:-engine-service}
     ports:
       - "${API_PORT:-3000}:3000"
     volumes:
@@ -80,6 +81,17 @@ services:
       PORT: 4000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       MIX_ENV: dev
+      # config/test.exs (usado por `mix test`) monta a conexão a partir
+      # destas variáveis, não de DATABASE_URL — sem isso o Postgrex tenta
+      # localhost de dentro do container e nunca alcança o serviço postgres.
+      POSTGRES_USER: ${POSTGRES_USER:-brabo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brabo}
+      POSTGRES_HOST: postgres
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
+      ENGINE_KEYCLOAK_CLIENT_ID: ${ENGINE_KEYCLOAK_CLIENT_ID:-engine-service}
+      ENGINE_KEYCLOAK_CLIENT_SECRET: ${ENGINE_KEYCLOAK_CLIENT_SECRET:-engine-service-dev-secret-change-me}
+      API_URL: ${API_URL:-http://api:3000}
     ports:
       - "${ENGINE_PORT:-4000}:4000"
     volumes:
@@ -91,6 +103,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      keycloak:
+        condition: service_started
 
   web:
     build:
