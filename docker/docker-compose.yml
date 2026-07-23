@@ -77,6 +77,10 @@ services:
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
       API_KEYCLOAK_CLIENT_ID: ${API_KEYCLOAK_CLIENT_ID:-api-service}
       API_KEYCLOAK_CLIENT_SECRET: ${API_KEYCLOAK_CLIENT_SECRET:-api-service-dev-secret-change-me}
+      # Pipeline de ações propostas (Fase 1 item 5): raiz compartilhada com
+      # o engine (mesmo path, mesmo volume) onde mora o permissions.json
+      # de cada projeto.
+      PROJECT_WORKSPACES_ROOT: /data/project-workspaces
     ports:
       - "${API_PORT:-3000}:3000"
     volumes:
@@ -85,6 +89,7 @@ services:
       - api_app_node_modules:/workspace/apps/api/node_modules
       - api_shared_node_modules:/workspace/packages/shared/node_modules
       - git_local_repos:/data/git-repos
+      - project_workspaces:/data/project-workspaces
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,6 +120,11 @@ services:
       # — o engine só precisa saber QUAL client esperar, nunca o secret.
       API_KEYCLOAK_CLIENT_ID: ${API_KEYCLOAK_CLIENT_ID:-api-service}
       SESSION_HEARTBEAT_TIMEOUT_MS: ${SESSION_HEARTBEAT_TIMEOUT_MS:-30000}
+      # Pipeline de ações propostas (Fase 1 item 5): mesma raiz de
+      # workspaces que a api usa — Engine.Actions.Workspace faz o
+      # checkout do bare repo (montado abaixo, read-only) ali dentro.
+      PROJECT_WORKSPACES_ROOT: /data/project-workspaces
+      TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
     ports:
       - "${ENGINE_PORT:-4000}:4000"
     volumes:
@@ -123,6 +133,8 @@ services:
       - engine_deps:/workspace/apps/engine/deps
       - engine_mix:/root/.mix
       - engine_hex:/root/.hex
+      - git_local_repos:/data/git-repos:ro
+      - project_workspaces:/data/project-workspaces
     depends_on:
       postgres:
         condition: service_healthy
@@ -162,3 +174,4 @@ volumes:
   engine_deps:
   engine_mix:
   engine_hex:
+  project_workspaces:
