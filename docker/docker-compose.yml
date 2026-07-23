@@ -71,6 +71,12 @@ services:
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
       GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-dev-oauth-state-secret-change-me}
       GIT_LOCAL_REPOS_ROOT: /data/git-repos
+      # Comando síncrono api -> engine (criar sessão supervisionada na
+      # ativação) — client credentials do Keycloak, simétrico à direção
+      # engine -> api que já existe.
+      ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
+      API_KEYCLOAK_CLIENT_ID: ${API_KEYCLOAK_CLIENT_ID:-api-service}
+      API_KEYCLOAK_CLIENT_SECRET: ${API_KEYCLOAK_CLIENT_SECRET:-api-service-dev-secret-change-me}
     ports:
       - "${API_PORT:-3000}:3000"
     volumes:
@@ -105,6 +111,10 @@ services:
       ENGINE_KEYCLOAK_CLIENT_ID: ${ENGINE_KEYCLOAK_CLIENT_ID:-engine-service}
       ENGINE_KEYCLOAK_CLIENT_SECRET: ${ENGINE_KEYCLOAK_CLIENT_SECRET:-engine-service-dev-secret-change-me}
       API_URL: ${API_URL:-http://api:3000}
+      # A api chama o engine com um token client-credentials deste client
+      # — o engine só precisa saber QUAL client esperar, nunca o secret.
+      API_KEYCLOAK_CLIENT_ID: ${API_KEYCLOAK_CLIENT_ID:-api-service}
+      SESSION_HEARTBEAT_TIMEOUT_MS: ${SESSION_HEARTBEAT_TIMEOUT_MS:-30000}
     ports:
       - "${ENGINE_PORT:-4000}:4000"
     volumes:
