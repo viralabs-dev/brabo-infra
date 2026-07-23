@@ -1,0 +1,103 @@
+name: brabo
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-brabo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brabo}
+      POSTGRES_DB: ${POSTGRES_DB:-brabo}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-brabo} -d ${POSTGRES_DB:-brabo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/api/Dockerfile
+    working_dir: /workspace
+    environment:
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      - ..:/workspace
+      - api_root_node_modules:/workspace/node_modules
+      - api_app_node_modules:/workspace/apps/api/node_modules
+      - api_shared_node_modules:/workspace/packages/shared/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  engine:
+    build:
+      context: ..
+      dockerfile: docker/engine/Dockerfile
+    working_dir: /workspace/apps/engine
+    environment:
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      MIX_ENV: dev
+    ports:
+      - "${ENGINE_PORT:-4000}:4000"
+    volumes:
+      - ../apps/engine:/workspace/apps/engine
+      - engine_build:/workspace/apps/engine/_build
+      - engine_deps:/workspace/apps/engine/deps
+      - engine_mix:/root/.mix
+      - engine_hex:/root/.hex
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile
+    working_dir: /workspace
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+      VITE_ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:4000}
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ..:/workspace
+      - web_root_node_modules:/workspace/node_modules
+      - web_app_node_modules:/workspace/apps/web/node_modules
+      - web_shared_node_modules:/workspace/packages/shared/node_modules
+    depends_on:
+      - api
+      - engine
+
+volumes:
+  pgdata:
+  api_root_node_modules:
+  api_app_node_modules:
+  api_shared_node_modules:
+  web_root_node_modules:
+  web_app_node_modules:
+  web_shared_node_modules:
+  engine_build:
+  engine_deps:
+  engine_mix:
+  engine_hex:
