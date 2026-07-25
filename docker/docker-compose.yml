@@ -38,6 +38,22 @@ services:
       - ollama_data:/root/.ollama
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
+    environment:
+      # Sem GPU (o host precisaria do nvidia-container-toolkit), o modelo vive
+      # na RAM e o default de 5min descarrega ele entre um agente e outro — o
+      # turno seguinte paga o carregamento de ~5GB de novo e estoura o
+      # LLM_TURN_TIMEOUT_MS. Manter residente é o que torna uma sessão com
+      # vários agentes viável nesta máquina.
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-1h}
+      # Sem isto o KEEP_ALIVE acima acumula: cada modelo já usado fica
+      # residente e uma máquina de 15GB chegou a 15,2GB só de pesos, com o
+      # agente devolvendo resposta VAZIA por falta de memória. Um por vez.
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+      # O default do Ollama é 4096 tokens e ele TRUNCA em silêncio, enquanto o
+      # ToolLoop monta o prompt pra uma janela de 128k. Na prática o agente
+      # perdia as próprias instruções a partir do 2º/3º turno e passava a imitar
+      # o que sobrava no fim do contexto (o schema das ferramentas). Ver ADR 0020.
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-16384}
 
   api:
     build:
@@ -49,6 +65,10 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      # Teto de INATIVIDADE do socket na chamada ao Ollama (ver
+      # ollama-provider.ts). Precisa ser >= o LLM_TURN_TIMEOUT_MS do engine,
+      # senão quem desiste primeiro é a api e o teto do engine não vale nada.
+      OLLAMA_REQUEST_TIMEOUT_MS: ${OLLAMA_REQUEST_TIMEOUT_MS:-300000}
       CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-dev-master-key-change-me}
       # KEYCLOAK_URL: alcançável da rede do compose (fetch de JWKS).
       # KEYCLOAK_ISSUER_URL: o host que quem pede o token realmente usa
@@ -125,6 +145,20 @@ services:
       # checkout do bare repo (montado abaixo, read-only) ali dentro.
       PROJECT_WORKSPACES_ROOT: /data/project-workspaces
       TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
+      SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
+      # Já era lido do ambiente pelo runtime.exs, mas não era exposto aqui —
+      # o default (8) é justo pro caminho feliz e apertado quando o agente
+      # precisa de ciclos de correção (escrever, testar, corrigir, testar).
+      TOOL_LOOP_MAX_ITERATIONS: ${TOOL_LOOP_MAX_ITERATIONS:-8}
+      # Também já era lido do runtime.exs sem estar exposto aqui. Com modelo
+      # local o primeiro turno carrega os pesos antes do primeiro token, e
+      # trocar de modelo entre agentes (dev e qa) paga esse custo mais de uma
+      # vez na mesma sessão.
+      LLM_TURN_TIMEOUT_MS: ${LLM_TURN_TIMEOUT_MS:-300000}
+      # Ver runtime.exs: desligar os agentes de fundo libera o provider local
+      # pros agentes de execução. Default ligado.
+      START_OUTBOX_DRAIN: ${START_OUTBOX_DRAIN:-true}
+      START_ANAMNESE: ${START_ANAMNESE:-true}
     ports:
       - "${ENGINE_PORT:-4000}:4000"
     volumes:
