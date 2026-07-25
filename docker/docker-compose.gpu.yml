@@ -1,0 +1,39 @@
+# Override OPT-IN: dá a GPU NVIDIA ao Ollama.
+#
+# Uso: pnpm dev:gpu   (ou -f docker-compose.yml -f docker-compose.gpu.yml)
+#
+# Não está no compose principal de propósito: sem o `nvidia-container-toolkit`
+# instalado no host, a reserva de device faz o serviço FALHAR ao subir — e a
+# stack inteira ficaria refém de uma dependência de sistema que nem todo
+# ambiente de dev tem.
+#
+# Pré-requisito no host (uma vez, precisa de sudo):
+#   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+#     | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+#   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+#     | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+#     | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+#   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+#   sudo nvidia-ctk runtime configure --runtime=docker
+#   sudo systemctl restart docker
+#
+# Conferir: docker run --rm --gpus all ubuntu nvidia-smi
+#
+# Por que isto importa (ADR 0020): em CPU, o Ollama processa o prompt de ~7000
+# tokens do gate de QA a ~150 tok/s — cerca de 50s antes do primeiro token, com
+# o modelo de 5,9GB disputando 15GB de RAM com o resto da stack. Na GPU os
+# pesos saem da RAM e vão pros 8GB de VRAM, que estavam ociosos.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      # Com os pesos na VRAM o modelo não disputa mais a RAM do host, então o
+      # teto de 1 modelo residente (necessário em CPU) pode subir. 8GB de VRAM
+      # comportam um 7B/8B quantizado; dois não cabem.
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
