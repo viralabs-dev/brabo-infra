@@ -133,7 +133,12 @@ services:
       - engine_deps:/workspace/apps/engine/deps
       - engine_mix:/root/.mix
       - engine_hex:/root/.hex
-      - git_local_repos:/data/git-repos:ro
+      # RW (era :ro): desde a Fase 4a o executor `git_push` roda NO ENGINE
+      # (Engine.Actions.GitExecutor) e empurra a branch do worktree pro bare
+      # repo local. Com o mount read-only o push morre em "remote unpack
+      # failed: unable to create temporary object directory", e a PR do dev
+      # agent nunca chega a abrir.
+      - git_local_repos:/data/git-repos
       - project_workspaces:/data/project-workspaces
     depends_on:
       postgres:
