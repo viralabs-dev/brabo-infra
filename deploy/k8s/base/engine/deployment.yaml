@@ -76,6 +76,15 @@ spec:
               value: "4000"
             - name: PHX_SERVER
               value: "true"
+            # SEM override de OTEL_EXPORTER_OTLP_ENDPOINT: o engine herda o
+            # endpoint HTTP (4318) do ConfigMap.
+            #
+            # A primeira versão apontava para 4317 supondo que o exporter do
+            # Elixir falasse gRPC. Ele fala HTTP/protobuf por default, e mandar
+            # HTTP numa porta gRPC dá `socket_closed_remotely` a cada batch —
+            # sem trace nenhuma no Tempo e sem erro que aponte a causa.
+            - name: OTEL_SERVICE_NAME
+              value: brabo-engine
             - name: PROJECT_WORKSPACES_ROOT
               value: /data/project-workspaces
             # Pool maior que o default de 10: a fila do Oban sozinha tem
