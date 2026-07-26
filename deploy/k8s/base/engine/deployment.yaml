@@ -1,0 +1,171 @@
+# Engine: Deployment, NÃO StatefulSet.
+#
+# O que um StatefulSet oferece é (a) PVC por réplica e (b) identidade de rede
+# estável. Nenhum dos dois serve aqui, e o primeiro seria ativamente errado:
+#
+# (a) Os worktrees dos dev agents vivem em
+#     `<PROJECT_WORKSPACES_ROOT>/<project_id>/.worktrees/<agent_id>`, dentro do
+#     MESMO volume que a api monta — a api grava o path absoluto do bare repo
+#     no Postgres e o engine o usa literalmente. Dar a cada réplica o seu
+#     próprio PVC quebraria essa identidade de caminho, que é a premissa do
+#     push. Worktree não é estado por réplica: é estado do projeto, protegido
+#     pelo lock de workspace (ADR 0017).
+#
+# (b) Identidade de rede estável não é necessária para HTTP — o Service faz o
+#     balanceamento — e o `DNSCluster` descobre os pares por um Service
+#     headless, que funciona igual sobre Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engine
+  labels:
+    app.kubernetes.io/name: engine
+    app.kubernetes.io/part-of: brabo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: engine
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable 0: até o drain de sessões existir (item 4 da Fase 5),
+      # derrubar uma réplica antes de a substituta estar Ready significa
+      # sessões ativas indo embora sem ninguém para reidratá-las no intervalo.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: engine
+        app.kubernetes.io/part-of: brabo
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # Generoso porque o BEAM precisa de tempo para terminar o que está em
+      # voo. O hook de preStop que DRENA as sessões (transição closing com
+      # causa node_shutdown) é o item 4 da Fase 5 e ainda não existe; o campo
+      # já está aqui para quando existir.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: engine
+          image: brabo-engine:prod
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4000
+            - name: epmd
+              containerPort: 4369
+            - name: erl-dist
+              containerPort: 9100
+          envFrom:
+            - configMapRef:
+                name: brabo-config
+            - secretRef:
+                name: brabo-secrets
+          env:
+            - name: PORT
+              value: "4000"
+            - name: PHX_SERVER
+              value: "true"
+            - name: PROJECT_WORKSPACES_ROOT
+              value: /data/project-workspaces
+            # Pool maior que o default de 10: a fila do Oban sozinha tem
+            # concorrência 10 e pode consumir o pool inteiro, deixando o
+            # Endpoint e o drain do outbox (que roda de 2 em 2 segundos) sem
+            # conexão. O default estrangula qualquer réplica sob carga.
+            - name: POOL_SIZE
+              value: "20"
+            # --- Clustering Erlang ---------------------------------------
+            # `Workspace.ensure!` serializa a inicialização do workspace com
+            # `:global.trans`, que só é GLOBAL se os nós estiverem em cluster.
+            # Sem isto, duas réplicas fazem `git init` concorrente no mesmo
+            # diretório do volume compartilhado. O DNSCluster já estava na
+            # árvore de supervisão desde a Fase 1, governado por esta variável
+            # — faltava apontá-la para algum lugar.
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: RELEASE_DISTRIBUTION
+              value: name
+            - name: RELEASE_NODE
+              value: engine@$(POD_IP)
+            - name: DNS_CLUSTER_QUERY
+              value: engine-headless.brabo.svc.cluster.local
+            # Faixa fixa para a distribuição: sem fixar, o BEAM sorteia uma
+            # porta efêmera e não há como escrever a NetworkPolicy.
+            #
+            # É uma FAIXA e não uma porta só porque `bin/engine rpc` e
+            # `bin/engine remote` sobem um nó oculto que também precisa de
+            # porta: com min == max, o nó em execução ocupa a única disponível
+            # e qualquer rpc morre com `register/listen error: eaddrinuse` —
+            # inclusive o `make hpa-test` e qualquer diagnóstico em produção.
+            - name: ERL_AFLAGS
+              value: >-
+                -kernel inet_dist_listen_min 9100 inet_dist_listen_max 9110
+          startupProbe:
+            httpGet:
+              path: /live
+              port: http
+            periodSeconds: 3
+            # Janela larga: o boot reidrata sessões e dev agents de forma
+            # serial, um round-trip ao Postgres por item. Um nó que caiu com
+            # muitas sessões demora, e isso é boot normal — não pod travado.
+            failureThreshold: 40
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # /ready e não /health: só libera tráfego depois que a reidratação
+          # terminou. Aceitar heartbeat de alguém reconectando antes de a
+          # sessão existir de novo é exatamente o que a ordem da árvore de
+          # supervisão evita — o probe precisa afirmar o mesmo.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: shared-data
+              mountPath: /data/git-repos
+              subPath: git-repos
+            - name: shared-data
+              mountPath: /data/project-workspaces
+              subPath: project-workspaces
+            # Os 4 detectores e a árvore temporária do InfraGateRunner.
+            - name: tmp
+              mountPath: /tmp
+            # O semgrep baixa e cacheia regras do registry no primeiro uso.
+            - name: home
+              mountPath: /home/engine
+      volumes:
+        - name: shared-data
+          persistentVolumeClaim:
+            claimName: brabo-shared-data
+        - name: tmp
+          emptyDir: {}
+        - name: home
+          emptyDir: {}

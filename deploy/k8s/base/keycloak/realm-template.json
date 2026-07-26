@@ -1,0 +1,64 @@
+{
+  "realm": "__KEYCLOAK_REALM__",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "clients": [
+    {
+      "clientId": "brabo-web",
+      "name": "Brabo Web",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "redirectUris": ["__WEB_ORIGIN__/*"],
+      "webOrigins": ["__WEB_ORIGIN__"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true
+    },
+    {
+      "clientId": "engine-service",
+      "name": "Engine Service",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "__ENGINE_CLIENT_SECRET__"
+    },
+    {
+      "clientId": "api-service",
+      "name": "API Service",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "__API_CLIENT_SECRET__"
+    }
+  ],
+  "roles": {
+    "realm": [{ "name": "owner" }, { "name": "admin" }, { "name": "member" }]
+  },
+  "users": [
+    {
+      "username": "__BOOTSTRAP_USER__",
+      "email": "admin@brabo.dev",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Administrador",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "__BOOTSTRAP_PASSWORD__",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin"]
+    }
+  ]
+}

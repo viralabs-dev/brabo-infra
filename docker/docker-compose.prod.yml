@@ -228,9 +228,11 @@ services:
     build:
       context: ..
       dockerfile: docker/web/Dockerfile.prod
-      # LIMITAÇÃO CONHECIDA: as VITE_* são compile-time (o Vite as inlina no
-      # bundle), então mudar estes valores exige REBUILD, não restart — esta
-      # imagem é específica do ambiente. Ver docs/adr/0024.
+      # As VITE_* seguem sendo compile-time (o Vite as inlina no bundle), mas
+      # deixaram de ser o mecanismo: viraram só o FALLBACK de `pnpm dev:web`.
+      # A configuração de verdade vem em runtime por /config.js, gerado pelo
+      # entrypoint a partir das variáveis abaixo — é o que permite promover a
+      # mesma imagem entre ambientes. Ver docs/adr/0025.
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
         VITE_ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:4000}
@@ -244,12 +246,20 @@ services:
       - /tmp
       - /var/cache/nginx
     environment:
-      # Hosts liberados no connect-src do CSP — este SIM é runtime.
+      # Hosts liberados no connect-src do CSP.
       CSP_CONNECT_SRC: >-
         ${VITE_API_URL:-http://localhost:3000}
         ${VITE_ENGINE_URL:-http://localhost:4000}
         ${ENGINE_WS_URL:-ws://localhost:4000}
         ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
+      # Configuração de runtime da SPA (vira /config.js). Estes são os valores
+      # que o browser realmente usa; as VITE_* do build só respondem se o
+      # /config.js faltar.
+      API_URL: ${VITE_API_URL:-http://localhost:3000}
+      ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:4000}
+      KEYCLOAK_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
+      KEYCLOAK_CLIENT_ID: brabo-web
     # 8088 no host porque a 8080 é do Keycloak; 8080 dentro do container porque
     # nginx roda non-root e não pode fazer bind em porta privilegiada.
     ports:

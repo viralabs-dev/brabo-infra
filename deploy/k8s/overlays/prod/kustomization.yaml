@@ -1,0 +1,56 @@
+# Overlay de produção.
+#
+# NÃO é exercitado por `make deploy-local` e nem poderia ser: depende de um
+# Postgres gerenciado, de uma StorageClass RWX de verdade, de um provider de
+# segredos real e de imagens num registry. O que o CI garante é que ele
+# **monta** e que os manifests são válidos contra o schema — o resto é
+# responsabilidade do ambiente.
+#
+# Pré-requisito conhecido e ainda não atendido: o CI de hoje constrói as
+# imagens com `load: true` e tags fixas `:prod`, sem publicar em registry
+# nenhum. Promover para staging/prod exige antes publicar por digest — está
+# registrado como fora de escopo em docs/adr/0025.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: brabo
+
+resources:
+  - ../../base
+  - ingress.yaml
+  - keycloak-pdb.yaml
+
+patches:
+  - path: patches.yaml
+  # Substitui a regra de egress do banco herdada da base. Precisa ser PATCH e
+  # não `resources`: declarar um recurso com o mesmo nome da base é conflito de
+  # ID no kustomize, não substituição.
+  - path: netpol-db-egress.yaml
+
+configMapGenerator:
+  - name: brabo-config
+    behavior: merge
+    literals:
+      - PUBLIC_API_URL=https://api.brabo.example
+      - PUBLIC_ENGINE_URL=https://engine.brabo.example
+      - PUBLIC_KEYCLOAK_URL=https://auth.brabo.example
+      - WEB_ORIGIN=https://app.brabo.example
+      - KEYCLOAK_ISSUER_URL=https://auth.brabo.example
+      - KEYCLOAK_URL=https://auth.brabo.example
+      - PHX_HOST=engine.brabo.example
+      - CSP_CONNECT_SRC=https://api.brabo.example https://engine.brabo.example wss://engine.brabo.example https://auth.brabo.example
+
+images:
+  # Tag mutável NÃO serve em produção: `:prod` apontando para conteúdo
+  # diferente ao longo do tempo impede rollback determinístico e faz dois pods
+  # do mesmo ReplicaSet rodarem binários diferentes. O valor abaixo é um
+  # marcador — o pipeline substitui pelo digest do artefato que passou no CI.
+  - name: brabo-api
+    newName: ghcr.io/OWNER/brabo-api
+    newTag: REPLACE_WITH_DIGEST
+  - name: brabo-engine
+    newName: ghcr.io/OWNER/brabo-engine
+    newTag: REPLACE_WITH_DIGEST
+  - name: brabo-web
+    newName: ghcr.io/OWNER/brabo-web
+    newTag: REPLACE_WITH_DIGEST

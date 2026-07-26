@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: engine
+  labels:
+    app.kubernetes.io/name: engine
+    app.kubernetes.io/part-of: brabo
+spec:
+  # minAvailable porque a contagem de réplicas é decidida pelo HPA: um
+  # `maxUnavailable: 1` sobre a réplica mínima (1) permitiria drenar o engine
+  # inteiro — e com ele todas as sessões vivas.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: engine

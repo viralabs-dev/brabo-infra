@@ -1,0 +1,61 @@
+# Prometheus mínimo — só o servidor.
+#
+# NÃO é o kube-prometheus-stack: Alertmanager, Grafana, node-exporter e os
+# operadores somam mais de 1 GiB e o alvo aqui é uma máquina de
+# desenvolvimento. Além disso, dashboards do Grafana provisionados como código
+# são o item 5 da Fase 5 (observabilidade), sessão própria — antecipá-los aqui
+# só criaria trabalho para refazer.
+#
+# O que este Prometheus existe para fazer é uma coisa só: coletar
+# `oban_queue_depth` do engine para o prometheus-adapter servir ao HPA.
+alertmanager:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+kube-state-metrics:
+  enabled: false
+
+server:
+  # Retenção curta: o HPA olha o instante, não a série histórica.
+  retention: 2h
+  persistentVolume:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  global:
+    # A frequência de coleta é o piso da latência de reação do HPA: com 30s, a
+    # fila pode encher e o autoscaler só perceber meio minuto depois.
+    scrape_interval: 15s
+    evaluation_interval: 15s
+
+serverFiles:
+  prometheus.yml:
+    scrape_configs:
+      # Descoberta por anotação, restrita aos pods do engine. Sem
+      # `kubernetes_sd_configs` do tipo `pod`, o rótulo `namespace` não existe
+      # na série — e é justamente ele que a regra do prometheus-adapter usa
+      # para mapear a métrica ao namespace do HPA.
+      - job_name: brabo-engine
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [brabo]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: keep
+            regex: engine
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: keep
+            regex: "4000"
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+        metrics_path: /metrics

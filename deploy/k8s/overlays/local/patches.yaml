@@ -1,0 +1,144 @@
+# Ajustes do ambiente local. Tudo aqui é "cabe numa máquina de desenvolvimento"
+# ou "single-node", nunca comportamento de produto.
+---
+# O volume compartilhado vira ReadWriteOnce.
+#
+# RWX é o modo CORRETO e é o que a base declara: api e engine escrevem no mesmo
+# volume e podem cair em nós diferentes. Num cluster local de UM nó, porém, o
+# provisionador default (rancher local-path, usado tanto por k3d quanto por
+# kind) só oferece RWO — e RWO significa "montado por um único NÓ", não por um
+# único pod. Com todos os pods no mesmo nó, api e engine compartilham o volume
+# normalmente.
+#
+# Isto é uma concessão do ambiente local, não um padrão: num cluster de verdade
+# esta mesma configuração colocaria api e engine em nós diferentes e o `git
+# push` do dev agent falharia com `remote unpack failed`. Por isso a base
+# continua RWX e quem afrouxa é o overlay.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: brabo-shared-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+# Recursos reduzidos: o cluster local divide a máquina com o Docker, o
+# navegador e a IDE.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: api
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engine
+spec:
+  template:
+    spec:
+      containers:
+        - name: engine
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: POOL_SIZE
+              value: "10"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: web
+          resources:
+            requests:
+              cpu: 10m
+              memory: 24Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: keycloak
+spec:
+  template:
+    spec:
+      containers:
+        - name: keycloak
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          env:
+            - name: JAVA_OPTS_APPEND
+              value: "-Xms64m -Xmx384m"
+---
+# HPA da api: minReplicas 1 no local. Duas réplicas da api numa máquina de
+# desenvolvimento só consomem memória — e o PDB `minAvailable: 1` sobre uma
+# única réplica bloquearia o drain do nó, que é justamente o que se quer
+# exercitar ao testar rollout.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+spec:
+  minReplicas: 1
+  maxReplicas: 3
+---
+# HPA do engine: teto baixo e alvo baixo, para que `make hpa-test` dispare com
+# uma quantidade de jobs que cabe na máquina.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: engine
+spec:
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: oban_queue_depth
+          selector:
+            matchLabels:
+              state: available
+        target:
+          type: AverageValue
+          averageValue: "10"
+  behavior:
+    scaleUp:
+      # Janela curta só no local: o teste de aceite precisa observar a reação
+      # em segundos, não em minutos.
+      stabilizationWindowSeconds: 0
+    scaleDown:
+      stabilizationWindowSeconds: 60

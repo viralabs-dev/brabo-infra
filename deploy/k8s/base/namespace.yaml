@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: brabo
+  labels:
+    app.kubernetes.io/part-of: brabo
+    # Usado pelas NetworkPolicies para se referirem a este namespace por
+    # seletor em vez de por nome (namespaceSelector não casa por nome).
+    kubernetes.io/metadata.name: brabo

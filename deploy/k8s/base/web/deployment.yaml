@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: brabo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/part-of: brabo
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # 101 = `nginx` na imagem oficial. Diferente de api/engine (1000)
+        # porque o web não toca o volume compartilhado.
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: web
+          image: brabo-web:prod
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Estas cinco viram /config.js, gerado pelo entrypoint e lido pelo
+            # browser. É o que permite promover a MESMA imagem entre ambientes
+            # — antes as URLs eram inlinadas no bundle pelo Vite e cada
+            # ambiente exigia sua própria imagem (ADR 0024, limitação 1).
+            - name: API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: brabo-config
+                  key: PUBLIC_API_URL
+            - name: ENGINE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: brabo-config
+                  key: PUBLIC_ENGINE_URL
+            - name: KEYCLOAK_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: brabo-config
+                  key: PUBLIC_KEYCLOAK_URL
+            - name: KEYCLOAK_REALM
+              valueFrom:
+                configMapKeyRef:
+                  name: brabo-config
+                  key: KEYCLOAK_REALM
+            - name: KEYCLOAK_CLIENT_ID
+              value: brabo-web
+            # connect-src do CSP: precisa listar os mesmos hosts acima, senão o
+            # browser bloqueia as chamadas que a config manda fazer.
+            - name: CSP_CONNECT_SRC
+              valueFrom:
+                configMapKeyRef:
+                  name: brabo-config
+                  key: CSP_CONNECT_SRC
+          # O web é estático: as três probes podem ser a mesma. /healthz não
+          # passa pelo fallback de SPA, então responde mesmo com docroot vazio
+          # — o que distingue "nginx de pé" de "bundle presente".
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 15
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            # O entrypoint renderiza aqui o nginx.conf e o config.js (/etc/nginx
+            # é read-only), e o nginx guarda pid e temporários no mesmo lugar.
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}

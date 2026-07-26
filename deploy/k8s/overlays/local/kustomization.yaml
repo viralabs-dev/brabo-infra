@@ -1,0 +1,50 @@
+# Overlay do cluster local (k3d ou kind), aplicado por `make deploy-local`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: brabo
+
+resources:
+  - ../../base
+  - secretstore.yaml
+  - netpol-external-egress.yaml
+# O banco fica em `db/`, aplicado separadamente pelo bootstrap — ver o
+# comentário em db/kustomization.yaml.
+
+patches:
+  - path: patches.yaml
+  - path: services-nodeport.yaml
+
+configMapGenerator:
+  - name: brabo-config
+    behavior: merge
+    literals:
+      # URLs PÚBLICAS: são as que o browser usa, então precisam ser as portas
+      # do HOST, não os nomes de Service. Viram o /config.js servido pelo web.
+      - PUBLIC_API_URL=http://localhost:3000
+      - PUBLIC_ENGINE_URL=http://localhost:4000
+      - PUBLIC_KEYCLOAK_URL=http://localhost:8080
+      # Origem do web: entra no CORS da api, no check_origin dos canais do
+      # engine e no redirectUri/webOrigin do realm do Keycloak. Divergir em
+      # qualquer um dos três produz falha silenciosa diferente.
+      - WEB_ORIGIN=http://localhost:8088
+      # O `iss` do token vem do host que o cliente usou. O browser pede por
+      # localhost:8080 e a api pede por keycloak:8080 (client credentials) —
+      # o verificador da api aceita os DOIS emissores de propósito, e é isto
+      # que declara o segundo.
+      - KEYCLOAK_ISSUER_URL=http://localhost:8080
+      - PHX_HOST=localhost
+      # connect-src do CSP: precisa listar exatamente os destinos que a
+      # configuração de runtime manda o browser chamar, mais o websocket dos
+      # canais Phoenix (esquema ws://, que não é coberto por http://).
+      - CSP_CONNECT_SRC=http://localhost:3000 http://localhost:4000 ws://localhost:4000 http://localhost:8080
+
+images:
+  # Tag local: as imagens são construídas no daemon e importadas no cluster
+  # pelo bootstrap, sem registry no meio.
+  - name: brabo-api
+    newTag: prod
+  - name: brabo-engine
+    newTag: prod
+  - name: brabo-web
+    newTag: prod

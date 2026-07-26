@@ -1,0 +1,129 @@
+# Migrações como Job one-shot, não como passo de boot das réplicas.
+#
+# É a decisão 3 do ADR 0024, e em Kubernetes ela importa mais do que no
+# compose: com HPA, o número de réplicas subindo ao mesmo tempo é variável e
+# imprevisível. Se cada uma migrasse no boot, N réplicas competiriam pela mesma
+# migration — e o modo de falha não é erro claro, é lock e timeout.
+#
+# São DOIS jobs porque são dois donos de schema em imagens diferentes: a api
+# (Drizzle, schema `public`) e o engine (Ecto/Oban, schema `engine`). Já está
+# verificado que não há referência cruzada entre as migrations dos dois, então
+# rodam em paralelo.
+#
+# Job tem spec imutável: reaplicar o overlay com uma imagem nova falha se o Job
+# ainda existir. O `deploy/k8s/bootstrap.sh` apaga os dois antes do apply, e o
+# runbook documenta o mesmo passo para qualquer ambiente.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate-api
+  labels:
+    app.kubernetes.io/name: migrate-api
+    app.kubernetes.io/part-of: brabo
+spec:
+  backoffLimit: 3
+  # Deixa o Job (e seus logs) por 1h depois de terminar, e some sozinho — sem
+  # isto os Jobs se acumulam a cada deploy.
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: migrate-api
+        app.kubernetes.io/part-of: brabo
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: brabo-api:prod
+          imagePullPolicy: IfNotPresent
+          # drizzle-kit é devDependency e não está na imagem de produção; este
+          # é o migrador programático do drizzle-orm (ADR 0024, decisão 3).
+          command: ["node", "db/migrate.js"]
+          env:
+            - name: MIGRATIONS_FOLDER
+              value: ./db/migrations
+          envFrom:
+            - secretRef:
+                name: brabo-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate-engine
+  labels:
+    app.kubernetes.io/name: migrate-engine
+    app.kubernetes.io/part-of: brabo
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: migrate-engine
+        app.kubernetes.io/part-of: brabo
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: brabo-engine:prod
+          imagePullPolicy: IfNotPresent
+          # Um release não tem Mix: `mix ecto.migrate` não existe na imagem.
+          command: ["/app/bin/engine", "eval", "Engine.Release.migrate()"]
+          # PHX_SERVER deliberadamente AUSENTE: com ela o eval subiria o
+          # endpoint HTTP e o Job nunca terminaria.
+          envFrom:
+            - secretRef:
+                name: brabo-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: home
+              mountPath: /home/engine
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: home
+          emptyDir: {}

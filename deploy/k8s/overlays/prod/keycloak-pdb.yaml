@@ -1,0 +1,22 @@
+# PDB do Keycloak — só em produção, e por isso é recurso novo em vez de patch.
+#
+# A base não declara nenhum: lá o Keycloak roda com uma réplica em `start-dev`
+# (limitação herdada e registrada no ADR 0024), e um PDB sobre réplica única
+# ou é no-op (`maxUnavailable: 1`) ou trava o drain de nó no ambiente local,
+# que é justamente onde se quer exercitar rollout.
+#
+# Em produção o cálculo se inverte: sem Keycloak não há login novo E a api não
+# consegue token client-credentials para chamar o engine — criar sessão para de
+# funcionar. Indisponibilidade voluntária zero.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: brabo
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak

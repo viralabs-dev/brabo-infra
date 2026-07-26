@@ -1,0 +1,25 @@
+# Volume compartilhado entre api e engine.
+#
+# NÃO é um detalhe de conveniência: a api cria o bare repo local e persiste o
+# path ABSOLUTO dele no Postgres; o engine lê esse path do banco e o usa
+# literalmente para fazer `git push`. Montar em caminhos diferentes, ou em
+# volumes diferentes, quebra o push com `remote unpack failed` (ADR 0024,
+# decisão 5). Daí ReadWriteMany: os dois workloads escrevem no MESMO volume,
+# ao mesmo tempo, em réplicas que podem estar em nós diferentes.
+#
+# `storageClassName` fica deliberadamente sem valor aqui — é a única coisa que
+# muda entre um cluster local (hostPath single-node) e produção (NFS/EFS/
+# Filestore). Cada overlay declara a sua.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: brabo-shared-data
+  labels:
+    app.kubernetes.io/name: shared-data
+    app.kubernetes.io/part-of: brabo
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi

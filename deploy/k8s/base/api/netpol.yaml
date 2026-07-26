@@ -1,0 +1,42 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # De fora do cluster (browser, via NodePort ou ingress) e do engine, que
+    # chama /internal para gravar evento, criar tarefa, reportar término.
+    # Sem `from`, o alcance é qualquer origem na porta 3000 — é uma API
+    # pública por natureza, protegida por JWT, não por rede.
+    - ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    # api -> engine: criar sessão, executar ação, disparar agente. Este fluxo
+    # NÃO está na lista do enunciado e sem ele o smoke falha no passo 2.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: engine
+      ports:
+        - protocol: TCP
+          port: 4000
+    # api -> Keycloak: JWKS para validar o token recebido e client credentials
+    # para chamar o engine. Também ausente da lista do enunciado.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: keycloak
+      ports:
+        - protocol: TCP
+          port: 8080

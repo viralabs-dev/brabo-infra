@@ -1,0 +1,34 @@
+# HPA da api por CPU (item 2 do enunciado).
+#
+# CPU é a métrica certa aqui porque a api é request/response: o trabalho dela é
+# proporcional ao tráfego, e o tráfego aparece na CPU. O engine é o oposto —
+# trabalho assíncrono em fila, invisível na CPU enquanto os jobs esperam — e
+# por isso escala por profundidade de fila.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: brabo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+    scaleDown:
+      # Janela longa de propósito: derrubar réplica no primeiro vale de tráfego
+      # produz oscilação, e subir custa mais do que manter.
+      stabilizationWindowSeconds: 300
