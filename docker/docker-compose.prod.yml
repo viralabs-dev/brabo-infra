@@ -1,0 +1,290 @@
+# Compose de VALIDAÇÃO DAS IMAGENS DE PRODUÇÃO (Fase 5).
+#
+# Propósito: subir api/engine/web a partir dos Dockerfile.prod e provar que
+# funcionam sem bind mount, sem hot reload, sem Mix, non-root e com rootfs
+# read-only. É o que o teste de fumaça (docker/smoke.sh) e o job `smoke` do CI
+# usam. NÃO substitui o docker-compose.yml de desenvolvimento.
+#
+# O QUE ESTE ARQUIVO NÃO É: um manifesto de produção endurecido de ponta a
+# ponta. O Keycloak segue em `start-dev` com realm de desenvolvimento (segredo
+# hardcoded, admin/admin123) e o Postgres roda em container com senha default.
+# Endurecer terceiros é trabalho de outra sessão — aqui o alvo são AS NOSSAS
+# TRÊS IMAGENS.
+#
+# Uso:
+#   docker compose -f docker/docker-compose.prod.yml up -d --build --wait
+#   bash docker/smoke.sh
+#   docker compose -f docker/docker-compose.prod.yml down -v
+#
+# `name` diferente do compose de dev de propósito: os dois podem coexistir na
+# mesma máquina sem disputar containers, redes nem volumes.
+name: brabo-prod
+
+# Endurecimento comum a TODOS os nossos serviços de app. Cada um ainda declara
+# o `tmpfs` que precisa, porque o conjunto de caminhos graváveis é diferente.
+x-app-hardening: &app-hardening
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-brabo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brabo}
+      POSTGRES_DB: ${POSTGRES_DB:-brabo}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Mesmo init do dev: é ele que cria a extensão pgvector.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-brabo} -d ${POSTGRES_DB:-brabo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    # `start-dev` de propósito — ver o aviso no topo do arquivo.
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    volumes:
+      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+    healthcheck:
+      # A imagem não tem curl nem wget; o Keycloak 26 expõe /health/ready na
+      # porta de management (9000). O truque do /dev/tcp é bash puro, que a
+      # imagem tem.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\nHost: localhost\\nConnection: close\\n\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Migrações: serviços ONE-SHOT, não passo de boot dos apps.
+  #
+  # Se cada réplica migrasse no start, duas subindo juntas competiriam pela
+  # mesma migration. Aqui elas rodam uma vez, terminam, e os apps só sobem
+  # depois (`service_completed_successfully`).
+  #
+  # São dois serviços porque são dois donos de schema em imagens diferentes:
+  # o Drizzle da api e o Ecto do engine. Não há referência cruzada entre as
+  # migrations dos dois (verificado), então rodam em paralelo.
+  # -------------------------------------------------------------------------
+  migrate-api:
+    image: brabo-api:prod
+    build:
+      context: ..
+      dockerfile: docker/api/Dockerfile.prod
+    <<: *app-hardening
+    restart: "no"
+    tmpfs:
+      - /tmp
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      # Na imagem os .sql ficam em /app/db/migrations (o tsc não copia .sql),
+      # não no ./src/db/migrations que é o default do script.
+      MIGRATIONS_FOLDER: ./db/migrations
+    command: ["node", "db/migrate.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  migrate-engine:
+    image: brabo-engine:prod
+    build:
+      context: ..
+      dockerfile: docker/engine/Dockerfile.prod
+    <<: *app-hardening
+    restart: "no"
+    tmpfs:
+      - /tmp
+      - /home/engine
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-only-secret-key-base-at-least-64-bytes-long-change-me-in-production}
+      # Sem PHX_SERVER aqui: migração não sobe endpoint HTTP.
+    command: ["/app/bin/engine", "eval", "Engine.Release.migrate()"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: brabo-api:prod
+    build:
+      context: ..
+      dockerfile: docker/api/Dockerfile.prod
+    <<: *app-hardening
+    # /tmp é o único caminho gravável fora dos volumes (uploads temporários,
+    # arquivos intermediários). O resto do rootfs é read-only.
+    tmpfs:
+      - /tmp
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      # Origem do web NESTE compose (nginx publicado abaixo), não a de dev.
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8088}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      OLLAMA_REQUEST_TIMEOUT_MS: ${OLLAMA_REQUEST_TIMEOUT_MS:-300000}
+      # Os quatro segredos abaixo têm default de DESENVOLVIMENTO só para este
+      # compose subir sem configuração. Em produção real são obrigatórios e
+      # vindos de um cofre — ver docs/adr/0024.
+      CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-dev-master-key-change-me}
+      GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-dev-oauth-state-secret-change-me}
+      API_KEYCLOAK_CLIENT_SECRET: ${API_KEYCLOAK_CLIENT_SECRET:-api-service-dev-secret-change-me}
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
+      ENGINE_KEYCLOAK_CLIENT_ID: ${ENGINE_KEYCLOAK_CLIENT_ID:-engine-service}
+      API_KEYCLOAK_CLIENT_ID: ${API_KEYCLOAK_CLIENT_ID:-api-service}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
+      ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      GITLAB_OAUTH_CLIENT_ID: ${GITLAB_OAUTH_CLIENT_ID:-}
+      GITLAB_OAUTH_CLIENT_SECRET: ${GITLAB_OAUTH_CLIENT_SECRET:-}
+      # MESMOS caminhos absolutos do engine — obrigatório, ver comentário nos
+      # dois Dockerfile.prod.
+      GIT_LOCAL_REPOS_ROOT: /data/git-repos
+      PROJECT_WORKSPACES_ROOT: /data/project-workspaces
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      - git_local_repos:/data/git-repos
+      - project_workspaces:/data/project-workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      migrate-api:
+        condition: service_completed_successfully
+
+  engine:
+    image: brabo-engine:prod
+    build:
+      context: ..
+      dockerfile: docker/engine/Dockerfile.prod
+    <<: *app-hardening
+    tmpfs:
+      # /tmp: 4 detectors e a árvore temporária do InfraGateRunner escrevem lá.
+      # /home/engine: o semgrep baixa e cacheia as regras do registry no $HOME
+      #   na primeira execução — sem isto os scans do gate de SecOps falham.
+      - /tmp
+      - /home/engine
+    environment:
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      # Obrigatórios no release (runtime.exs, bloco :prod):
+      # PHX_SERVER liga o endpoint HTTP — sem ele o container sobe e não escuta.
+      PHX_SERVER: "true"
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-only-secret-key-base-at-least-64-bytes-long-change-me-in-production}
+      PHX_HOST: ${PHX_HOST:-localhost}
+      # Libera a origem do web no handshake do websocket dos canais. Sem isto o
+      # painel do time ao vivo fica mudo em :prod (check_origin estrito).
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8088}
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
+      ENGINE_KEYCLOAK_CLIENT_ID: ${ENGINE_KEYCLOAK_CLIENT_ID:-engine-service}
+      ENGINE_KEYCLOAK_CLIENT_SECRET: ${ENGINE_KEYCLOAK_CLIENT_SECRET:-engine-service-dev-secret-change-me}
+      API_URL: ${API_URL:-http://api:3000}
+      API_KEYCLOAK_CLIENT_ID: ${API_KEYCLOAK_CLIENT_ID:-api-service}
+      PROJECT_WORKSPACES_ROOT: /data/project-workspaces
+      SESSION_HEARTBEAT_TIMEOUT_MS: ${SESSION_HEARTBEAT_TIMEOUT_MS:-30000}
+      TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
+      SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
+      # Agentes de fundo desligados por default AQUI (não em dev): este compose
+      # existe pra validar as imagens, e Psicólogo/Anamnese começariam a
+      # consumir LLM sem provider configurado. Suba com `true` pra exercitar.
+      START_OUTBOX_DRAIN: ${START_OUTBOX_DRAIN:-false}
+      START_ANAMNESE: ${START_ANAMNESE:-false}
+    ports:
+      - "${ENGINE_PORT:-4000}:4000"
+    volumes:
+      - git_local_repos:/data/git-repos
+      - project_workspaces:/data/project-workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      migrate-engine:
+        condition: service_completed_successfully
+
+  web:
+    image: brabo-web:prod
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile.prod
+      # LIMITAÇÃO CONHECIDA: as VITE_* são compile-time (o Vite as inlina no
+      # bundle), então mudar estes valores exige REBUILD, não restart — esta
+      # imagem é específica do ambiente. Ver docs/adr/0024.
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+        VITE_ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:4000}
+        VITE_KEYCLOAK_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
+        VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
+        VITE_KEYCLOAK_CLIENT_ID: brabo-web
+    <<: *app-hardening
+    tmpfs:
+      # O entrypoint renderiza o nginx.conf aqui (o /etc/nginx é read-only) e o
+      # nginx guarda pid e arquivos temporários no mesmo lugar.
+      - /tmp
+      - /var/cache/nginx
+    environment:
+      # Hosts liberados no connect-src do CSP — este SIM é runtime.
+      CSP_CONNECT_SRC: >-
+        ${VITE_API_URL:-http://localhost:3000}
+        ${VITE_ENGINE_URL:-http://localhost:4000}
+        ${ENGINE_WS_URL:-ws://localhost:4000}
+        ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
+    # 8088 no host porque a 8080 é do Keycloak; 8080 dentro do container porque
+    # nginx roda non-root e não pode fazer bind em porta privilegiada.
+    ports:
+      - "${WEB_PORT:-8088}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+      engine:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  # LLM local. Sob profile: em produção o provider é externo, e baixar ~2GB de
+  # imagem + modelo tornaria o smoke test do CI inviável. Nenhum serviço
+  # `depends_on` ele — a api só o procura quando um agente pede um turno.
+  #
+  #   docker compose -f docker/docker-compose.prod.yml --profile llm up -d
+  # -------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    entrypoint: ["sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2:1b; wait"]
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-1h}
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-16384}
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  ollama_data:
+  # Os dois volumes compartilhados entre api e engine, no MESMO caminho
+  # absoluto nos dois containers (ver ADR 0024, item "mount points graváveis").
+  git_local_repos:
+  project_workspaces:
