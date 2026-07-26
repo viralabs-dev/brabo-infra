@@ -1,0 +1,104 @@
+# Alertas provisionados como código (Fase 5, item 5).
+#
+# DESVIO REGISTRADO: o enunciado pede "alertas Prometheus". Estão implementados
+# como regras unificadas do GRAFANA, por escolha explícita — ver ADR 0026. A
+# contrapartida aceita é que estes alertas deixam de ser avaliados se o Grafana
+# cair, o que não aconteceria com regras carregadas pelo Prometheus.
+#
+# Não há Alertmanager nem receiver configurado: os alertas ficam visíveis no
+# painel de alertas do Grafana. Rotear para algum destino é decisão de operação,
+# não de código.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: brabo
+    folder: Brabo
+    interval: 1m
+    rules:
+      # ---------------------------------------------------------------------
+      - uid: brabo-fila-sem-consumo
+        title: Fila do Oban crescendo sem consumo
+        condition: alerta
+        for: 10m
+        annotations:
+          summary: >-
+            Há trabalho esperando na fila do Oban e nada saindo dela por 10
+            minutos. Suspeitos, nesta ordem: nenhuma réplica do engine Ready,
+            pool do Postgres esgotado, ou worker travado num job.
+        labels:
+          severity: critical
+        data:
+          - refId: backlog
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: brabo-prometheus
+            model:
+              # `min_over_time`: o alerta é sobre backlog PERSISTENTE. Um pico
+              # instantâneo é trabalho normal chegando, não fila travada.
+              expr: min_over_time(oban_queue_depth{state="available"}[10m])
+              instant: true
+              refId: backlog
+          - refId: alerta
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: backlog
+              conditions:
+                - evaluator: { type: gt, params: [20] }
+
+      # ---------------------------------------------------------------------
+      - uid: brabo-sessao-presa-em-closing
+        title: Sessão presa em closing
+        condition: alerta
+        for: 15m
+        annotations:
+          summary: >-
+            Sessão em `closing` há mais de 15 minutos. `closing` é um estado de
+            passagem: ou o engine terminou de drenar e move para `closed`, ou
+            alguém precisa olhar. Sessão parada aqui não fecha sozinha.
+        labels:
+          severity: warning
+        data:
+          - refId: presas
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: brabo-prometheus
+            model:
+              expr: min_over_time(brabo_sessions_closing[15m])
+              instant: true
+              refId: presas
+          - refId: alerta
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: presas
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+
+      # ---------------------------------------------------------------------
+      - uid: brabo-custo-hora-acima-do-limite
+        title: Custo por hora acima do limite
+        condition: alerta
+        for: 5m
+        annotations:
+          summary: >-
+            Gasto de LLM projetado acima de USD 5/hora em algum projeto. O
+            orçamento por projeto do domínio continua sendo o controle rígido;
+            este alerta existe para avisar ANTES de o teto ser atingido.
+        labels:
+          severity: warning
+        data:
+          - refId: custo
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: brabo-prometheus
+            model:
+              # cost_micros é micro-dólar: /1e6 dá dólar, *3600 projeta a hora.
+              expr: >-
+                max(sum by (project) (rate(brabo_llm_cost_micros_total[10m])) * 3600 / 1000000)
+              instant: true
+              refId: custo
+          - refId: alerta
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: custo
+              conditions:
+                - evaluator: { type: gt, params: [5] }

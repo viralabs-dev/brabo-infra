@@ -22,6 +22,7 @@ resources:
   - common/pvc-shared-data.yaml
   - common/externalsecrets.yaml
   - common/netpol-baseline.yaml
+  - common/netpol-observability.yaml
   - api/deployment.yaml
   - api/service.yaml
   - api/hpa.yaml

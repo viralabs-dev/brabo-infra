@@ -1,0 +1,95 @@
+# Grafana Alloy — coleta o stdout dos pods e envia ao Loki.
+#
+# DaemonSet lendo `/var/log/pods` do nó. É o sucessor do promtail (que está em
+# fim de vida) e o caminho suportado hoje.
+#
+# Os logs das três apps são JSON com `trace_id` (Fase 5, item 6). O Alloy os
+# entrega ao Loki como estão; quem extrai o `trace_id` e o transforma em link
+# para o Tempo é o datasource do Loki no Grafana (`derivedFields`).
+controller:
+  type: daemonset
+
+alloy:
+  # O Alloy roda como root para ler /var/log/pods do nó. É um coletor de
+  # infraestrutura, no namespace de monitoramento — diferente das NOSSAS três
+  # imagens, que continuam non-root com rootfs read-only.
+  mounts:
+    varlog: true
+
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  configMap:
+    content: |
+      // Descobre os pods do nó e mantém só os do namespace da aplicação:
+      // coletar o cluster inteiro (incluindo o próprio stack de observabilidade)
+      // encheria o Loki de log que ninguém vai ler.
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      discovery.relabel "brabo_pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          regex         = "brabo"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        // `app` é o rótulo pelo qual os dashboards filtram (api/engine/web).
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "app"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+      }
+
+      loki.source.kubernetes "brabo" {
+        targets    = discovery.relabel.brabo_pods.output
+        forward_to = [loki.process.brabo.receiver]
+      }
+
+      // Extrai o trace_id do JSON e o promove a METADADO ESTRUTURADO, não a
+      // label: label por trace_id criaria uma série por trace e derrubaria o
+      // Loki em minutos (cardinalidade). Metadado estruturado é indexado sem
+      // esse custo, e é o que o derivedFields do datasource consulta.
+      loki.process "brabo" {
+        forward_to = [loki.write.default.receiver]
+
+        stage.json {
+          expressions = {
+            trace_id = "trace_id",
+            level    = "level",
+          }
+        }
+
+        stage.labels {
+          values = { level = "level" }
+        }
+
+        stage.structured_metadata {
+          values = { trace_id = "trace_id" }
+        }
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }

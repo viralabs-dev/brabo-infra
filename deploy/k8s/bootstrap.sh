@@ -108,6 +108,7 @@ create_cluster_k3d() {
     --port "4000:30400@loadbalancer" \
     --port "8080:30080@loadbalancer" \
     --port "8088:30088@loadbalancer" \
+    --port "3001:30030@loadbalancer" \
     --k3s-arg "--disable=traefik@server:0" \
     --wait >/dev/null
   ok "cluster k3d de pé"
@@ -136,6 +137,7 @@ nodes:
       - { containerPort: 30400, hostPort: 4000, protocol: TCP }
       - { containerPort: 30080, hostPort: 8080, protocol: TCP }
       - { containerPort: 30088, hostPort: 8088, protocol: TCP }
+      - { containerPort: 30030, hostPort: 3001, protocol: TCP }
 EOF
   ok "cluster kind de pé"
 }
@@ -213,6 +215,8 @@ helm repo add external-secrets "${ESO_REPO}" >/dev/null 2>&1 || true
 helm repo add cnpg "${CNPG_REPO}" >/dev/null 2>&1 || true
 helm repo add prometheus-community "${PROMETHEUS_REPO}" >/dev/null 2>&1 || true
 helm repo add metrics-server "${METRICS_SERVER_REPO}" >/dev/null 2>&1 || true
+helm repo add grafana "${GRAFANA_REPO}" >/dev/null 2>&1 || true
+helm repo add open-telemetry "${OTEL_COLLECTOR_REPO}" >/dev/null 2>&1 || true
 helm repo update >/dev/null
 
 helm upgrade --install external-secrets external-secrets/external-secrets \
@@ -255,6 +259,48 @@ helm upgrade --install prometheus-adapter prometheus-community/prometheus-adapte
   --namespace monitoring \
   -f "${K8S_DIR}/helm/prometheus-adapter-values.yaml" --wait --timeout 5m >/dev/null
 ok "prometheus-adapter"
+
+# --- observabilidade (Fase 5, sessão 3) ------------------------------------
+# Ordem: os backends primeiro (Tempo, Loki), depois quem escreve neles
+# (Collector, Alloy), e o Grafana por último — ele valida os datasources no
+# boot e um datasource inalcançável só polui o log.
+helm upgrade --install tempo grafana/tempo \
+  --version "${TEMPO_CHART_VERSION}" --namespace monitoring \
+  -f "${K8S_DIR}/helm/tempo-values.yaml" --wait --timeout 5m >/dev/null
+ok "Tempo (traces)"
+
+helm upgrade --install loki grafana/loki \
+  --version "${LOKI_CHART_VERSION}" --namespace monitoring \
+  -f "${K8S_DIR}/helm/loki-values.yaml" --wait --timeout 8m >/dev/null
+ok "Loki (logs)"
+
+helm upgrade --install otel-collector open-telemetry/opentelemetry-collector \
+  --version "${OTEL_COLLECTOR_CHART_VERSION}" --namespace monitoring \
+  -f "${K8S_DIR}/helm/otel-collector-values.yaml" --wait --timeout 5m >/dev/null
+ok "OpenTelemetry Collector"
+
+helm upgrade --install alloy grafana/alloy \
+  --version "${ALLOY_CHART_VERSION}" --namespace monitoring \
+  -f "${K8S_DIR}/helm/alloy-values.yaml" --wait --timeout 5m >/dev/null
+ok "Alloy (coleta de logs)"
+
+# Dashboards versionados no repositório viram ConfigMap. Cada arquivo entra com
+# a chave sendo o nome do arquivo, que é o que o provider do Grafana espera.
+kubectl -n monitoring create configmap brabo-dashboards \
+  --from-file="${K8S_DIR}/observability/dashboards/" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+# Regras de alerta: ConfigMap montado como arquivo de provisioning (ver o
+# comentário em helm/grafana-values.yaml).
+kubectl -n monitoring create configmap brabo-alerts \
+  --from-file="${K8S_DIR}/observability/alerts/brabo-alerts.yaml" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+helm upgrade --install grafana grafana/grafana \
+  --version "${GRAFANA_CHART_VERSION}" --namespace monitoring \
+  -f "${K8S_DIR}/helm/grafana-values.yaml" \
+  --wait --timeout 5m >/dev/null
+ok "Grafana (http://localhost:3001)"
 
 # --- segredos --------------------------------------------------------------
 # Gerados aqui e criados IMPERATIVAMENTE. Nunca entram em manifesto, nunca são
@@ -316,4 +362,4 @@ kubectl -n brabo rollout status deployment/engine --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/web --timeout=300s >/dev/null
 ok "api, engine, web e Keycloak Ready"
 
-printf '\n\033[32m[bootstrap] cluster pronto\033[0m — web em http://localhost:8088\n'
+printf '\n\033[32m[bootstrap] cluster pronto\033[0m — web em http://localhost:8088, Grafana em http://localhost:3001\n'

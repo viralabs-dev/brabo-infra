@@ -1,0 +1,66 @@
+# OpenTelemetry Collector — recebe OTLP das apps e exporta para o Tempo.
+#
+# ## Por que um coletor no meio, e não OTLP direto para o Tempo
+#
+# Desacopla a instrumentação do backend: as três apps conhecem um endpoint só
+# (`OTEL_EXPORTER_OTLP_ENDPOINT`), e trocar Tempo por outro backend, acrescentar
+# amostragem ou filtrar atributo passa a ser mudança de pipeline aqui — não
+# mudança em api, engine e web ao mesmo tempo.
+mode: deployment
+replicaCount: 1
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+presets:
+  # Acrescenta k8s.pod.name, k8s.namespace.name etc. aos spans, resolvendo de
+  # qual pod veio cada um. É o que permite ir do span ao pod no Grafana.
+  kubernetesAttributes:
+    enabled: true
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  processors:
+    # Agrupa spans por trace antes de exportar. Sem isto, um trace que atravessa
+    # api e engine chega ao Tempo em pedaços e a árvore aparece incompleta
+    # enquanto a sessão está em andamento.
+    batch:
+      timeout: 2s
+      send_batch_size: 512
+    memory_limiter:
+      check_interval: 2s
+      limit_percentage: 75
+      spike_limit_percentage: 20
+
+  exporters:
+    otlp/tempo:
+      endpoint: tempo.monitoring.svc.cluster.local:4317
+      tls:
+        insecure: true
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp/tempo]
+    # Métricas e logs NÃO passam por aqui de propósito: as métricas são
+    # coletadas por scrape do Prometheus (modelo pull, que sobrevive a
+    # reinício do coletor) e os logs são recolhidos do stdout dos pods pelo
+    # Alloy. Mandar as três coisas pelo mesmo caminho tornaria o coletor um
+    # ponto único de falha para toda a observabilidade.
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

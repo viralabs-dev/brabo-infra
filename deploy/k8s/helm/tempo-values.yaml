@@ -1,0 +1,38 @@
+# Tempo monolítico — backend de traces.
+#
+# Chart `grafana/tempo` (single binary), não `tempo-distributed`: o distribuído
+# sobe distributor, ingester, querier, compactor e um cache separados, o que
+# não cabe numa máquina de desenvolvimento e não compra nada aqui.
+#
+# Recebe OTLP do OpenTelemetry Collector (não das apps direto — ver
+# otel-collector-values.yaml) e é consultado pelo Grafana.
+tempo:
+  # Retenção curta: rastrear uma sessão que aconteceu agora é o caso de uso;
+  # histórico longo pediria object storage.
+  retention: 24h
+
+  # Gera métricas RED a partir dos spans e as manda ao Prometheus por remote
+  # write. É o que liga o painel "trace -> métrica" no Grafana sem precisar
+  # instrumentar contador nenhum na aplicação.
+  metricsGenerator:
+    enabled: true
+    remoteWriteUrl: http://prometheus-server.monitoring.svc.cluster.local/api/v1/write
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+persistence:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 384Mi

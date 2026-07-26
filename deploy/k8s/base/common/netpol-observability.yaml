@@ -1,0 +1,40 @@
+# Egress de OTLP para o namespace de monitoramento.
+#
+# SEM ESTA POLICY A INSTRUMENTAÇÃO INTEIRA NÃO EXPORTA NADA, e o modo de falha é
+# o pior possível: as apps sobem, os spans são criados, o exporter tenta enviar,
+# falha, e a única evidência é uma linha de log por batch descartado. Todo o
+# resto fica verde e o Tempo fica vazio.
+#
+# O `default-deny` de egress do namespace `brabo` (ADR 0025) é o que bloqueia:
+# ele nega tudo o que não estiver explicitamente liberado, e o Collector vive em
+# outro namespace.
+#
+# O ingress do scrape do Prometheus não precisa de regra: a porta 4000 do engine
+# e a 3000 da api já aceitam qualquer origem (o browser precisa alcançá-las).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otlp-egress
+  labels:
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [api, engine]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        # gRPC e HTTP do OTLP: o SDK do Node usa HTTP (4318) e o do Elixir usa
+        # gRPC (4317). Liberar os dois evita que trocar de exporter em um dos
+        # lados vire um bug de rede silencioso.
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
