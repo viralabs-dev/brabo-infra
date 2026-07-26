@@ -59,3 +59,24 @@ serverFiles:
           - source_labels: [__meta_kubernetes_pod_name]
             target_label: pod
         metrics_path: /metrics
+
+      # A api. Não existia até a Fase 5 sessão 3: ela não tinha /metrics, e
+      # `tokens/min`, `custo/hora`, `sessões ativas`, `taxa de aprovação` e
+      # `tasks blocked` todos vêm dela.
+      - job_name: brabo-api
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [brabo]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: keep
+            regex: api
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: keep
+            regex: "3000"
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+        metrics_path: /metrics

@@ -22,6 +22,7 @@ resources:
   - common/pvc-shared-data.yaml
   - common/externalsecrets.yaml
   - common/netpol-baseline.yaml
+  - common/netpol-observability.yaml
   - api/deployment.yaml
   - api/service.yaml
   - api/hpa.yaml
@@ -51,6 +52,11 @@ configMapGenerator:
       - ENGINE_KEYCLOAK_CLIENT_ID=engine-service
       # Endereços internos: nome de Service, iguais em qualquer ambiente.
       - KEYCLOAK_URL=http://keycloak:8080
+      # OpenTelemetry (Fase 5, item 3). Endereço do Collector, não do Tempo: é
+      # ele que desacopla a instrumentação do backend. Definir esta variável é o
+      # que LIGA a instrumentação — sem ela, api e engine não criam span nenhuma
+      # (ver apps/api/src/tracing.ts e Engine.Telemetry.Otel).
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318
       - API_URL=http://api:3000
       - ENGINE_URL=http://engine:4000
   - name: keycloak-realm-template

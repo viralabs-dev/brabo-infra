@@ -64,6 +64,20 @@ spec:
           env:
             - name: POOL_SIZE
               value: "10"
+            # 10 minutos, contra os 30s do default.
+            #
+            # Não é afrouxamento por conveniência: o `make rollout-test` abre
+            # sessões ativas e faz um `rollout restart`, que leva bem mais de
+            # 30s (boot do pod novo + drain do antigo). Com o default, as
+            # sessões morreriam por heartbeat DURANTE o teste e ele mediria a
+            # coisa errada — passaria ou falharia por um motivo que não tem
+            # relação com drenagem. Em produção o default vale.
+            - name: SESSION_HEARTBEAT_TIMEOUT_MS
+              value: "600000"
+            # Drain mais curto no local: sem cliente reconectando, esperar 45s
+            # por adoção só faz o teste demorar.
+            - name: SHUTDOWN_DRAIN_TIMEOUT_MS
+              value: "20000"
 ---
 apiVersion: apps/v1
 kind: Deployment

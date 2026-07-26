@@ -14,11 +14,14 @@ metadata:
     app.kubernetes.io/part-of: brabo
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    # A NetworkPolicy do engine libera a porta 4000 sem restrição de origem
-    # porque o browser precisa do websocket dos canais. Isso deixaria
-    # `/metrics` (que não tem autenticação) e `/internal` alcançáveis pela
+    # A porta do engine (4000) e a da api (3000) aceitam qualquer origem: o
+    # browser precisa alcançar as duas. Isso deixaria `/metrics` (que não tem
+    # autenticação em nenhuma das duas) e `/internal` alcançáveis pela
     # internet — então o corte acontece aqui, na borda. O Prometheus continua
     # coletando por dentro do cluster, sem passar pelo Ingress.
+    #
+    # Vale para TODOS os hosts deste Ingress, api incluída: o snippet entra no
+    # server do nginx, não numa location por host.
     nginx.ingress.kubernetes.io/server-snippet: |
       location /metrics { deny all; return 403; }
       location /internal { deny all; return 403; }

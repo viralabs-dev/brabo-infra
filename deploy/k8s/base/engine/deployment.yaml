@@ -47,11 +47,14 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      # Generoso porque o BEAM precisa de tempo para terminar o que está em
-      # voo. O hook de preStop que DRENA as sessões (transição closing com
-      # causa node_shutdown) é o item 4 da Fase 5 e ainda não existe; o campo
-      # já está aqui para quando existir.
-      terminationGracePeriodSeconds: 60
+      # Orçamento do desligamento, em ordem:
+      #   preStop (drain)         até 45s  (SHUTDOWN_DRAIN_TIMEOUT_MS)
+      #   Oban shutdown_grace     até 25s
+      #   teardown do BEAM        o resto
+      # 90s dá folga para os três. Se este número ficar MENOR que o timeout do
+      # drain, o kubelet manda SIGKILL no meio da drenagem e o resultado é pior
+      # que não drenar: metade das sessões avisadas, metade órfã.
+      terminationGracePeriodSeconds: 90
       containers:
         - name: engine
           image: brabo-engine:prod
@@ -73,6 +76,15 @@ spec:
               value: "4000"
             - name: PHX_SERVER
               value: "true"
+            # SEM override de OTEL_EXPORTER_OTLP_ENDPOINT: o engine herda o
+            # endpoint HTTP (4318) do ConfigMap.
+            #
+            # A primeira versão apontava para 4317 supondo que o exporter do
+            # Elixir falasse gRPC. Ele fala HTTP/protobuf por default, e mandar
+            # HTTP numa porta gRPC dá `socket_closed_remotely` a cada batch —
+            # sem trace nenhuma no Tempo e sem erro que aponte a causa.
+            - name: OTEL_SERVICE_NAME
+              value: brabo-engine
             - name: PROJECT_WORKSPACES_ROOT
               value: /data/project-workspaces
             # Pool maior que o default de 10: a fila do Oban sozinha tem
@@ -109,6 +121,27 @@ spec:
             - name: ERL_AFLAGS
               value: >-
                 -kernel inet_dist_listen_min 9100 inet_dist_listen_max 9110
+          # Drenagem de sessões ANTES do SIGTERM (Fase 5, item 4).
+          #
+          # Precisa ser um comando externo e não `terminate/2` no
+          # `SessionServer`: quando o supervisor desce, cada sessão recebe
+          # `exit(:shutdown)` e morre instantaneamente, e o supervisor concede
+          # só 5s por filho — insuficiente para emitir evento na api e
+          # negociar handoff com outro nó. Aqui o BEAM ainda está inteiro:
+          # Repo, cliente HTTP e cluster Erlang de pé.
+          #
+          # O `rpc` sobe um nó oculto, que precisa de uma porta livre da faixa
+          # de distribuição (9100-9110, já liberada na NetworkPolicy).
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /app/bin/engine
+                  - rpc
+                  # `IO.inspect` de propósito: o stdout do hook é o único
+                  # registro que sobra depois que o pod some, e é onde se lê
+                  # quantas sessões foram adotadas e quantas encerradas.
+                  - "IO.inspect(Engine.Shutdown.drain(), label: \"brabo-drain\")"
           startupProbe:
             httpGet:
               path: /live

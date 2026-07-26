@@ -103,9 +103,21 @@ ok "projeto ${PROJ_ID}"
 
 sess="$(curl -sS --max-time 60 -X POST "${auth[@]}" \
   "${API}/projects/${PROJ_ID}/sessions")" || fail "POST sessions não respondeu"
+SESS_ID="$(printf '%s' "${sess}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
 printf '%s' "${sess}" | grep -q '"status":"created"' \
   || fail "sessão criada em status inesperado: ${sess}"
-ok "sessão criada — o caminho api -> Keycloak -> engine funciona no cluster"
+ok "sessão ${SESS_ID} criada"
+
+# ATIVAR é o que exercita api -> engine. Criar a sessão NÃO chama o engine —
+# só grava a linha e o evento de outbox. Enquanto o smoke parava em `created`,
+# o caminho interno ficou quebrado por um rollout inteiro sem ninguém ver: o
+# `force_ssl` respondia 301 em /internal/*, e nada aqui percebia.
+act="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d '{"status":"active"}' \
+  "${API}/projects/${PROJ_ID}/sessions/${SESS_ID}/transition")" \
+  || fail "POST transition não respondeu"
+printf '%s' "${act}" | grep -q '"status":"active"' \
+  || fail "sessão não ativou (api -> engine quebrado?): ${act}"
+ok "sessão ativada — api -> Keycloak -> engine funciona no cluster"
 
 # ---------------------------------------------------------------------------
 step=5

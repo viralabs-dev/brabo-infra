@@ -1,0 +1,136 @@
+# Grafana — datasources, dashboards e alertas provisionados como código.
+#
+# Nada aqui é configurado pela interface: o chart escreve os arquivos de
+# provisioning e o Grafana os carrega no boot. Uma mudança feita pela UI é
+# perdida no próximo deploy, e isso é intencional — é o que "dashboards
+# provisionados como código" significa.
+adminUser: admin
+# Senha default só do ambiente local; o overlay de produção deve vir de Secret.
+adminPassword: admin
+
+persistence:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 384Mi
+
+grafana.ini:
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
+  # Sem login para ver: é um Grafana local, e exigir senha para abrir um
+  # dashboard atrapalha o uso que ele tem aqui.
+  auth.anonymous:
+    enabled: true
+    org_role: Viewer
+  users:
+    default_theme: dark
+  unified_alerting:
+    enabled: true
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: brabo-prometheus
+        url: http://prometheus-server.monitoring.svc.cluster.local
+        access: proxy
+        isDefault: true
+        jsonData:
+          timeInterval: 15s
+          # Liga a métrica ao exemplar de trace: um ponto no gráfico de
+          # latência leva à trace daquela requisição.
+          exemplarTraceIdDestinations:
+            - name: trace_id
+              datasourceUid: brabo-tempo
+
+      - name: Tempo
+        type: tempo
+        uid: brabo-tempo
+        url: http://tempo.monitoring.svc.cluster.local:3100
+        access: proxy
+        jsonData:
+          # DO SPAN PARA O LOG. É metade da correlação que motivou instalar o
+          # Loki: estando num span de tool call, saltar para as linhas de log
+          # daquele mesmo trace_id.
+          tracesToLogsV2:
+            datasourceUid: brabo-loki
+            spanStartTimeShift: -5m
+            spanEndTimeShift: 5m
+            filterByTraceID: true
+            tags:
+              - key: service.name
+                value: app
+          tracesToMetrics:
+            datasourceUid: brabo-prometheus
+          serviceMap:
+            datasourceUid: brabo-prometheus
+          nodeGraph:
+            enabled: true
+
+      - name: Loki
+        type: loki
+        uid: brabo-loki
+        url: http://loki.monitoring.svc.cluster.local:3100
+        access: proxy
+        jsonData:
+          # DO LOG PARA O SPAN — a outra metade. O Alloy grava o trace_id como
+          # metadado estruturado (nunca como label, para não explodir a
+          # cardinalidade), e é dele que este campo derivado sai.
+          derivedFields:
+            - name: TraceID
+              datasourceUid: brabo-tempo
+              matcherType: label
+              matcherRegex: trace_id
+              url: "$${__value.raw}"
+
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: brabo
+        orgId: 1
+        folder: Brabo
+        type: file
+        disableDeletion: false
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards/brabo
+
+# Os JSON vêm de ConfigMaps criados pelo bootstrap a partir de
+# deploy/k8s/observability/dashboards/*.json — versionados no repositório.
+dashboardsConfigMaps:
+  brabo: brabo-dashboards
+
+# Alertas unificados provisionados a partir de
+# deploy/k8s/observability/alerts/brabo-alerts.yaml, que o bootstrap transforma
+# em ConfigMap.
+#
+# Montado como arquivo em vez de entrar na chave `alerting:` destes values de
+# propósito: as regras ficam num arquivo próprio, revisável e diffável por si,
+# em vez de embutidas dentro de um values de Helm. (O caminho `--set-file
+# alerting.…` não funciona neste chart — o template espera mapa e recebe
+# string.)
+#
+# O enunciado pede "alertas Prometheus"; a escolha por alertas do Grafana foi
+# deliberada e está registrada no ADR 0026, com a ressalva de que eles deixam de
+# ser avaliados se o Grafana cair.
+extraConfigmapMounts:
+  - name: brabo-alerts
+    configMap: brabo-alerts
+    mountPath: /etc/grafana/provisioning/alerting/brabo-alerts.yaml
+    subPath: brabo-alerts.yaml
+    readOnly: true
+
+# NodePort 30030, mapeada para a porta 3001 do host pelo bootstrap. NÃO pode
+# ser 30300: essa é a da api (ver overlays/local/services-nodeport.yaml).
+service:
+  type: NodePort
+  nodePort: 30030

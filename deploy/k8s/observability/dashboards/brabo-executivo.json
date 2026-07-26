@@ -1,0 +1,204 @@
+{
+  "uid": "brabo-executivo",
+  "title": "Brabo — visão executiva",
+  "description": "Custo e atividade por projeto. Provisionado como código a partir de deploy/k8s/observability/dashboards/ — mudanças pela interface são perdidas no próximo deploy.",
+  "tags": [
+    "brabo",
+    "custo"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "editable": false,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Custo por hora (USD) por projeto",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "brabo-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (project) (rate(brabo_llm_cost_micros_total[10m])) * 3600 / 1000000",
+          "legendFormat": "{{project}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "brabo-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Custo acumulado (USD) por projeto",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "brabo-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (project) (brabo_llm_cost_micros_total) / 1000000",
+          "legendFormat": "{{project}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "brabo-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Tokens por minuto por projeto",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "brabo-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (project) (rate(brabo_llm_tokens_total[5m])) * 60",
+          "legendFormat": "{{project}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "brabo-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Tokens por minuto por provider",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "brabo-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (provider) (rate(brabo_llm_tokens_total[5m])) * 60",
+          "legendFormat": "{{provider}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "brabo-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Sessões ativas por projeto",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "brabo-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (project) (brabo_sessions_active)",
+          "legendFormat": "{{project}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "brabo-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Decisões de ação (aprovada vs negada)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "brabo-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (decision) (rate(brabo_proposed_actions_decided_total[15m])) * 900",
+          "legendFormat": "{{decision}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "brabo-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ]
+}
