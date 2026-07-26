@@ -1,0 +1,60 @@
+# Postgres em cluster via CloudNativePG — a opção documentada para dev/staging.
+#
+# Em produção o Postgres é EXTERNO por padrão (ver docs/adr/0025): a conexão
+# chega só pelo `DATABASE_URL` do Secret, e nada nos manifests da base sabe se
+# do outro lado existe um operador, um RDS ou um servidor físico.
+#
+# ## Por que num namespace próprio
+#
+# O namespace `brabo` tem `default-deny` de ingress E egress. O instance
+# manager do CNPG conversa com o kube-apiserver, e os pods de banco precisariam
+# de regras de egress próprias que não têm nada a ver com a aplicação. Isolar o
+# banco em `brabo-db` mantém a política do namespace da aplicação enxuta e
+# descrevendo só a aplicação — e a regra `allow-db-egress` da base já atravessa
+# namespaces, porque casa por rótulo (`brabo.dev/role: database`), não por nome.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: brabo-db
+  labels:
+    kubernetes.io/metadata.name: brabo-db
+    app.kubernetes.io/part-of: brabo
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: brabo-pg
+  namespace: brabo-db
+spec:
+  instances: 1
+  # É este rótulo que a NetworkPolicy `allow-db-egress` da base procura. Sem
+  # `inheritedMetadata`, os pods do CNPG nasceriam só com os rótulos do
+  # operador e o egress da api/engine para o banco seria negado — com o
+  # sintoma sendo timeout de conexão, não erro de política.
+  inheritedMetadata:
+    labels:
+      brabo.dev/role: database
+  bootstrap:
+    initdb:
+      database: brabo
+      owner: brabo
+      # Secret criado imperativamente pelo bootstrap.sh, com a MESMA senha que
+      # entra no DATABASE_URL do Secret-fonte.
+      secret:
+        name: brabo-pg-credentials
+  storage:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  postgresql:
+    parameters:
+      # Duas aplicações no mesmo banco (api com POOL do node-postgres, engine
+      # com POOL_SIZE=20 e a fila do Oban), mais os Jobs de migração. O default
+      # de 100 aperta assim que o HPA do engine sobe a segunda réplica.
+      max_connections: "200"

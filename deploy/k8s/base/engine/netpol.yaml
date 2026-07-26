@@ -1,0 +1,84 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: engine
+  labels:
+    app.kubernetes.io/name: engine
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: engine
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Porta 4000 sem restrição de origem, e não só a partir da api.
+    #
+    # O motivo é o painel do time ao vivo (Fase 4a): o BROWSER abre um
+    # websocket direto no engine — `apps/web/src/lib/session-channel.ts` fala
+    # com `ENGINE_URL`, e o `CSP_CONNECT_SRC` lista `ws://.../4000`
+    # justamente por isso. Uma política que só aceitasse a api aplica sem erro,
+    # deixa os pods Ready e faz o painel ficar mudo para sempre, sem log em
+    # lugar nenhum — que é exatamente o que aconteceu na primeira subida deste
+    # cluster, pego pelo smoke.
+    #
+    # O que protege as rotas continua sendo autenticação, não rede: `/internal`
+    # exige token do Keycloak (`EngineWeb.Plugs.VerifyApiToken`). A exceção é
+    # `/metrics`, que não tem auth — por isso o Ingress de produção o bloqueia
+    # na borda (ver overlays/prod/ingress.yaml).
+    - ports:
+        - protocol: TCP
+          port: 4000
+    # engine <-> engine: distribuição Erlang. É o que faz o `:global.trans` do
+    # `Workspace.ensure!` serializar de verdade entre réplicas — sem isto, duas
+    # réplicas fazem `git init` concorrente no mesmo diretório compartilhado.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: engine
+      ports:
+        - protocol: TCP
+          port: 4369
+        # Faixa, não porta única: ver o comentário do ERL_AFLAGS no
+        # deployment.yaml — `bin/engine rpc` precisa de uma porta livre.
+        - protocol: TCP
+          port: 9100
+          endPort: 9110
+  egress:
+    # engine -> api: gravar evento, criar tarefa, reportar término de sessão.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api
+      ports:
+        - protocol: TCP
+          port: 3000
+    # engine -> Keycloak: JWKS para validar o token da api e client
+    # credentials para chamar a api de volta.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: keycloak
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: engine
+      ports:
+        - protocol: TCP
+          port: 4369
+        # Faixa, não porta única: ver o comentário do ERL_AFLAGS no
+        # deployment.yaml — `bin/engine rpc` precisa de uma porta livre.
+        - protocol: TCP
+          port: 9100
+          endPort: 9110
+# Egress para FORA do cluster é negado aqui de propósito — o destino depende do
+# ambiente e cada overlay declara o seu (ver
+# overlays/local/netpol-external-egress.yaml). Vale lembrar quem precisa dele:
+# a api, que fala com os provedores de LLM e com os remotos de git; e o engine,
+# só para o registry de regras do semgrep. O engine NÃO chama LLM direto —
+# pede à api por `llm_turn_stream`.

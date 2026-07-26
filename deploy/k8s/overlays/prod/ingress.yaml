@@ -1,0 +1,74 @@
+# Ingress só existe fora do local: no cluster de desenvolvimento os serviços
+# são NodePorts mapeadas para as mesmas portas do docker-compose.prod.yml, o
+# que evita instalar um controller e depender de resolução de DNS.
+#
+# Quatro hosts e não um com paths: a api não tem prefixo global (`/health`,
+# `/workspaces` e `/projects` ficam na raiz) e o web é um SPA com fallback para
+# `/index.html`. Compartilhar host exigiria reescrita de path nos dois lados —
+# mais superfície de erro do que quatro registros de DNS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: brabo
+  labels:
+    app.kubernetes.io/part-of: brabo
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # A NetworkPolicy do engine libera a porta 4000 sem restrição de origem
+    # porque o browser precisa do websocket dos canais. Isso deixaria
+    # `/metrics` (que não tem autenticação) e `/internal` alcançáveis pela
+    # internet — então o corte acontece aqui, na borda. O Prometheus continua
+    # coletando por dentro do cluster, sem passar pelo Ingress.
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location /metrics { deny all; return 403; }
+      location /internal { deny all; return 403; }
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - app.brabo.example
+        - api.brabo.example
+        - engine.brabo.example
+        - auth.brabo.example
+      secretName: brabo-tls
+  rules:
+    - host: app.brabo.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http
+    - host: api.brabo.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  name: http
+    - host: engine.brabo.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: engine
+                port:
+                  name: http
+    - host: auth.brabo.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  name: http

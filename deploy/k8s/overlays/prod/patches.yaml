@@ -1,0 +1,72 @@
+---
+# StorageClass RWX de verdade. É o requisito de infraestrutura mais duro deste
+# deploy: api e engine escrevem no MESMO volume, em pods que podem cair em nós
+# diferentes, e o path absoluto gravado no banco precisa resolver igual dos
+# dois lados. Um provisionador RWO aqui não falha no apply — falha depois, no
+# `git push` do dev agent, com `remote unpack failed`.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: brabo-shared-data
+spec:
+  # REPLACE_ME: nfs-client, efs-sc, filestore-csi... o que o cluster oferecer
+  # com ReadWriteMany.
+  storageClassName: rwx-shared
+  resources:
+    requests:
+      storage: 50Gi
+---
+# Espalha as réplicas entre nós: duas réplicas da api no mesmo nó tornam o PDB
+# `minAvailable: 1` incapaz de proteger contra a perda daquele nó.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 3
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engine
+spec:
+  replicas: 2
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: engine
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 3
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+spec:
+  minAvailable: 2
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+spec:
+  minAvailable: 2

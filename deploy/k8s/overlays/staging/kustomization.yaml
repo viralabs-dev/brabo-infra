@@ -1,0 +1,45 @@
+# Overlay de staging.
+#
+# Herda de `prod` em vez de `base` de propósito: staging só vale como ensaio se
+# for a MESMA configuração de produção com os valores trocados. Copiar a
+# estrutura de prod para cá produziria duas cópias que divergem em silêncio, e
+# o ensaio deixaria de ensaiar o que interessa (ingress, PDBs, topology
+# spread, egress por ipBlock).
+#
+# O que muda: menos réplicas, hosts próprios e — a opção documentada no item 2
+# do escopo — Postgres in-cluster via CloudNativePG, aplicado à parte como no
+# ambiente local (`overlays/local/db`).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: brabo
+
+resources:
+  - ../prod
+
+patches:
+  - path: patches.yaml
+
+configMapGenerator:
+  - name: brabo-config
+    behavior: merge
+    literals:
+      - PUBLIC_API_URL=https://api.staging.brabo.example
+      - PUBLIC_ENGINE_URL=https://engine.staging.brabo.example
+      - PUBLIC_KEYCLOAK_URL=https://auth.staging.brabo.example
+      - WEB_ORIGIN=https://app.staging.brabo.example
+      - KEYCLOAK_ISSUER_URL=https://auth.staging.brabo.example
+      - KEYCLOAK_URL=https://auth.staging.brabo.example
+      - PHX_HOST=engine.staging.brabo.example
+      - CSP_CONNECT_SRC=https://api.staging.brabo.example https://engine.staging.brabo.example wss://engine.staging.brabo.example https://auth.staging.brabo.example
+
+images:
+  - name: brabo-api
+    newName: ghcr.io/OWNER/brabo-api
+    newTag: REPLACE_WITH_DIGEST
+  - name: brabo-engine
+    newName: ghcr.io/OWNER/brabo-engine
+    newTag: REPLACE_WITH_DIGEST
+  - name: brabo-web
+    newName: ghcr.io/OWNER/brabo-web
+    newTag: REPLACE_WITH_DIGEST

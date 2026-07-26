@@ -1,0 +1,115 @@
+---
+# Postgres in-cluster (CloudNativePG) em vez de gerenciado: staging não precisa
+# do custo de uma instância dedicada, e o operador é a opção documentada para
+# dev/staging no item 2 do escopo. O Cluster em si é aplicado à parte, como no
+# local — ver overlays/local/db.
+#
+# Como o destino volta a ser um POD, a regra por `ipBlock` que prod usa não
+# serve: aqui vale o mesmo casamento por rótulo da base.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-db-egress
+spec:
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              brabo.dev/role: database
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: brabo-shared-data
+spec:
+  storageClassName: rwx-shared
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 2
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+spec:
+  minAvailable: 1
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+spec:
+  minAvailable: 1
+---
+# Os hosts do ingress são os de staging.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: brabo
+spec:
+  tls:
+    - hosts:
+        - app.staging.brabo.example
+        - api.staging.brabo.example
+        - engine.staging.brabo.example
+        - auth.staging.brabo.example
+      secretName: brabo-tls
+  rules:
+    - host: app.staging.brabo.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http
+    - host: api.staging.brabo.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  name: http
+    - host: engine.staging.brabo.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: engine
+                port:
+                  name: http
+    - host: auth.staging.brabo.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  name: http

@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: brabo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+        app.kubernetes.io/part-of: brabo
+    spec:
+      # uid 1000 = `node` na imagem; o mesmo uid do usuário `engine`, o que é
+      # o que permite aos dois compartilharem o volume sem conflito de dono
+      # (ADR 0024, decisão 5). fsGroup garante que o PVC nasça com esse grupo.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: brabo-api:prod
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: brabo-config
+            - secretRef:
+                name: brabo-secrets
+          env:
+            - name: PORT
+              value: "3000"
+            # Precisam ser IDÊNTICOS aos do engine: a api grava o path absoluto
+            # do bare repo no banco e o engine o usa literalmente.
+            - name: GIT_LOCAL_REPOS_ROOT
+              value: /data/git-repos
+            - name: PROJECT_WORKSPACES_ROOT
+              value: /data/project-workspaces
+          # Startup separado de liveness para que um boot lento não seja
+          # confundido com processo travado: enquanto o startup não passa, o
+          # liveness nem é avaliado.
+          startupProbe:
+            httpGet:
+              path: /live
+              port: http
+            periodSeconds: 3
+            failureThreshold: 20
+          # Liveness NÃO toca o banco (ver o comentário no HealthController):
+          # um Postgres lento reiniciaria todas as réplicas ao mesmo tempo.
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness toca o banco: sem banco a api não serve para nada, e o
+          # certo é sair do balanceamento — não morrer.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: shared-data
+              mountPath: /data/git-repos
+              subPath: git-repos
+            - name: shared-data
+              mountPath: /data/project-workspaces
+              subPath: project-workspaces
+            # rootfs read-only: o que a aplicação escreve fora do volume
+            # precisa de mount próprio.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: shared-data
+          persistentVolumeClaim:
+            claimName: brabo-shared-data
+        - name: tmp
+          emptyDir: {}

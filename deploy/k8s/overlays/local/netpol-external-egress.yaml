@@ -1,0 +1,57 @@
+# Egress para fora do cluster.
+#
+# Fica no overlay e não na base porque o destino depende do ambiente: numa rede
+# corporativa isto vira a lista de proxies; num cluster gerenciado, os
+# endpoints do provedor. A base nega, e cada ambiente declara o que abre.
+#
+# ## Quem precisa sair, e por quê
+#
+# **api** — é ela quem fala com os provedores de LLM
+# (`apps/api/src/infrastructure/llm/`) e com os remotos de git via GitProvider
+# (GitHub/GitLab). O engine NÃO chama LLM direto: ele pede à api por
+# `llm_turn_stream` (`Engine.Sessions.EngineApiClient`). Confundir os dois
+# levaria a abrir a porta no serviço errado e a fechá-la no que precisa.
+#
+# **engine** — só para o registry de regras do semgrep, que o gate de SecOps
+# baixa e cacheia na primeira execução (ADR 0024, decisão 5). Sem isto o
+# primeiro scan de um projeto trava até o timeout.
+#
+# ## O `except`
+#
+# `0.0.0.0/0` menos os blocos privados: sem essa subtração, "sair para a
+# internet" incluiria a rede de pods, a rede de serviços e — o que importa —
+# **169.254.169.254**, o endpoint de metadados de nuvem, de onde se lêem
+# credenciais da instância. Um egress que esquece isso troca uma SSRF por um
+# comprometimento de conta.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-egress
+  labels:
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [api, engine]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+# Ollama local NÃO está coberto: no ambiente de desenvolvimento ele roda no
+# host, cujo endereço cai nas faixas privadas excluídas acima — e de propósito,
+# porque liberar 172.16/12 abriria junto a rede de pods inteira. Quem for
+# apontar o `OLLAMA_HOST` para o host precisa acrescentar uma regra com o IP
+# exato da bridge do Docker.

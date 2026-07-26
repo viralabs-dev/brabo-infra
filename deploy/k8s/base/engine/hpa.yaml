@@ -1,0 +1,65 @@
+# HPA do engine por profundidade da fila do Oban (item 3 do enunciado).
+#
+# ## Por que não CPU
+#
+# O trabalho do engine é assíncrono: um job esperando na fila não consome CPU
+# nenhuma. Escalar por CPU só reagiria DEPOIS que a fila drenasse o suficiente
+# para saturar quem já está de pé — exatamente tarde demais. A profundidade da
+# fila é o sinal antecedente.
+#
+# ## O filtro `state="available"` é obrigatório, não decorativo
+#
+# Três workers do engine se auto-reagendam (`OutboxDrainWorker` a cada 2s,
+# `WorktreeCleanupWorker` a cada 60s, `AnamneseSchedulerWorker`), inserindo o
+# próprio sucessor. Em regime normal a tabela `oban_jobs` NUNCA está vazia:
+# sempre há jobs em `scheduled`. Um seletor que não filtrasse por estado leria
+# o sistema ocioso como saturado e manteria o engine no máximo de réplicas
+# para sempre.
+#
+# ## AverageValue
+#
+# Com `averageValue: 20`, o alvo de réplicas é `ceil(backlog_total / 20)`: 60
+# jobs esperando pedem 3 réplicas. `Value` (não-average) daria um único degrau
+# e não escalaria proporcionalmente.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: engine
+  labels:
+    app.kubernetes.io/name: engine
+    app.kubernetes.io/part-of: brabo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: engine
+  # Nunca zero: o engine hospeda sessões vivas, não só jobs.
+  minReplicas: 1
+  maxReplicas: 6
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: oban_queue_depth
+          selector:
+            matchLabels:
+              state: available
+        target:
+          type: AverageValue
+          averageValue: "20"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      # 10 minutos. Enquanto o drain do item 4 da Fase 5 não existir, derrubar
+      # uma réplica encerra as sessões que estavam nela — o custo de descer é
+      # assimetricamente maior que o de manter uma réplica ociosa.
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120

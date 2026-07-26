@@ -1,0 +1,44 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: engine
+  labels:
+    app.kubernetes.io/name: engine
+    app.kubernetes.io/part-of: brabo
+spec:
+  selector:
+    app.kubernetes.io/name: engine
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+---
+# Service headless: existe só para dar ao DNSCluster uma query que devolve o IP
+# de CADA pod (registros A do headless), em vez do IP único do ClusterIP. É o
+# que forma o cluster Erlang — e sem cluster o `:global.trans` do
+# `Workspace.ensure!` não serializa nada entre réplicas.
+#
+# `publishNotReadyAddresses: true` de propósito: um pod ainda reidratando não
+# está Ready, mas já precisa ser visto pelos pares — se só entrasse no DNS
+# depois do Ready, dois nós subindo juntos se ignorariam justamente na janela
+# em que ambos tocam o workspace.
+apiVersion: v1
+kind: Service
+metadata:
+  name: engine-headless
+  labels:
+    app.kubernetes.io/name: engine
+    app.kubernetes.io/part-of: brabo
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: engine
+  ports:
+    - name: epmd
+      port: 4369
+      targetPort: epmd
+    - name: erl-dist
+      port: 9100
+      targetPort: erl-dist

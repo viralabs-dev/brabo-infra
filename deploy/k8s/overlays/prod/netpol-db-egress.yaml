@@ -1,0 +1,31 @@
+# SUBSTITUI a `allow-db-egress` da base (mesmo nome = mesmo objeto).
+#
+# Na base o destino é declarado por rótulo, porque no ambiente local o Postgres
+# é um pod do CloudNativePG. Com Postgres EXTERNO — que é o padrão em produção
+# — não existe pod para rotular: o destino é um endereço, e a regra precisa ser
+# um `ipBlock`.
+#
+# O CIDR abaixo é um marcador. Deixá-lo aberto seria pior que não ter política,
+# porque daria a impressão de que existe uma.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-db-egress
+  labels:
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [api, engine, migrate-api, migrate-engine]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            # REPLACE_ME: /32 do endpoint do Postgres gerenciado.
+            cidr: 10.0.0.0/32
+      ports:
+        - protocol: TCP
+          port: 5432

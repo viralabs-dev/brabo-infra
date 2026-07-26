@@ -1,0 +1,23 @@
+# O web é nginx servindo arquivo estático. Ele NÃO chama a api: quem chama é o
+# browser, de fora do cluster, com a URL que veio do /config.js. Por isso a
+# política é só de ingress — o fluxo que o enunciado chama de "web→api" não
+# existe no nível de pod, e liberá-lo abriria egress sem habilitar nada.
+#
+# Egress fica com o `default-deny`, exceto DNS (allow-dns-egress).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: web
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080

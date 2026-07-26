@@ -144,5 +144,15 @@ printf '%s' "${web_index}" | grep -q '/assets/' \
   || fail "index.html servido não referencia /assets/ (bundle não entrou na imagem?)"
 ok "web serve o index com os assets do build"
 
+# A configuração de runtime é a única coisa da imagem do web que muda por
+# ambiente. Se o entrypoint parar de gerá-la, a app não quebra: ela cai no
+# fallback compile-time e passa a apontar pro ambiente ERRADO, em silêncio.
+web_config="$(curl -sS --max-time 15 "${WEB}/config.js")" || fail "web não serviu /config.js"
+printf '%s' "${web_config}" | grep -q '__BRABO_CONFIG__' \
+  || fail "/config.js não define __BRABO_CONFIG__: ${web_config}"
+printf '%s' "${web_config}" | grep -q "apiUrl" \
+  || fail "/config.js sem apiUrl — a app cairia no fallback compile-time sem avisar"
+ok "web serve /config.js com a configuração de runtime"
+
 step=0
 printf '\n\033[32m[smoke] os 3 passos passaram\033[0m\n'

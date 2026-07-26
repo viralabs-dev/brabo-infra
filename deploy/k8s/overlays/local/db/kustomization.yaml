@@ -1,0 +1,20 @@
+# Banco do ambiente local, em kustomization SEPARADA do resto.
+#
+# Dois motivos, e o segundo só aparece ao rodar:
+#
+# 1. O banco vive no namespace `brabo-db`, fora do `default-deny` do namespace
+#    da aplicação (ver o comentário em cluster.yaml).
+# 2. O transformador `namespace:` do kustomize também renomeia objetos
+#    `Namespace`. Declarar `brabo-db` dentro do overlay principal (que tem
+#    `namespace: brabo`) faz o kustomize reescrever o nome do namespace para
+#    `brabo` e abortar com conflito de ID.
+#
+# Aplicada pelo bootstrap ANTES do overlay principal: o Postgres precisa
+# aceitar conexão antes dos Jobs de migração.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: brabo-db
+
+resources:
+  - cluster.yaml

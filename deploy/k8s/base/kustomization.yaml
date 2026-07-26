@@ -1,0 +1,69 @@
+# Base: os quatro componentes do Brabo + o que eles compartilham.
+#
+# Não há nada específico de ambiente aqui — nem endereço de banco, nem URL
+# pública, nem StorageClass, nem SecretStore. Tudo isso vem por overlay. Um
+# `kubectl apply -k` desta base sozinha NÃO deve funcionar, e é intencional:
+# subir a base direto significaria que algum default de ambiente vazou para
+# dentro dela.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: brabo
+
+# `labels` e não `commonLabels`: o segundo é deprecado e injeta o rótulo também
+# nos selectors, o que os torna imutáveis na prática — mudar um rótulo comum
+# depois exigiria recriar Deployment e Service.
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: brabo
+
+resources:
+  - namespace.yaml
+  - common/pvc-shared-data.yaml
+  - common/externalsecrets.yaml
+  - common/netpol-baseline.yaml
+  - api/deployment.yaml
+  - api/service.yaml
+  - api/hpa.yaml
+  - api/pdb.yaml
+  - api/netpol.yaml
+  - engine/deployment.yaml
+  - engine/service.yaml
+  - engine/hpa.yaml
+  - engine/pdb.yaml
+  - engine/netpol.yaml
+  - web/deployment.yaml
+  - web/service.yaml
+  - web/pdb.yaml
+  - web/netpol.yaml
+  - keycloak/statefulset.yaml
+  - keycloak/service.yaml
+  - keycloak/netpol.yaml
+  - migrations/jobs.yaml
+
+configMapGenerator:
+  # Só o que NÃO é segredo e NÃO varia por ambiente. Os overlays fazem
+  # `behavior: merge` para acrescentar as URLs públicas e o que for deles.
+  - name: brabo-config
+    literals:
+      - KEYCLOAK_REALM=brabo-dev
+      - API_KEYCLOAK_CLIENT_ID=api-service
+      - ENGINE_KEYCLOAK_CLIENT_ID=engine-service
+      # Endereços internos: nome de Service, iguais em qualquer ambiente.
+      - KEYCLOAK_URL=http://keycloak:8080
+      - API_URL=http://api:3000
+      - ENGINE_URL=http://engine:4000
+  - name: keycloak-realm-template
+    files:
+      - keycloak/realm-template.json
+
+images:
+  # As tags são substituídas por overlay. No local ficam as :prod construídas
+  # no daemon e importadas no cluster; em staging/prod viram a referência
+  # imutável do registry (por digest ou SHA do commit).
+  - name: brabo-api
+    newTag: prod
+  - name: brabo-engine
+    newTag: prod
+  - name: brabo-web
+    newTag: prod

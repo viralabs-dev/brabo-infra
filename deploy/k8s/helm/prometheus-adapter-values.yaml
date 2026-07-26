@@ -1,0 +1,47 @@
+# prometheus-adapter: expõe `oban_queue_depth` na External Metrics API para o
+# HPA do engine.
+#
+# ## Por que prometheus-adapter e não KEDA
+#
+# Mantém HPA nativo e um operador a menos no cluster. O custo é real e está
+# aceito: a regra de discovery abaixo mais um APIService agregado, que é a peça
+# mais frágil do arranjo. O modo de falha do adapter é silencioso — se a regra
+# não casar, o HPA fica em `<unknown>` e simplesmente não escala, com todo o
+# resto verde. Por isso o `deploy/k8s/smoke.sh` consulta a External Metrics API
+# diretamente e FALHA se ela não responder, em vez de confiar no HPA.
+#
+# ## A regra
+#
+# `seriesQuery` seleciona a série; `resources.overrides` diz ao adapter que o
+# rótulo `namespace` do Prometheus corresponde ao recurso namespace do
+# Kubernetes (é o que permite ao HPA no namespace `brabo` enxergar a métrica).
+# `name.as: "${1}"` mantém o nome original — o HPA pede por `oban_queue_depth`.
+#
+# `metricsQuery` preserva `queue` e `state` no `by (...)`: sem `state` o HPA
+# não consegue selecionar `state="available"`, e sem esse filtro ele leria os
+# jobs que os três workers auto-reagendados mantêm permanentemente em
+# `scheduled` como backlog — escalando o engine ao máximo num sistema ocioso.
+prometheus:
+  url: http://prometheus-server.monitoring.svc.cluster.local
+  port: 80
+
+rules:
+  default: false
+  external:
+    - seriesQuery: 'oban_queue_depth{namespace!=""}'
+      resources:
+        overrides:
+          namespace:
+            resource: namespace
+      name:
+        matches: "^(.*)$"
+        as: "${1}"
+      metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (queue, state)'
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 192Mi

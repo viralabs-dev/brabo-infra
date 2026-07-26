@@ -1,0 +1,16 @@
+# minAvailable e não maxUnavailable: o número de réplicas é variável (HPA), e
+# `maxUnavailable: 1` sobre 2 réplicas permitiria drenar até 50% — enquanto
+# `minAvailable: 1` garante que sempre sobra alguém atendendo, seja qual for a
+# contagem no momento do drain do nó.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: brabo
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
