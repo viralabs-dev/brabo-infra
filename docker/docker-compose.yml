@@ -159,6 +159,16 @@ services:
       # pros agentes de execução. Default ligado.
       START_OUTBOX_DRAIN: ${START_OUTBOX_DRAIN:-true}
       START_ANAMNESE: ${START_ANAMNESE:-true}
+      # Triagem do Psicólogo (Fase 4b). Os defaults foram calibrados pensando
+      # em modelo forte; num 7B local o modelo gasta tentativas hallucinando
+      # event id (e sendo corretamente rejeitado) antes de acertar, então subir
+      # o teto de iterações é o que faz o critério de aceite fechar sem afrouxar
+      # a validação de evidência. Ver Engine.Psychologist.Triage.
+      PSYCHOLOGIST_TRIAGE_THRESHOLD: ${PSYCHOLOGIST_TRIAGE_THRESHOLD:-20}
+      PSYCHOLOGIST_MAX_ITERATIONS_LEVE: ${PSYCHOLOGIST_MAX_ITERATIONS_LEVE:-4}
+      PSYCHOLOGIST_MAX_ITERATIONS_PESADA: ${PSYCHOLOGIST_MAX_ITERATIONS_PESADA:-8}
+      PSYCHOLOGIST_BUDGET_MICROS_LEVE: ${PSYCHOLOGIST_BUDGET_MICROS_LEVE:-50000}
+      PSYCHOLOGIST_BUDGET_MICROS_PESADA: ${PSYCHOLOGIST_BUDGET_MICROS_PESADA:-300000}
     ports:
       - "${ENGINE_PORT:-4000}:4000"
     volumes:
