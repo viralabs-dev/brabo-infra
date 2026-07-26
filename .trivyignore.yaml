@@ -1,0 +1,349 @@
+# CVEs ACEITAS conscientemente nas imagens de produção (Fase 5).
+#
+# Isto NÃO é uma lista de exceções de conveniência. Toda entrada aqui obedece a
+# três condições, e quem adicionar uma nova precisa satisfazer as três:
+#
+#   1. Está em um BINÁRIO DE TERCEIRO que nós apenas baixamos, não compilamos —
+#      logo não há como aplicar o patch sem um release novo do projeto upstream.
+#   2. Já estamos no ÚLTIMO release publicado desse projeto (verificado).
+#   3. Tem `expired_at`. Passada a data, o trivy volta a reportar e o CI fica
+#      vermelho de novo — a dívida reaparece sozinha em vez de apodrecer aqui.
+#
+# Tudo que é corrigível JÁ FOI CORRIGIDO e não aparece nesta lista:
+#   - `apk upgrade` nas três imagens zerou os CVEs de pacote de sistema;
+#   - remover o npm empacotado da imagem da api zerou os 24 achados de Node.js
+#     (nenhum vinha das nossas dependências, todos do npm da imagem base);
+#   - o pin do gitleaks subiu de 8.21.2 para 8.30.1 (Go 1.23.2 -> 1.24.11).
+#
+# As imagens da api e do web estão com ZERO achados HIGH/CRITICAL corrigíveis;
+# nenhuma entrada abaixo se aplica a elas.
+#
+# Revisão: ao subir o pin do gitleaks ou do semgrep, rode
+#   trivy image --severity HIGH,CRITICAL --ignore-unfixed brabo-engine:prod
+# e REMOVA daqui o que tiver sido resolvido.
+
+vulnerabilities:
+  - id: CVE-2025-47913
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2025-61726
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2025-68121
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-25679
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-27145
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-32280
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-32281
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-32283
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-33811
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-33814
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-39820
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-39822
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-39828
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-39829
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-39830
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-39831
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-39832
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-39835
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-39836
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-42499
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-42504
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-42508
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-46595
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-46597
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib e golang.org/x/crypto embutidos no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que é o último release publicado (checado em 2026-07-26) —
+      baixamos o artefato com checksum verificado, não o compilamos, então não
+      há como recompilar contra um Go mais novo sem um release do upstream. O
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps: não
+      escuta rede nem processa entrada de terceiros. Sai desta lista quando
+      houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-52869
+    paths:
+      - "usr/lib/python3.12/site-packages/mcp-1.23.3.dist-info/METADATA"
+    statement: >-
+      `mcp` 1.23.3 entra como dependência FIXA do semgrep 1.171.0
+      (`mcp==1.23.3`, não é range) e o semgrep já está no último release
+      publicado. Tentamos remover o pacote, já que os gates só chamam `semgrep
+      scan`: não é possível, o semgrep/cli.py importa semgrep.commands.mcp
+      incondicionalmente e o binário morre sem ele. O servidor MCP nunca é
+      iniciado por nós. Sai desta lista quando o semgrep publicar release com
+      `mcp` mais novo.
+    expired_at: 2026-10-31
+  - id: CVE-2026-52870
+    paths:
+      - "usr/lib/python3.12/site-packages/mcp-1.23.3.dist-info/METADATA"
+    statement: >-
+      `mcp` 1.23.3 entra como dependência FIXA do semgrep 1.171.0
+      (`mcp==1.23.3`, não é range) e o semgrep já está no último release
+      publicado. Tentamos remover o pacote, já que os gates só chamam `semgrep
+      scan`: não é possível, o semgrep/cli.py importa semgrep.commands.mcp
+      incondicionalmente e o binário morre sem ele. O servidor MCP nunca é
+      iniciado por nós. Sai desta lista quando o semgrep publicar release com
+      `mcp` mais novo.
+    expired_at: 2026-10-31
+  - id: CVE-2026-59950
+    paths:
+      - "usr/lib/python3.12/site-packages/mcp-1.23.3.dist-info/METADATA"
+    statement: >-
+      `mcp` 1.23.3 entra como dependência FIXA do semgrep 1.171.0
+      (`mcp==1.23.3`, não é range) e o semgrep já está no último release
+      publicado. Tentamos remover o pacote, já que os gates só chamam `semgrep
+      scan`: não é possível, o semgrep/cli.py importa semgrep.commands.mcp
+      incondicionalmente e o binário morre sem ele. O servidor MCP nunca é
+      iniciado por nós. Sai desta lista quando o semgrep publicar release com
+      `mcp` mais novo.
+    expired_at: 2026-10-31
