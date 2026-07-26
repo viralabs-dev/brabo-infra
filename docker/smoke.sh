@@ -124,11 +124,21 @@ sess="$(curl -sS --max-time 60 -X POST "${auth[@]}" \
   "${API}/projects/${PROJ_ID}/sessions")" || fail "POST /projects/:id/sessions não respondeu"
 SESS_ID="$(printf '%s' "${sess}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
 [[ -n "${SESS_ID}" ]] || fail "sessão sem id na resposta: ${sess}"
-# Criar sessão faz a api chamar o engine por HTTP interno com token de client
-# credentials: este passo prova o caminho api -> Keycloak -> engine inteiro.
+# Criar sessão NÃO chama o engine — só grava a linha e o evento de outbox.
+# Quem exercita api -> engine é a ativação, logo abaixo.
 printf '%s' "${sess}" | grep -q '"status":"created"' \
   || fail "sessão criada em status inesperado: ${sess}"
 ok "sessão ${SESS_ID} em status created"
+
+# É a ativação que faz a api chamar o engine por HTTP interno com token de
+# client credentials — este passo, e não o anterior, prova o caminho
+# api -> Keycloak -> engine inteiro.
+act="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d '{"status":"active"}' \
+  "${API}/projects/${PROJ_ID}/sessions/${SESS_ID}/transition")" \
+  || fail "POST transition não respondeu"
+printf '%s' "${act}" | grep -q '"status":"active"' \
+  || fail "sessão não ativou (api -> engine quebrado?): ${act}"
+ok "sessão ativada — api -> engine ok"
 
 # --------------------------------------------------------------------------
 step=3
