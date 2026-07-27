@@ -18,7 +18,7 @@
 #      `seq` do event log;
 #   4. derruba a database de teste.
 #
-# Os passos 2–4 são o mesmo `brabo-restore` que o docs/runbooks/restore.md manda
+# Os passos 2–4 são o mesmo `brabo-restore` que o docs/runbook.md (seção "Restore") manda
 # rodar num incidente: o runbook não descreve um procedimento paralelo que
 # ninguém nunca exercitou.
 #

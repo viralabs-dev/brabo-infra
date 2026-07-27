@@ -2,7 +2,7 @@
 # Restaura o último backup numa database NOVA e valida (Fase 5, item 6).
 #
 # É o motor do `make test-restore` e o mesmo caminho que o
-# docs/runbooks/restore.md manda seguir num incidente de verdade — o runbook não
+# docs/runbook.md (seção "Restore") manda seguir num incidente de verdade — o runbook não
 # descreve um procedimento paralelo que ninguém nunca rodou.
 #
 # Não toca na database de origem em nenhum momento: cria `brabo_restore_test`,
