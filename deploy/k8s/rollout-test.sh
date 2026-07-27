@@ -24,10 +24,8 @@ set -euo pipefail
 
 NS="${BRABO_NAMESPACE:-brabo}"
 API="${API_URL:-http://localhost:3000}"
-KEYCLOAK="${KEYCLOAK_URL:-http://localhost:8080}"
-KEYCLOAK_REALM="${KEYCLOAK_REALM:-brabo-dev}"
-SMOKE_USER="${SMOKE_USER:-admin}"
-SMOKE_PASSWORD="${BRABO_SMOKE_PASSWORD:-admin123}"
+SMOKE_USER="${SMOKE_USER:-owner@brabo.dev}"
+SMOKE_PASSWORD="${BRABO_SMOKE_PASSWORD:-senha de dev do brabo}"
 COUNT="${ROLLOUT_SESSIONS:-5}"
 
 info() { printf '\n\033[1m[rollout-test]\033[0m %s\n' "$*"; }
@@ -47,12 +45,12 @@ fail() {
 info "abrindo ${COUNT} sessões ativas"
 
 token_response="$(curl -sS --max-time 30 \
-  -d "client_id=brabo-web" -d "grant_type=password" \
-  -d "username=${SMOKE_USER}" -d "password=${SMOKE_PASSWORD}" \
-  "${KEYCLOAK}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token")" \
-  || fail "Keycloak não respondeu"
-TOKEN="$(printf '%s' "${token_response}" | jq -r '.access_token // empty')"
-[[ -n "${TOKEN}" ]] || fail "sem access_token: ${token_response}"
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${SMOKE_USER}\",\"senha\":\"${SMOKE_PASSWORD}\"}" \
+  "${API}/auth/login")" \
+  || fail "api não respondeu em ${API}/auth/login"
+TOKEN="$(printf '%s' "${token_response}" | jq -r '.accessToken // empty')"
+[[ -n "${TOKEN}" ]] || fail "sem accessToken: ${token_response}"
 
 auth=(-H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json')
 suffix="$(date +%s)"

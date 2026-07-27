@@ -6,7 +6,6 @@
 # usam. NÃO substitui o docker-compose.yml de desenvolvimento.
 #
 # O QUE ESTE ARQUIVO NÃO É: um manifesto de produção endurecido de ponta a
-# ponta. O Keycloak segue em `start-dev` com realm de desenvolvimento (segredo
 # hardcoded, admin/admin123) e o Postgres roda em container com senha default.
 # Endurecer terceiros é trabalho de outra sessão — aqui o alvo são AS NOSSAS
 # TRÊS IMAGENS.
@@ -46,29 +45,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-    restart: unless-stopped
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.0
-    # `start-dev` de propósito — ver o aviso no topo do arquivo.
-    command: ["start-dev", "--import-realm"]
-    environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
-      KC_HEALTH_ENABLED: "true"
-    ports:
-      - "${KEYCLOAK_PORT:-8080}:8080"
-    volumes:
-      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
-    healthcheck:
-      # A imagem não tem curl nem wget; o Keycloak 26 expõe /health/ready na
-      # porta de management (9000). O truque do /dev/tcp é bash puro, que a
-      # imagem tem.
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\nHost: localhost\\nConnection: close\\n\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 20s
     restart: unless-stopped
 
   # -------------------------------------------------------------------------
@@ -142,13 +118,12 @@ services:
       # compose subir sem configuração. Em produção real são obrigatórios e
       # vindos de um cofre — ver docs/adr/0024.
       CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-dev-master-key-change-me}
+      # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
+      # assina o access token; BRABO_SERVICE_TOKEN autentica o tráfego interno
+      # engine <-> api nos dois sentidos.
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET é obrigatória}
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:?BRABO_SERVICE_TOKEN é obrigatória}
       GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-dev-oauth-state-secret-change-me}
-      API_KEYCLOAK_CLIENT_SECRET: ${API_KEYCLOAK_CLIENT_SECRET:-api-service-dev-secret-change-me}
-      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
-      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
-      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
-      ENGINE_KEYCLOAK_CLIENT_ID: ${ENGINE_KEYCLOAK_CLIENT_ID:-engine-service}
-      API_KEYCLOAK_CLIENT_ID: ${API_KEYCLOAK_CLIENT_ID:-api-service}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
       GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
@@ -167,8 +142,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      keycloak:
-        condition: service_healthy
       migrate-api:
         condition: service_completed_successfully
 
@@ -185,6 +158,7 @@ services:
       - /tmp
       - /home/engine
     environment:
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:?BRABO_SERVICE_TOKEN é obrigatória}
       PORT: 4000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       # Obrigatórios no release (runtime.exs, bloco :prod):
@@ -195,12 +169,7 @@ services:
       # Libera a origem do web no handshake do websocket dos canais. Sem isto o
       # painel do time ao vivo fica mudo em :prod (check_origin estrito).
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8088}
-      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
-      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
-      ENGINE_KEYCLOAK_CLIENT_ID: ${ENGINE_KEYCLOAK_CLIENT_ID:-engine-service}
-      ENGINE_KEYCLOAK_CLIENT_SECRET: ${ENGINE_KEYCLOAK_CLIENT_SECRET:-engine-service-dev-secret-change-me}
       API_URL: ${API_URL:-http://api:3000}
-      API_KEYCLOAK_CLIENT_ID: ${API_KEYCLOAK_CLIENT_ID:-api-service}
       PROJECT_WORKSPACES_ROOT: /data/project-workspaces
       SESSION_HEARTBEAT_TIMEOUT_MS: ${SESSION_HEARTBEAT_TIMEOUT_MS:-30000}
       TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
@@ -218,8 +187,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      keycloak:
-        condition: service_healthy
       migrate-engine:
         condition: service_completed_successfully
 
@@ -236,9 +203,6 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
         VITE_ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:4000}
-        VITE_KEYCLOAK_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
-        VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
-        VITE_KEYCLOAK_CLIENT_ID: brabo-web
     <<: *app-hardening
     tmpfs:
       # O entrypoint renderiza o nginx.conf aqui (o /etc/nginx é read-only) e o
@@ -251,16 +215,12 @@ services:
         ${VITE_API_URL:-http://localhost:3000}
         ${VITE_ENGINE_URL:-http://localhost:4000}
         ${ENGINE_WS_URL:-ws://localhost:4000}
-        ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
       # Configuração de runtime da SPA (vira /config.js). Estes são os valores
       # que o browser realmente usa; as VITE_* do build só respondem se o
       # /config.js faltar.
       API_URL: ${VITE_API_URL:-http://localhost:3000}
       ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:4000}
-      KEYCLOAK_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
-      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
-      KEYCLOAK_CLIENT_ID: brabo-web
-    # 8088 no host porque a 8080 é do Keycloak; 8080 dentro do container porque
+    # 8088 no host por convenção herdada; 8080 dentro do container porque
     # nginx roda non-root e não pode fazer bind em porta privilegiada.
     ports:
       - "${WEB_PORT:-8088}:8080"

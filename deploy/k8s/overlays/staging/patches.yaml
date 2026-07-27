@@ -103,13 +103,3 @@ spec:
                 name: engine
                 port:
                   name: http
-    - host: auth.staging.brabo.example
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: keycloak
-                port:
-                  name: http

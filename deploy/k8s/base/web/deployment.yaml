@@ -52,18 +52,6 @@ spec:
                 configMapKeyRef:
                   name: brabo-config
                   key: PUBLIC_ENGINE_URL
-            - name: KEYCLOAK_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: brabo-config
-                  key: PUBLIC_KEYCLOAK_URL
-            - name: KEYCLOAK_REALM
-              valueFrom:
-                configMapKeyRef:
-                  name: brabo-config
-                  key: KEYCLOAK_REALM
-            - name: KEYCLOAK_CLIENT_ID
-              value: brabo-web
             # connect-src do CSP: precisa listar os mesmos hosts acima, senão o
             # browser bloqueia as chamadas que a config manda fazer.
             - name: CSP_CONNECT_SRC

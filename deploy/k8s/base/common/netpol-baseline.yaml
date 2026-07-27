@@ -7,11 +7,11 @@
 # ao pé da letra, essa lista deixa o sistema no ar e quebrado — o próprio
 # smoke test prova, no passo de criar sessão:
 #
-#   * criar sessão faz a **api** pedir um token client-credentials ao Keycloak
-#     e chamar o **engine** por HTTP interno. Sem `api→keycloak` e `api→engine`
+#   * criar sessão faz a **api** chamar o **engine** por HTTP interno,
+#     autenticada pelo segredo de serviço. Sem `api→engine`
 #     o passo 2 do smoke falha;
-#   * o engine valida o token recebido contra o JWKS do Keycloak, e chama a api
-#     de volta para gravar evento — `engine→keycloak` é obrigatório;
+#   * o engine compara o segredo recebido com o que tem em env — sem ida à
+#     rede — e chama a api de volta para gravar evento;
 #   * sem egress de **DNS** nada resolve nome de Service e todo o resto é
 #     irrelevante;
 #   * sem `prometheus→engine:4000` a métrica `oban_queue_depth` nunca é
