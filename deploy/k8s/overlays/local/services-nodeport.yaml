@@ -1,5 +1,5 @@
 # NodePorts fixos, mapeados pelo bootstrap para as MESMAS portas de host que o
-# docker-compose.prod.yml usa: 3000 (api), 4000 (engine), 8080 (Keycloak) e
+# docker-compose.prod.yml usa: 3000 (api), 4000 (engine) e
 # 8088 (web).
 #
 # Isso não é cosmético. Mantendo as portas, o `docker/smoke.sh` e o realm de
@@ -43,18 +43,3 @@ spec:
       port: 8080
       targetPort: http
       nodePort: 30088
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: keycloak
-spec:
-  type: NodePort
-  ports:
-    - name: http
-      port: 8080
-      targetPort: http
-      nodePort: 30080
-    - name: management
-      port: 9000
-      targetPort: management

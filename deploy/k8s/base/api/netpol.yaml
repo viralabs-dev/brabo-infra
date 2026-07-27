@@ -31,12 +31,3 @@ spec:
       ports:
         - protocol: TCP
           port: 4000
-    # api -> Keycloak: JWKS para validar o token recebido e client credentials
-    # para chamar o engine. Também ausente da lista do enunciado.
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: keycloak
-      ports:
-        - protocol: TCP
-          port: 8080

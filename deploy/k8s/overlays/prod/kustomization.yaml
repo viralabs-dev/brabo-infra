@@ -18,7 +18,6 @@ namespace: brabo
 resources:
   - ../../base
   - ingress.yaml
-  - keycloak-pdb.yaml
 
 patches:
   - path: patches.yaml
@@ -33,12 +32,9 @@ configMapGenerator:
     literals:
       - PUBLIC_API_URL=https://api.brabo.example
       - PUBLIC_ENGINE_URL=https://engine.brabo.example
-      - PUBLIC_KEYCLOAK_URL=https://auth.brabo.example
       - WEB_ORIGIN=https://app.brabo.example
-      - KEYCLOAK_ISSUER_URL=https://auth.brabo.example
-      - KEYCLOAK_URL=https://auth.brabo.example
       - PHX_HOST=engine.brabo.example
-      - CSP_CONNECT_SRC=https://api.brabo.example https://engine.brabo.example wss://engine.brabo.example https://auth.brabo.example
+      - CSP_CONNECT_SRC=https://api.brabo.example https://engine.brabo.example wss://engine.brabo.example
 
 images:
   # Tag mutável NÃO serve em produção: `:prod` apontando para conteúdo

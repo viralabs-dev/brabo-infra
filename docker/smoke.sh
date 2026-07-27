@@ -20,18 +20,16 @@ COMPOSE_FILE="${REPO_ROOT}/docker/docker-compose.prod.yml"
 COMPOSE=(docker compose -f "${COMPOSE_FILE}")
 
 # Portas: os defaults do compose. Sobrescrevíveis pra rodar ao lado do stack de
-# desenvolvimento, que ocupa 3000/4000/8080.
+# desenvolvimento, que ocupa 3000/4000.
 API_PORT="${API_PORT:-3000}"
 ENGINE_PORT="${ENGINE_PORT:-4000}"
-KEYCLOAK_PORT="${KEYCLOAK_PORT:-8080}"
 WEB_PORT="${WEB_PORT:-8088}"
-KEYCLOAK_REALM="${KEYCLOAK_REALM:-brabo-dev}"
-SMOKE_USER="${SMOKE_USER:-admin}"
-SMOKE_PASSWORD="${SMOKE_PASSWORD:-admin123}"
+SMOKE_USER="${SMOKE_USER:-owner@brabo.dev}"
+# A política do domínio exige 12 caracteres — "admin123" não passaria.
+SMOKE_PASSWORD="${SMOKE_PASSWORD:-senha de dev do brabo}"
 
 API="http://localhost:${API_PORT}"
 ENGINE="http://localhost:${ENGINE_PORT}"
-KEYCLOAK="http://localhost:${KEYCLOAK_PORT}"
 WEB="http://localhost:${WEB_PORT}"
 
 step=0
@@ -84,17 +82,25 @@ done
 
 # --------------------------------------------------------------------------
 step=1
-info '1/3 — login (password grant no client brabo-web)'
-token_response="$(curl -sS --max-time 30 \
-  -d "client_id=brabo-web" \
-  -d "grant_type=password" \
-  -d "username=${SMOKE_USER}" \
-  -d "password=${SMOKE_PASSWORD}" \
-  "${KEYCLOAK}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token")" \
-  || fail "Keycloak não respondeu em ${KEYCLOAK}"
+info '1/3 — login no auth próprio da api'
+# O usuário de smoke é provisionado pelo seed (senha conhecida, e-mail já
+# verificado) — sem IdP externo não existe mais credencial pronta. Ver
+# apps/api/src/scripts/provisionar-usuario.ts, que recusa rodar em produção.
+"${COMPOSE[@]}" exec -T api node -e "process.exit(0)" >/dev/null 2>&1 \
+  || fail "api não está de pé no compose"
 
-TOKEN="$(printf '%s' "${token_response}" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')"
-[[ -n "${TOKEN}" ]] || fail "sem access_token na resposta do Keycloak: ${token_response}"
+"${COMPOSE[@]}" exec -T \
+  -e BRABO_SEED_PASSWORD="${SMOKE_PASSWORD}" api pnpm seed >/dev/null 2>&1 \
+  || info 'seed já aplicado (ou falhou parcialmente) — seguindo'
+
+token_response="$(curl -sS --max-time 30 \
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${SMOKE_USER}\",\"senha\":\"${SMOKE_PASSWORD}\"}" \
+  "${API}/auth/login")" \
+  || fail "api não respondeu em ${API}/auth/login"
+
+TOKEN="$(printf '%s' "${token_response}" | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')"
+[[ -n "${TOKEN}" ]] || fail "sem accessToken na resposta do login: ${token_response}"
 ok "token obtido (${#TOKEN} chars)"
 
 auth=(-H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json')
@@ -132,7 +138,7 @@ ok "sessão ${SESS_ID} em status created"
 
 # É a ativação que faz a api chamar o engine por HTTP interno com token de
 # client credentials — este passo, e não o anterior, prova o caminho
-# api -> Keycloak -> engine inteiro.
+# api -> auth próprio -> engine inteiro.
 act="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d '{"status":"active"}' \
   "${API}/projects/${PROJ_ID}/sessions/${SESS_ID}/transition")" \
   || fail "POST transition não respondeu"

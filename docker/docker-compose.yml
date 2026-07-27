@@ -18,17 +18,6 @@ services:
       timeout: 5s
       retries: 20
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.0
-    command: ["start-dev", "--import-realm"]
-    environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
-
   # Ollama local — baixa um modelo pequeno (llama3.2:1b) automaticamente
   # no primeiro start, pra o chat funcionar via curl sem passo manual.
   ollama:
@@ -70,15 +59,15 @@ services:
       # senão quem desiste primeiro é a api e o teto do engine não vale nada.
       OLLAMA_REQUEST_TIMEOUT_MS: ${OLLAMA_REQUEST_TIMEOUT_MS:-300000}
       CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-dev-master-key-change-me}
-      # KEYCLOAK_URL: alcançável da rede do compose (fetch de JWKS).
-      # KEYCLOAK_ISSUER_URL: o host que quem pede o token realmente usa
+      # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
+      # assina o access token; BRABO_SERVICE_TOKEN autentica o tráfego interno
+      # engine <-> api nos dois sentidos.
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-auth-jwt-secret-change-me}
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
+      # Sem SMTP ainda: o link de verificação/reset sai no log da api.
+      AUTH_MAIL_LOG_TOKENS: ${AUTH_MAIL_LOG_TOKENS:-true}
       # (o navegador/curl no host usam localhost:8080) — precisa bater
-      # com o claim "iss" do token, por isso é diferente de KEYCLOAK_URL
       # aqui dentro do container.
-      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
-      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
-      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
-      ENGINE_KEYCLOAK_CLIENT_ID: ${ENGINE_KEYCLOAK_CLIENT_ID:-engine-service}
       # Git providers (Fase 2): OAuth Apps do GitHub/GitLab + provisionamento
       # de repositório local. GIT_OAUTH_STATE_SECRET é separado de
       # CREDENTIALS_MASTER_KEY de propósito — domínios de segurança
@@ -92,11 +81,9 @@ services:
       GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-dev-oauth-state-secret-change-me}
       GIT_LOCAL_REPOS_ROOT: /data/git-repos
       # Comando síncrono api -> engine (criar sessão supervisionada na
-      # ativação) — client credentials do Keycloak, simétrico à direção
+      # ativação) — autenticado pelo segredo de serviço, simétrico à direção
       # engine -> api que já existe.
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
-      API_KEYCLOAK_CLIENT_ID: ${API_KEYCLOAK_CLIENT_ID:-api-service}
-      API_KEYCLOAK_CLIENT_SECRET: ${API_KEYCLOAK_CLIENT_SECRET:-api-service-dev-secret-change-me}
       # Pipeline de ações propostas (Fase 1 item 5): raiz compartilhada com
       # o engine (mesmo path, mesmo volume) onde mora o permissions.json
       # de cada projeto.
@@ -122,6 +109,9 @@ services:
       dockerfile: docker/engine/Dockerfile
     working_dir: /workspace/apps/engine
     environment:
+      # Mesmo segredo dos dois lados — ver EngineServiceGuard e
+      # EngineWeb.Plugs.VerifyServiceToken.
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
       PORT: 4000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       MIX_ENV: dev
@@ -131,14 +121,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-brabo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brabo}
       POSTGRES_HOST: postgres
-      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://keycloak:8080}
-      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
-      ENGINE_KEYCLOAK_CLIENT_ID: ${ENGINE_KEYCLOAK_CLIENT_ID:-engine-service}
-      ENGINE_KEYCLOAK_CLIENT_SECRET: ${ENGINE_KEYCLOAK_CLIENT_SECRET:-engine-service-dev-secret-change-me}
       API_URL: ${API_URL:-http://api:3000}
       # A api chama o engine com um token client-credentials deste client
       # — o engine só precisa saber QUAL client esperar, nunca o secret.
-      API_KEYCLOAK_CLIENT_ID: ${API_KEYCLOAK_CLIENT_ID:-api-service}
       SESSION_HEARTBEAT_TIMEOUT_MS: ${SESSION_HEARTBEAT_TIMEOUT_MS:-30000}
       # Pipeline de ações propostas (Fase 1 item 5): mesma raiz de
       # workspaces que a api usa — Engine.Actions.Workspace faz o
@@ -197,8 +182,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      keycloak:
-        condition: service_started
 
   web:
     build:
@@ -208,12 +191,7 @@ services:
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
       VITE_ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:4000}
-      # Login via Keycloak (client público brabo-web, PKCE) — mesmo
-      # KEYCLOAK_ISSUER_URL usado pela api pra bater com o claim "iss"
       # do token, já que o browser roda fora da rede do compose.
-      VITE_KEYCLOAK_URL: ${KEYCLOAK_ISSUER_URL:-http://localhost:8080}
-      VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brabo-dev}
-      VITE_KEYCLOAK_CLIENT_ID: brabo-web
     ports:
       - "${WEB_PORT:-5173}:5173"
     volumes:

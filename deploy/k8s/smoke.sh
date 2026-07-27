@@ -2,7 +2,7 @@
 # Teste de fumaça do deploy em Kubernetes (Fase 5, item 6).
 #
 # É o docker/smoke.sh traduzido para o cluster: os mesmos três passos que
-# provam o caminho api -> Keycloak -> engine, mais o que só existe aqui —
+# provam o caminho api -> auth próprio -> engine, mais o que só existe aqui —
 # probes distintas, métrica de fila e a External Metrics API que o HPA consome.
 #
 # As URLs são as mesmas do compose de produção porque o overlay local mapeia as
@@ -14,11 +14,9 @@ set -euo pipefail
 NS="${BRABO_NAMESPACE:-brabo}"
 API="${API_URL:-http://localhost:3000}"
 ENGINE="${ENGINE_URL:-http://localhost:4000}"
-KEYCLOAK="${KEYCLOAK_URL:-http://localhost:8080}"
 WEB="${WEB_URL:-http://localhost:8088}"
-KEYCLOAK_REALM="${KEYCLOAK_REALM:-brabo-dev}"
-SMOKE_USER="${SMOKE_USER:-admin}"
-SMOKE_PASSWORD="${BRABO_SMOKE_PASSWORD:-admin123}"
+SMOKE_USER="${SMOKE_USER:-owner@brabo.dev}"
+SMOKE_PASSWORD="${BRABO_SMOKE_PASSWORD:-senha de dev do brabo}"
 
 step=0
 info() { printf '\n\033[1m[smoke-k8s]\033[0m %s\n' "$*"; }
@@ -64,17 +62,15 @@ ok "todos os containers com runAsUser != 0"
 
 # ---------------------------------------------------------------------------
 step=3
-info '3/7 — login (password grant no client brabo-web)'
+info '3/7 — login no auth próprio da api'
 token_response="$(curl -sS --max-time 30 \
-  -d "client_id=brabo-web" \
-  -d "grant_type=password" \
-  -d "username=${SMOKE_USER}" \
-  -d "password=${SMOKE_PASSWORD}" \
-  "${KEYCLOAK}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token")" \
-  || fail "Keycloak não respondeu em ${KEYCLOAK}"
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"${SMOKE_USER}\",\"senha\":\"${SMOKE_PASSWORD}\"}" \
+  "${API}/auth/login")" \
+  || fail "api não respondeu em ${API}/auth/login"
 
-TOKEN="$(printf '%s' "${token_response}" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')"
-[[ -n "${TOKEN}" ]] || fail "sem access_token na resposta do Keycloak: ${token_response}"
+TOKEN="$(printf '%s' "${token_response}" | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')"
+[[ -n "${TOKEN}" ]] || fail "sem accessToken na resposta do login: ${token_response}"
 ok "token obtido (${#TOKEN} chars)"
 
 auth=(-H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json')
@@ -83,8 +79,8 @@ auth=(-H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json')
 step=4
 info '4/7 — criar sessão (workspace -> projeto -> sessão)'
 # Este passo atravessa as NetworkPolicies inteiras: criar sessão faz a api
-# pedir token client-credentials ao Keycloak e chamar o engine por HTTP
-# interno. É o teste real de api->keycloak e api->engine.
+# chamar o engine por HTTP interno, autenticada pelo segredo de serviço. É o
+# teste real de api->engine.
 suffix="$(date +%s)"
 
 ws="$(curl -sS --max-time 30 -X POST "${auth[@]}" \
@@ -117,7 +113,7 @@ act="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d '{"status":"active"}' \
   || fail "POST transition não respondeu"
 printf '%s' "${act}" | grep -q '"status":"active"' \
   || fail "sessão não ativou (api -> engine quebrado?): ${act}"
-ok "sessão ativada — api -> Keycloak -> engine funciona no cluster"
+ok "sessão ativada — api -> engine por segredo de serviço funciona no cluster"
 
 # ---------------------------------------------------------------------------
 step=5
@@ -132,8 +128,8 @@ ok "engine /live e /ready, api /live"
 web_index="$(curl -sS --max-time 15 "${WEB}/")" || fail "web não respondeu em ${WEB}"
 printf '%s' "${web_index}" | grep -q '/assets/' || fail "index.html sem referência a /assets/"
 config_js="$(curl -sS --max-time 15 "${WEB}/config.js")" || fail "web não serviu /config.js"
-printf '%s' "${config_js}" | grep -q "${KEYCLOAK}" \
-  || fail "/config.js não aponta para ${KEYCLOAK}: ${config_js}"
+printf '%s' "${config_js}" | grep -q 'apiUrl' \
+  || fail "/config.js não traz apiUrl: ${config_js}"
 ok "web serve o bundle e a config de runtime do cluster"
 
 # ---------------------------------------------------------------------------

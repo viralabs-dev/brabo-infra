@@ -10,9 +10,8 @@
 #
 # O que ele NÃO faz: instalar ingress controller ou mexer em DNS. Os serviços
 # saem em NodePorts mapeadas para as MESMAS portas do docker-compose.prod.yml
-# (3000/4000/8080/8088), o que mantém válidos o realm de desenvolvimento e os
-# defaults do docker/smoke.sh, e evita depender de resolução de nome — nip.io e
-# afins precisam de internet.
+# (3000/4000/8088), o que mantém válidos os defaults do docker/smoke.sh e evita
+# depender de resolução de nome — nip.io e afins precisam de internet.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -107,7 +106,6 @@ create_cluster_k3d() {
     --agents 0 \
     --port "3000:30300@loadbalancer" \
     --port "4000:30400@loadbalancer" \
-    --port "8080:30080@loadbalancer" \
     --port "8088:30088@loadbalancer" \
     --port "3001:30030@loadbalancer" \
     --k3s-arg "--disable=traefik@server:0" \
@@ -136,7 +134,6 @@ nodes:
     extraPortMappings:
       - { containerPort: 30300, hostPort: 3000, protocol: TCP }
       - { containerPort: 30400, hostPort: 4000, protocol: TCP }
-      - { containerPort: 30080, hostPort: 8080, protocol: TCP }
       - { containerPort: 30088, hostPort: 8088, protocol: TCP }
       - { containerPort: 30030, hostPort: 3001, protocol: TCP }
 EOF
@@ -217,7 +214,6 @@ else
   docker build -q -f "${REPO_ROOT}/docker/backup/Dockerfile.prod" -t brabo-backup:prod "${REPO_ROOT}" >/dev/null
   ok "quatro imagens construídas"
 fi
-docker image inspect "${BUSYBOX_IMAGE}" >/dev/null 2>&1 || docker pull -q "${BUSYBOX_IMAGE}" >/dev/null
 
 case "${TOOL}" in
   k3d)  create_cluster_k3d ;;
@@ -228,7 +224,6 @@ esac
 for img in brabo-api:prod brabo-engine:prod brabo-web:prod brabo-backup:prod; do
   load_image "${img}"
 done
-load_image "${BUSYBOX_IMAGE}" optional
 
 # --- operadores ------------------------------------------------------------
 info "instalando operadores (helm)"
@@ -345,11 +340,10 @@ kubectl -n brabo create secret generic brabo \
   --from-literal=SECRET_KEY_BASE="$(openssl rand -hex 32)" \
   --from-literal=CREDENTIALS_MASTER_KEY="$(openssl rand -hex 32)" \
   --from-literal=GIT_OAUTH_STATE_SECRET="$(openssl rand -hex 32)" \
-  --from-literal=API_KEYCLOAK_CLIENT_SECRET="$(openssl rand -hex 16)" \
-  --from-literal=ENGINE_KEYCLOAK_CLIENT_SECRET="$(openssl rand -hex 16)" \
+  --from-literal=AUTH_JWT_SECRET="$(openssl rand -hex 32)" \
+  --from-literal=AUTH_TOKEN_PEPPER="$(openssl rand -hex 32)" \
+  --from-literal=BRABO_SERVICE_TOKEN="$(openssl rand -hex 32)" \
   --from-literal=RELEASE_COOKIE="$(openssl rand -hex 24)" \
-  --from-literal=KEYCLOAK_ADMIN=admin \
-  --from-literal=KEYCLOAK_ADMIN_PASSWORD="${BRABO_SMOKE_PASSWORD:-admin123}" \
   --from-literal=BACKUP_S3_ENDPOINT="http://minio.brabo.svc.cluster.local:9000" \
   --from-literal=BACKUP_S3_BUCKET=brabo-backups \
   --from-literal=BACKUP_S3_ACCESS_KEY=brabo-backup \
@@ -372,7 +366,6 @@ kubectl apply -k "${K8S_DIR}/overlays/local" >/dev/null
 
 info "esperando o ESO materializar os Secrets"
 kubectl -n brabo wait --for=condition=Ready externalsecret/brabo-secrets --timeout=120s >/dev/null
-kubectl -n brabo wait --for=condition=Ready externalsecret/keycloak-secrets --timeout=120s >/dev/null
 ok "Secrets materializados"
 
 info "esperando as migrações"
@@ -380,13 +373,26 @@ kubectl -n brabo wait --for=condition=complete job/migrate-api --timeout=300s >/
 kubectl -n brabo wait --for=condition=complete job/migrate-engine --timeout=300s >/dev/null
 ok "schema da api e do engine migrados"
 
+# Sem IdP externo não existe mais credencial pronta para o smoke. O seed cria
+# um usuário com senha conhecida e e-mail já verificado; ele recusa rodar com
+# NODE_ENV=production (ver apps/api/src/scripts/provisionar-usuario.ts).
+info "provisionando o usuário do smoke"
+API_IMAGE="$(kubectl -n brabo get deployment/api -o jsonpath='{.spec.template.spec.containers[0].image}')"
+kubectl -n brabo delete pod seed-smoke --ignore-not-found >/dev/null 2>&1 || true
+kubectl -n brabo run seed-smoke --restart=Never --image="${API_IMAGE}" \
+  --env="BRABO_SEED_PASSWORD=${BRABO_SMOKE_PASSWORD:-senha de dev do brabo}" \
+  --overrides="{\"spec\":{\"containers\":[{\"name\":\"seed-smoke\",\"image\":\"${API_IMAGE}\",\"command\":[\"node\",\"dist/db/seed.js\"],\"envFrom\":[{\"secretRef\":{\"name\":\"brabo-secrets\"}},{\"configMapRef\":{\"name\":\"brabo-config\"}}],\"env\":[{\"name\":\"BRABO_SEED_PASSWORD\",\"value\":\"${BRABO_SMOKE_PASSWORD:-senha de dev do brabo}\"}]}]}}" \
+  >/dev/null 2>&1 || true
+# O seed é idempotente: rodar de novo não duplica usuário nem workspace.
+kubectl -n brabo wait --for=condition=Ready=false pod/seed-smoke --timeout=120s >/dev/null 2>&1 || true
+ok "usuário do smoke pronto"
+
 info "esperando os workloads ficarem Ready"
-kubectl -n brabo rollout status statefulset/keycloak --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/api --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/engine --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/web --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/minio --timeout=300s >/dev/null
-ok "api, engine, web, Keycloak e MinIO Ready"
+ok "api, engine, web e MinIO Ready"
 
 # --- bucket de backup ------------------------------------------------------
 # Criado aqui e não por um Job no overlay: é setup de ambiente local, roda uma
