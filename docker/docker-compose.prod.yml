@@ -121,8 +121,13 @@ services:
       # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
       # assina o access token; BRABO_SERVICE_TOKEN autentica o tráfego interno
       # engine <-> api nos dois sentidos.
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET é obrigatória}
-      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:?BRABO_SERVICE_TOKEN é obrigatória}
+      #
+      # Os defaults são os MESMOS do código (auth-key-material.ts,
+      # service-token.ts e o runtime.exs do engine). Ter que repetir o valor
+      # aqui é chato, mas a alternativa — omitir a linha — deixaria o compose
+      # sem dizer que a variável existe.
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-auth-jwt-secret-change-me}
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
       GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-dev-oauth-state-secret-change-me}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
@@ -158,7 +163,10 @@ services:
       - /tmp
       - /home/engine
     environment:
-      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:?BRABO_SERVICE_TOKEN é obrigatória}
+      # MESMO default do lado da api — se as duas pontas divergissem, o engine
+      # levaria 401 em toda chamada interna e o sintoma apareceria só no
+      # primeiro handoff.
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
       PORT: 4000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       # Obrigatórios no release (runtime.exs, bloco :prod):

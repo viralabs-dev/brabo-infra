@@ -89,9 +89,28 @@ info '1/3 — login no auth próprio da api'
 "${COMPOSE[@]}" exec -T api node -e "process.exit(0)" >/dev/null 2>&1 \
   || fail "api não está de pé no compose"
 
-"${COMPOSE[@]}" exec -T \
-  -e BRABO_SEED_PASSWORD="${SMOKE_PASSWORD}" api pnpm seed >/dev/null 2>&1 \
-  || info 'seed já aplicado (ou falhou parcialmente) — seguindo'
+# `node db/seed.js`, e não `pnpm seed`: o script do package.json é
+# `ts-node src/db/seed.ts`, e a imagem de produção não tem pnpm, nem ts-node,
+# nem `src/` — só o `dist` achatado em /app. O compilado do seed está em
+# /app/db/seed.js.
+#
+# `BRABO_FORCE_SEED=1` porque este compose roda com NODE_ENV=production, e o
+# `provisionarUsuario` recusa criar conta com senha conhecida e e-mail já
+# verificado nesse modo. A recusa é de propósito, e este é o único lugar que
+# tem motivo para burlá-la: banco efêmero, derrubado com `down -v` no fim.
+seed_saida="$("${COMPOSE[@]}" exec -T \
+  -e BRABO_SEED_PASSWORD="${SMOKE_PASSWORD}" \
+  -e BRABO_FORCE_SEED=1 \
+  api node db/seed.js 2>&1)" || {
+  # Não aborta: com SMOKE_KEEP_UP o banco sobrevive entre execuções e o seed
+  # reprova ao recriar o workspace, mas o login seguinte funciona igual.
+  #
+  # IMPRIME, porém. Engolir esta saída em `>/dev/null 2>&1` foi o que fez um
+  # seed que nunca rodava aparecer três passos depois como um 401 sem
+  # explicação — a causa ficava invisível justamente onde ela estava.
+  info 'seed não completou (esperado se o banco já estava semeado):'
+  printf '%s\n' "${seed_saida}" | tail -20
+}
 
 token_response="$(curl -sS --max-time 30 \
   -H 'Content-Type: application/json' \
