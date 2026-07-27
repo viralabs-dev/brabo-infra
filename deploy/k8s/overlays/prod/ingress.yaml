@@ -65,13 +65,3 @@ spec:
                 name: engine
                 port:
                   name: http
-    - host: auth.brabo.example
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: keycloak
-                port:
-                  name: http

@@ -26,12 +26,9 @@ configMapGenerator:
     literals:
       - PUBLIC_API_URL=https://api.staging.brabo.example
       - PUBLIC_ENGINE_URL=https://engine.staging.brabo.example
-      - PUBLIC_KEYCLOAK_URL=https://auth.staging.brabo.example
       - WEB_ORIGIN=https://app.staging.brabo.example
-      - KEYCLOAK_ISSUER_URL=https://auth.staging.brabo.example
-      - KEYCLOAK_URL=https://auth.staging.brabo.example
       - PHX_HOST=engine.staging.brabo.example
-      - CSP_CONNECT_SRC=https://api.staging.brabo.example https://engine.staging.brabo.example wss://engine.staging.brabo.example https://auth.staging.brabo.example
+      - CSP_CONNECT_SRC=https://api.staging.brabo.example https://engine.staging.brabo.example wss://engine.staging.brabo.example
 
 images:
   - name: brabo-api

@@ -97,26 +97,6 @@ spec:
               cpu: 100m
               memory: 64Mi
 ---
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: keycloak
-spec:
-  template:
-    spec:
-      containers:
-        - name: keycloak
-          resources:
-            requests:
-              cpu: 100m
-              memory: 384Mi
-            limits:
-              cpu: "1"
-              memory: 768Mi
-          env:
-            - name: JAVA_OPTS_APPEND
-              value: "-Xms64m -Xmx384m"
----
 # HPA da api: minReplicas 1 no local. Duas réplicas da api numa máquina de
 # desenvolvimento só consomem memória — e o PDB `minAvailable: 1` sobre uma
 # única réplica bloquearia o drain do nó, que é justamente o que se quer

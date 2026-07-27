@@ -37,9 +37,6 @@ resources:
   - web/service.yaml
   - web/pdb.yaml
   - web/netpol.yaml
-  - keycloak/statefulset.yaml
-  - keycloak/service.yaml
-  - keycloak/netpol.yaml
   - backup/cronjob.yaml
   - backup/netpol.yaml
   - migrations/jobs.yaml
@@ -49,11 +46,7 @@ configMapGenerator:
   # `behavior: merge` para acrescentar as URLs públicas e o que for deles.
   - name: brabo-config
     literals:
-      - KEYCLOAK_REALM=brabo-dev
-      - API_KEYCLOAK_CLIENT_ID=api-service
-      - ENGINE_KEYCLOAK_CLIENT_ID=engine-service
       # Endereços internos: nome de Service, iguais em qualquer ambiente.
-      - KEYCLOAK_URL=http://keycloak:8080
       # OpenTelemetry (Fase 5, item 3). Endereço do Collector, não do Tempo: é
       # ele que desacopla a instrumentação do backend. Definir esta variável é o
       # que LIGA a instrumentação — sem ela, api e engine não criam span nenhuma
@@ -61,9 +54,6 @@ configMapGenerator:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318
       - API_URL=http://api:3000
       - ENGINE_URL=http://engine:4000
-  - name: keycloak-realm-template
-    files:
-      - keycloak/realm-template.json
 
 images:
   # As tags são substituídas por overlay. No local ficam as :prod construídas
