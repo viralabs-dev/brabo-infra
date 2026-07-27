@@ -1,0 +1,29 @@
+# Rede do backup e do teste de restore (Fase 5, item 6).
+#
+# O egress para o Postgres já vem da `allow-db-egress` da baseline — estes dois
+# workloads estão no seletor de lá. O que falta é o destino S3, e ele é
+# DIFERENTE por ambiente: no local é um Service dentro do cluster (MinIO), em
+# produção é um endpoint externo. Por isso a regra de saída para o object
+# storage não mora aqui: o overlay local a define para o MinIO
+# (overlays/local/minio/netpol.yaml) e o de produção, para o endereço real.
+#
+# Aqui fica só o que vale em qualquer ambiente: o pod de backup não aceita
+# conexão de ninguém. Ele não serve nada — nem probe, nem métrica (quem publica
+# as métricas de backup é a api, lendo `backup_runs`). Ingress vazio com
+# `policyTypes: [Ingress]` é negação explícita, não omissão.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backup-no-ingress
+  labels:
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [brabo-backup, brabo-restore]
+  policyTypes:
+    - Ingress
+  ingress: []

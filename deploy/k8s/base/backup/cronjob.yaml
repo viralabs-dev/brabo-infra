@@ -1,0 +1,89 @@
+# Backup do Postgres para destino S3-compatível (Fase 5, item 6).
+#
+# O destino é configurado por ambiente: no overlay local é um MinIO dentro do
+# cluster; em staging/prod, o bucket real. O manifesto é o mesmo nos dois — só
+# as variáveis `BACKUP_S3_*` mudam, e elas vêm do Secret que o External Secrets
+# materializa, nunca de manifesto plano.
+#
+# A retenção (7 diários + 4 semanais) é do script, não do lifecycle do bucket:
+# regra de lifecycle apaga por IDADE, e idade apaga backup bom justamente
+# quando o CronJob passou dias sem rodar. Ver docker/backup/backup.sh.
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: brabo-backup
+  labels:
+    app.kubernetes.io/name: brabo-backup
+    app.kubernetes.io/part-of: brabo
+spec:
+  # 03:17 UTC: fora do horário comercial de qualquer fuso que importe aqui, e
+  # num minuto quebrado de propósito — a hora cheia é quando todo cron do
+  # mundo dispara e o object storage fica mais lento.
+  schedule: "17 3 * * *"
+  timeZone: Etc/UTC
+  # Se o job anterior ainda estiver rodando, PULA o novo em vez de enfileirar:
+  # dois pg_dump simultâneos dobram a carga no banco sem produzir backup melhor.
+  concurrencyPolicy: Forbid
+  # Um backup atrasado ainda vale; um backup de 6h atrás disparando agora, não.
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  # Mais histórico de falha do que de sucesso: é o que se investiga.
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      # Três tentativas. O modo de falha mais comum é rede intermitente para o
+      # object storage, e ele se resolve sozinho na segunda.
+      backoffLimit: 3
+      # Teto absoluto: sem isto, um pg_dump travado numa lock segura o
+      # `concurrencyPolicy: Forbid` e o backup do dia seguinte é pulado em
+      # silêncio — uma falha que se propaga.
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: brabo-backup
+            app.kubernetes.io/part-of: brabo
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: brabo-backup:prod
+              imagePullPolicy: IfNotPresent
+              command: ["brabo-backup"]
+              envFrom:
+                - secretRef:
+                    name: brabo-secrets
+                - configMapRef:
+                    name: brabo-config
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  # Sem limite de CPU de propósito (mesma política dos outros
+                  # workloads): throttling aqui só alonga a janela em que o
+                  # dump segura um snapshot no banco.
+                  memory: 512Mi
+              volumeMounts:
+                # O `mc` grava o alias com a credencial e o pg_dump usa
+                # temporário — os dois em /tmp, que é o que permite o rootfs
+                # read-only acima.
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 1Gi

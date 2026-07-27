@@ -1,0 +1,55 @@
+# Rede do MinIO local (Fase 5, item 6).
+#
+# A baseline nega tudo, então sem estas duas regras o MinIO sobe e o backup
+# falha com timeout — um modo de falha que parece problema de credencial e não
+# é. Em staging/prod o destino é externo e quem libera a saída é a
+# `allow-external-egress` do overlay correspondente.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-minio-ingress
+  labels:
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  policyTypes:
+    - Ingress
+  ingress:
+    # Só backup e restore falam com o MinIO. O console (9001) fica de fora de
+    # propósito: quem quiser olhar usa `kubectl port-forward`, que não passa
+    # por NetworkPolicy.
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [brabo-backup, brabo-restore]
+      ports:
+        - protocol: TCP
+          port: 9000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backup-minio-egress
+  labels:
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [brabo-backup, brabo-restore]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: minio
+      ports:
+        - protocol: TCP
+          port: 9000

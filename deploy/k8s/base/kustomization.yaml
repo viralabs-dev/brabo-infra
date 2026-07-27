@@ -40,6 +40,8 @@ resources:
   - keycloak/statefulset.yaml
   - keycloak/service.yaml
   - keycloak/netpol.yaml
+  - backup/cronjob.yaml
+  - backup/netpol.yaml
   - migrations/jobs.yaml
 
 configMapGenerator:
@@ -72,4 +74,6 @@ images:
   - name: brabo-engine
     newTag: prod
   - name: brabo-web
+    newTag: prod
+  - name: brabo-backup
     newTag: prod

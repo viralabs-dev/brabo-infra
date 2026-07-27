@@ -1,0 +1,66 @@
+# Imagem de BACKUP e RESTORE do Postgres (Fase 5, item 6).
+#
+# Quarta imagem do projeto, e a única que não serve tráfego: ela roda como
+# CronJob (backup) e como Job pontual (teste de restore, ver
+# deploy/k8s/test-restore.sh).
+#
+# ## Por que Alpine cru e não `postgres:16-alpine`
+#
+# A primeira versão usava `postgres:16-alpine` + `mc` (cliente do MinIO). O
+# trivy do CI reprovou com 48 achados HIGH/CRITICAL corrigíveis, e nenhum deles
+# era corrigível POR NÓS:
+#
+#   * 33 vinham do binário do `mc`, que é Go estático. O último release do mc é
+#     de setembro/2025 — o projeto parou. As CVEs são da stdlib do Go embutida,
+#     e sem release novo do upstream não há patch;
+#   * 15 vinham do `gosu` que a imagem `postgres` traz para trocar de usuário no
+#     entrypoint — que esta imagem nem usa, porque roda direto como non-root.
+#
+# Os dois casos cabiam no `.trivyignore.yaml`, mas com uma diferença que importa:
+# a convenção daquele arquivo exige `expired_at` para a dívida reaparecer e ser
+# paga. Aqui ela NUNCA poderia ser paga — os dois binários estão congelados. O
+# resultado seria um gate permanentemente vermelho numa imagem que carrega
+# credencial de leitura do banco inteiro.
+#
+# Com `alpine` + pacotes do apk, tudo é atualizado pelo `apk upgrade` abaixo a
+# cada rebuild. Medido: 48 achados -> 0.
+#
+# A tag da base é presa à MAJOR do Postgres: `postgresql16-client` existe no
+# Alpine 3.20. Subir a base sem subir o servidor (ou vice-versa) reintroduz o
+# "server version mismatch" que motivou pinar o CloudNativePG em 16 — ver
+# deploy/k8s/overlays/local/db/cluster.yaml.
+
+FROM alpine:3.20 AS runtime
+
+# `aws-cli` no lugar do `mc`: fala qualquer endpoint S3-compatível (inclusive
+# MinIO, via AWS_ENDPOINT_URL) e vem do apk, então recebe patch de segurança
+# como qualquer outro pacote. O runtime Python que ele arrasta era exatamente o
+# argumento contra ele na primeira versão; o scan mostrou que o custo real
+# estava do outro lado.
+#
+# `apk upgrade` antes do install pelo mesmo motivo das outras imagens: a tag da
+# base é pinada (bom para reprodutibilidade) e isso congela também os patches
+# de segurança do Alpine.
+# hadolint ignore=DL3018
+RUN apk upgrade --no-cache \
+ && apk add --no-cache postgresql16-client aws-cli jq
+
+COPY --chmod=0755 docker/backup/backup.sh    /usr/local/bin/brabo-backup
+COPY --chmod=0755 docker/backup/restore.sh   /usr/local/bin/brabo-restore
+
+# HOME em /tmp porque o aws-cli escreve `~/.aws` e o `pg_restore` usa
+# temporários — os dois em /tmp, que no manifesto é um emptyDir. É o que
+# permite o rootfs do container subir read-only.
+ENV HOME=/tmp \
+    TMPDIR=/tmp \
+    AWS_DEFAULT_REGION=us-east-1
+
+# uid 70 é o usuário `postgres` que o pacote `postgresql16-client` já cria —
+# não criamos usuário novo. É o MESMO uid que os manifestos declaram em
+# `runAsUser`, então trocar de base não exigiu mexer neles. Non-root como as
+# outras três imagens.
+USER 70:70
+
+# Sem CMD default de propósito: a mesma imagem é usada para duas coisas
+# diferentes, e cada manifesto declara qual. Um default aqui só criaria a
+# chance de o Job de restore rodar um backup por engano.

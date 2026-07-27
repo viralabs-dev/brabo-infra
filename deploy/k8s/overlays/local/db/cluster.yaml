@@ -28,6 +28,19 @@ metadata:
   namespace: brabo-db
 spec:
   instances: 1
+  # PostgreSQL 16 EXPLÍCITO — não o default do operador.
+  #
+  # Sem este pin o CNPG subia a major mais nova dele (17.4 na versão atual do
+  # chart), enquanto o CLAUDE.md decide PostgreSQL 16 e o docker-compose usa
+  # `pgvector/pgvector:pg16`. Dev e cluster ficavam em majors diferentes, e a
+  # divergência era invisível até o backup: o `pg_dump` da imagem de backup
+  # (16, para casar com o compose) recusa conexão com servidor 17 —
+  # "aborting because of server version mismatch". Dump gerado num ambiente
+  # também não restaura no outro.
+  #
+  # O pin é de major+minor de propósito: deixar a minor flutuar reintroduz o
+  # mesmo problema em silêncio no dia em que o operador mudar de default.
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.10
   # É este rótulo que a NetworkPolicy `allow-db-egress` da base procura. Sem
   # `inheritedMetadata`, os pods do CNPG nasceriam só com os rótulos do
   # operador e o egress da api/engine para o banco seria negado — com o
@@ -43,6 +56,19 @@ spec:
       # entra no DATABASE_URL do Secret-fonte.
       secret:
         name: brabo-pg-credentials
+      # CREATEDB para o papel da aplicação — decisão de ambiente LOCAL.
+      #
+      # O `make test-restore` restaura numa database nova (`brabo_restore_test`)
+      # e por padrão o papel criado pelo initdb é dono do banco, não tem
+      # CREATEDB, e o restore morre com "permission denied to create database".
+      #
+      # Em produção NÃO se faz isto: a aplicação não precisa criar database, e
+      # dar o privilégio a ela é escalar permissão sem necessidade. Lá o
+      # restore usa uma credencial administrativa própria, via
+      # `RESTORE_ADMIN_URL` — que o docker/backup/restore.sh já aceita e o
+      # docs/runbooks/restore.md documenta.
+      postInitSQL:
+        - ALTER ROLE brabo CREATEDB
   storage:
     size: 5Gi
   resources:
