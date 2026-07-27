@@ -19,8 +19,14 @@ KEEP_WEEKLY="${BACKUP_KEEP_WEEKLY:-4}"
 # Dia da semana que também vira cópia semanal (1=segunda … 7=domingo).
 WEEKLY_DOW="${BACKUP_WEEKLY_DOW:-7}"
 
-ALIAS=destino
-BASE="${ALIAS}/${BACKUP_S3_BUCKET}"
+# O aws-cli lê credencial e endpoint do ambiente — nada é escrito em disco e
+# nada aparece em linha de comando (que `ps` mostraria).
+export AWS_ACCESS_KEY_ID="${BACKUP_S3_ACCESS_KEY}"
+export AWS_SECRET_ACCESS_KEY="${BACKUP_S3_SECRET_KEY}"
+export AWS_ENDPOINT_URL="${BACKUP_S3_ENDPOINT}"
+export AWS_DEFAULT_REGION="${BACKUP_S3_REGION:-us-east-1}"
+
+BUCKET="s3://${BACKUP_S3_BUCKET}"
 
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 kind=daily
@@ -80,11 +86,7 @@ falhar() {
 }
 
 # --- destino ---------------------------------------------------------------
-# `mc alias set` grava a credencial em ${MC_CONFIG_DIR}, que é tmpfs. Preferido
-# sobre a variável MC_HOST_<alias> porque esta última põe usuário e senha numa
-# URL, e URL vaza com muito mais facilidade (log de erro, `ps`, mensagem do mc).
-#
-# A saída do mc é PRESERVADA e entra na mensagem de erro. Engolir stderr aqui
+# A saída do aws é PRESERVADA e entra na mensagem de erro. Engolir stderr aqui
 # custou caro na primeira execução real: "não foi possível autenticar" escondia
 # um `connection refused`, e o diagnóstico começou procurando credencial errada
 # quando o problema era o endpoint ainda não estar alcançável.
@@ -104,9 +106,7 @@ falhar() {
 esperar_destino() {
   tentativa=1
   while [ "${tentativa}" -le "${BACKUP_S3_RETRIES:-10}" ]; do
-    if saida="$(mc --quiet alias set "${ALIAS}" \
-        "${BACKUP_S3_ENDPOINT}" "${BACKUP_S3_ACCESS_KEY}" "${BACKUP_S3_SECRET_KEY}" 2>&1)" \
-      && saida="$(mc --quiet ls "${BASE}" 2>&1)"; then
+    if saida="$(aws s3 ls "${BUCKET}/" 2>&1)"; then
       [ "${tentativa}" -gt 1 ] && log "destino disponível na tentativa ${tentativa}"
       return 0
     fi
@@ -118,7 +118,7 @@ esperar_destino() {
 }
 
 esperar_destino \
-  || falhar "destino S3 inacessível após as tentativas (${BACKUP_S3_ENDPOINT}): ${saida}"
+  || falhar "destino S3 inacessível ou bucket inexistente (${BACKUP_S3_ENDPOINT}/${BACKUP_S3_BUCKET}): ${saida}"
 
 # --- dump ------------------------------------------------------------------
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -128,48 +128,53 @@ object_key="daily/brabo-${timestamp}.dump"
 # pg_restore lê seletivamente — restaurar uma tabela só de um dump plano
 # significa editar SQL à mão no meio de um incidente.
 #
-# Vai direto para `mc pipe`, sem tocar disco: um dump intermediário exigiria um
-# PVC dimensionado pelo tamanho do banco, que cresce sem ninguém revisar.
+# Vai direto para o `aws s3 cp -`, sem tocar disco: um dump intermediário
+# exigiria um PVC dimensionado pelo tamanho do banco, que cresce sem ninguém
+# revisar.
 #
 # `set -o pipefail` não existe em POSIX sh; o teste explícito do tamanho no
 # passo seguinte é o que pega um pg_dump que morreu no meio do cano.
 log "gerando dump para ${object_key}"
 pg_dump --format=custom --compress=9 --no-owner --no-privileges "${DATABASE_URL}" \
-  | mc --quiet pipe "${BASE}/${object_key}" \
+  | aws s3 cp - "${BUCKET}/${object_key}" --quiet \
   || falhar "pg_dump ou upload falhou"
 
-size_bytes="$(mc --json stat "${BASE}/${object_key}" 2>/dev/null | jq -r '.size // 0')"
+size_bytes="$(aws s3api head-object \
+  --bucket "${BACKUP_S3_BUCKET}" --key "${object_key}" \
+  --query ContentLength --output text 2>/dev/null || echo 0)"
 [ "${size_bytes}" -gt 0 ] 2>/dev/null \
   || falhar "objeto ${object_key} ficou vazio — o dump não chegou ao destino"
 
 # --- cópia semanal ---------------------------------------------------------
 if [ "$(date -u +%u)" = "${WEEKLY_DOW}" ]; then
   kind=weekly
-  mc --quiet cp "${BASE}/${object_key}" "${BASE}/weekly/brabo-${timestamp}.dump" \
+  aws s3 cp "${BUCKET}/${object_key}" "${BUCKET}/weekly/brabo-${timestamp}.dump" --quiet \
     || falhar "falha ao copiar para a retenção semanal"
   log "cópia semanal criada"
 fi
 
 # --- retenção --------------------------------------------------------------
-# Por CONTAGEM, não por idade. `mc rm --older-than 7d` apaga backup bom quando o
+# Por CONTAGEM, não por idade. `--older-than 7d` apaga backup bom quando o
 # CronJob passou dias sem rodar — exatamente a situação em que ele mais importa.
 # Manter os N mais recentes degrada bem: sem execução nova, nada é apagado.
 podar() {
   prefixo="$1"
   manter="$2"
 
-  # `mc ls --json` emite um objeto por linha; a chave vem em `.key`. Ordena
-  # decrescente (o nome carrega o timestamp ISO, então ordem lexicográfica é
-  # ordem cronológica) e apaga tudo depois dos `manter` primeiros.
-  mc --json ls "${BASE}/${prefixo}" 2>/dev/null \
-    | jq -r 'select(.type == "file") | .key' \
+  # Ordena decrescente: o nome carrega o timestamp ISO, então ordem
+  # lexicográfica é ordem cronológica. Apaga tudo depois dos `manter` primeiros.
+  aws s3api list-objects-v2 \
+    --bucket "${BACKUP_S3_BUCKET}" --prefix "${prefixo}" \
+    --query 'Contents[].Key' --output text 2>/dev/null \
+    | tr '\t' '\n' \
+    | grep -v '^None$' \
     | sort -r \
     | tail -n "+$((manter + 1))" \
     | while IFS= read -r chave; do
         [ -n "${chave}" ] || continue
-        log "retenção: apagando ${prefixo}${chave}"
-        mc --quiet rm "${BASE}/${prefixo}${chave}" >/dev/null 2>&1 \
-          || log "AVISO: não foi possível apagar ${prefixo}${chave}"
+        log "retenção: apagando ${chave}"
+        aws s3 rm "${BUCKET}/${chave}" --quiet \
+          || log "AVISO: não foi possível apagar ${chave}"
       done
 }
 

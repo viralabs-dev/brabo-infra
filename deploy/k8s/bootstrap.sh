@@ -370,7 +370,7 @@ ok "api, engine, web, Keycloak e MinIO Ready"
 
 # --- bucket de backup ------------------------------------------------------
 # Criado aqui e não por um Job no overlay: é setup de ambiente local, roda uma
-# vez e precisa ser idempotente. `mc mb --ignore-existing` num pod efêmero é
+# vez e precisa ser idempotente. Criar o bucket num pod efêmero é
 # mais simples de depurar do que um Job que fica no histórico do cluster.
 #
 # O pod herda as credenciais do MESMO Secret que o backup usa — se divergirem,
@@ -380,9 +380,9 @@ ok "api, engine, web, Keycloak e MinIO Ready"
 # diferentes: entre o kubelet marcar o pod pronto e o kube-proxy programar a
 # regra do Service existe uma janela em que o ClusterIP responde `connection
 # refused` (REJECT, porque o Service não tem backend ainda). Sem esperar o
-# EndpointSlice, a criação do bucket falhava aqui — e o erro do mc dizia
-# "Unable to initialize new alias from the provided credentials", que manda
-# quem investiga procurar credencial errada em vez de corrida de rede.
+# EndpointSlice, a criação do bucket falhava aqui — e a mensagem do cliente S3
+# fala em credencial, que manda quem investiga procurar chave errada em vez de
+# corrida de rede.
 info "criando o bucket de backup no MinIO"
 
 for _ in $(seq 1 30); do
@@ -415,7 +415,7 @@ criar_bucket() {
           "name": "mb",
           "image": "brabo-backup:prod",
           "imagePullPolicy": "IfNotPresent",
-          "command": ["sh","-c","for i in 1 2 3 4 5 6 7 8 9 10; do mc --quiet alias set d \"$BACKUP_S3_ENDPOINT\" \"$BACKUP_S3_ACCESS_KEY\" \"$BACKUP_S3_SECRET_KEY\" 2>&1 && mc --quiet mb --ignore-existing \"d/$BACKUP_S3_BUCKET\" 2>&1 && exit 0; echo \"destino indisponível (tentativa $i)\"; sleep 3; done; exit 1"],
+          "command": ["sh","-c","export AWS_ACCESS_KEY_ID=\"$BACKUP_S3_ACCESS_KEY\" AWS_SECRET_ACCESS_KEY=\"$BACKUP_S3_SECRET_KEY\" AWS_ENDPOINT_URL=\"$BACKUP_S3_ENDPOINT\" AWS_DEFAULT_REGION=us-east-1; for i in 1 2 3 4 5 6 7 8 9 10; do aws s3 ls \"s3://$BACKUP_S3_BUCKET\" >/dev/null 2>&1 && exit 0; aws s3 mb \"s3://$BACKUP_S3_BUCKET\" 2>&1 && exit 0; echo \"destino indisponível (tentativa $i)\"; sleep 3; done; exit 1"],
           "envFrom": [{"secretRef": {"name": "brabo-secrets"}}],
           "volumeMounts": [{"name": "tmp", "mountPath": "/tmp"}]
         }],

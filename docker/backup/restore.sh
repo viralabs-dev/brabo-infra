@@ -17,9 +17,16 @@ set -eu
 
 RESTORE_DB="${RESTORE_DB:-brabo_restore_test}"
 PREFIXO="${RESTORE_PREFIX:-daily/}"
-ALIAS=destino
-BASE="${ALIAS}/${BACKUP_S3_BUCKET}"
 DUMP=/tmp/restore.dump
+
+# Credencial e endpoint pelo ambiente: nada escrito em disco, nada em linha de
+# comando (que `ps` mostraria).
+export AWS_ACCESS_KEY_ID="${BACKUP_S3_ACCESS_KEY}"
+export AWS_SECRET_ACCESS_KEY="${BACKUP_S3_SECRET_KEY}"
+export AWS_ENDPOINT_URL="${BACKUP_S3_ENDPOINT}"
+export AWS_DEFAULT_REGION="${BACKUP_S3_REGION:-us-east-1}"
+
+BUCKET="s3://${BACKUP_S3_BUCKET}"
 
 # Tabelas cujo conteúdo é conferido linha a linha. Todas têm `created_at`, que é
 # o que permite a comparação exata descrita mais abaixo.
@@ -58,14 +65,13 @@ limpar() {
 trap limpar EXIT
 
 # --- baixar o último objeto ------------------------------------------------
-# Saída do mc preservada na mensagem, e espera pelo destino — mesma razão do
+# Saída do aws preservada na mensagem, e espera pelo destino — mesma razão do
 # backup.sh: o k3s programa a NetworkPolicy depois de o pod ganhar IP, e um Job
 # que fala na primeira instrução recebe `connection refused` de uma regra que
 # vai existir daqui a um segundo.
 tentativa=1
 while :; do
-  if saida="$(mc --quiet alias set "${ALIAS}" \
-      "${BACKUP_S3_ENDPOINT}" "${BACKUP_S3_ACCESS_KEY}" "${BACKUP_S3_SECRET_KEY}" 2>&1)"; then
+  if saida="$(aws s3 ls "${BUCKET}/" 2>&1)"; then
     break
   fi
   if [ "${tentativa}" -ge "${BACKUP_S3_RETRIES:-10}" ]; then
@@ -78,13 +84,14 @@ while :; do
 done
 
 # O nome carrega o timestamp ISO, então ordem lexicográfica é ordem cronológica.
-CHAVE="$(mc --json ls "${BASE}/${PREFIXO}" 2>/dev/null \
-  | jq -r 'select(.type == "file") | .key' | sort -r | head -n 1)"
-[ -n "${CHAVE}" ] || { log "erro: nenhum backup em ${BASE}/${PREFIXO}"; exit 1; }
+OBJETO="$(aws s3api list-objects-v2 \
+  --bucket "${BACKUP_S3_BUCKET}" --prefix "${PREFIXO}" \
+  --query 'Contents[].Key' --output text 2>/dev/null \
+  | tr '\t' '\n' | grep -v '^None$' | sort -r | head -n 1)"
+[ -n "${OBJETO}" ] || { log "erro: nenhum backup em ${BUCKET}/${PREFIXO}"; exit 1; }
 
-OBJETO="${PREFIXO}${CHAVE}"
 log "último backup: ${OBJETO}"
-mc --quiet cp "${BASE}/${OBJETO}" "${DUMP}" \
+aws s3 cp "${BUCKET}/${OBJETO}" "${DUMP}" --quiet \
   || { log "erro: falha ao baixar ${OBJETO}"; exit 1; }
 
 # Um dump truncado no meio do upload tem tamanho > 0 e só se revela no

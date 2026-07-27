@@ -4,56 +4,61 @@
 # CronJob (backup) e como Job pontual (teste de restore, ver
 # deploy/k8s/test-restore.sh).
 #
-# Base `postgres:16-alpine` e não `alpine` + `postgresql-client`: o pg_dump tem
-# que acompanhar a VERSÃO DO SERVIDOR. Um pg_dump 15 contra um servidor 16
-# recusa a conexão com "server version mismatch", e um pg_dump mais novo gera
-# dump que o pg_restore antigo não lê. Amarrar a base na mesma major que o
-# docker-compose e o CloudNativePG usam tira essa classe de falha do caminho.
+# ## Por que Alpine cru e não `postgres:16-alpine`
 #
-# Contexto de build: a raiz do repo (só para os scripts em docker/backup/).
-
-FROM postgres:16-alpine AS runtime
-
-# `mc`, o cliente do MinIO: binário estático único que fala qualquer endpoint
-# S3-compatível, inclusive AWS S3. Escolhido sobre o awscli para não arrastar
-# runtime Python inteiro para dentro de uma imagem que tem credencial de
-# leitura do banco todo — menos superfície, e o download é um arquivo só.
+# A primeira versão usava `postgres:16-alpine` + `mc` (cliente do MinIO). O
+# trivy do CI reprovou com 48 achados HIGH/CRITICAL corrigíveis, e nenhum deles
+# era corrigível POR NÓS:
 #
-# Versão PINADA com sha256 conferido: sem o pin, um rebuild pega a release do
-# dia e o comportamento de `mc ls --json` (que a retenção parseia) pode mudar
-# sem ninguém notar.
-ARG MC_VERSION=RELEASE.2025-08-13T08-35-41Z
-ARG MC_SHA256=01f866e9c5f9b87c2b09116fa5d7c06695b106242d829a8bb32990c00312e891
+#   * 33 vinham do binário do `mc`, que é Go estático. O último release do mc é
+#     de setembro/2025 — o projeto parou. As CVEs são da stdlib do Go embutida,
+#     e sem release novo do upstream não há patch;
+#   * 15 vinham do `gosu` que a imagem `postgres` traz para trocar de usuário no
+#     entrypoint — que esta imagem nem usa, porque roda direto como non-root.
+#
+# Os dois casos cabiam no `.trivyignore.yaml`, mas com uma diferença que importa:
+# a convenção daquele arquivo exige `expired_at` para a dívida reaparecer e ser
+# paga. Aqui ela NUNCA poderia ser paga — os dois binários estão congelados. O
+# resultado seria um gate permanentemente vermelho numa imagem que carrega
+# credencial de leitura do banco inteiro.
+#
+# Com `alpine` + pacotes do apk, tudo é atualizado pelo `apk upgrade` abaixo a
+# cada rebuild. Medido: 48 achados -> 0.
+#
+# A tag da base é presa à MAJOR do Postgres: `postgresql16-client` existe no
+# Alpine 3.20. Subir a base sem subir o servidor (ou vice-versa) reintroduz o
+# "server version mismatch" que motivou pinar o CloudNativePG em 16 — ver
+# deploy/k8s/overlays/local/db/cluster.yaml.
 
-# `pipefail` no RUN abaixo não é formalidade: o passo é
-# `echo <sha> | sha256sum -c -`, e sem ele um erro do lado esquerdo do cano
-# seria engolido — a verificação de integridade do binário passaria sem
-# verificar nada, que é o pior resultado possível para este RUN.
-SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+FROM alpine:3.20 AS runtime
 
-# `apk upgrade` antes do install pelo mesmo motivo da imagem da api: a tag da
+# `aws-cli` no lugar do `mc`: fala qualquer endpoint S3-compatível (inclusive
+# MinIO, via AWS_ENDPOINT_URL) e vem do apk, então recebe patch de segurança
+# como qualquer outro pacote. O runtime Python que ele arrasta era exatamente o
+# argumento contra ele na primeira versão; o scan mostrou que o custo real
+# estava do outro lado.
+#
+# `apk upgrade` antes do install pelo mesmo motivo das outras imagens: a tag da
 # base é pinada (bom para reprodutibilidade) e isso congela também os patches
-# de segurança do Alpine, que o trivy do CI acusaria.
+# de segurança do Alpine.
 # hadolint ignore=DL3018
 RUN apk upgrade --no-cache \
- && apk add --no-cache curl jq \
- && curl -fsSL -o /usr/local/bin/mc \
-      "https://dl.min.io/client/mc/release/linux-amd64/archive/mc.${MC_VERSION}" \
- && echo "${MC_SHA256}  /usr/local/bin/mc" | sha256sum -c - \
- && chmod +x /usr/local/bin/mc \
- && apk del curl
+ && apk add --no-cache postgresql16-client aws-cli jq
 
 COPY --chmod=0755 docker/backup/backup.sh    /usr/local/bin/brabo-backup
 COPY --chmod=0755 docker/backup/restore.sh   /usr/local/bin/brabo-restore
 
-# O `mc` escreve config (o alias com a credencial) e o `pg_restore` escreve
-# temporários. Os dois vão para /tmp, que no manifesto é um emptyDir — assim o
-# rootfs do container pode subir read-only.
-ENV MC_CONFIG_DIR=/tmp/mc \
-    TMPDIR=/tmp
+# HOME em /tmp porque o aws-cli escreve `~/.aws` e o `pg_restore` usa
+# temporários — os dois em /tmp, que no manifesto é um emptyDir. É o que
+# permite o rootfs do container subir read-only.
+ENV HOME=/tmp \
+    TMPDIR=/tmp \
+    AWS_DEFAULT_REGION=us-east-1
 
-# uid 70 é o usuário `postgres` que a imagem oficial já cria. Non-root como as
-# outras três imagens; não criamos usuário novo.
+# uid 70 é o usuário `postgres` que o pacote `postgresql16-client` já cria —
+# não criamos usuário novo. É o MESMO uid que os manifestos declaram em
+# `runAsUser`, então trocar de base não exigiu mexer neles. Non-root como as
+# outras três imagens.
 USER 70:70
 
 # Sem CMD default de propósito: a mesma imagem é usada para duas coisas
