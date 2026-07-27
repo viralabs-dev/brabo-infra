@@ -13,8 +13,10 @@ help: ## Lista os alvos disponíveis
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-deploy-local: ## Sobe o cluster local, instala tudo e roda o smoke test
-	@bash $(K8S)/bootstrap.sh
+# TAG=vX.Y.Z-qa.N valida uma tag da esteira em vez do working tree. Não há
+# deploy automático: é assim que se olha o que a tag carimbou.
+deploy-local: ## Sobe o cluster local, instala tudo e roda o smoke test (TAG=vX.Y.Z-qa.N opcional)
+	@TAG=$(TAG) bash $(K8S)/bootstrap.sh
 	@bash $(K8S)/smoke.sh
 
 deploy-local-clean: ## Igual ao deploy-local, mas sem reconstruir as imagens

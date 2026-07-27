@@ -6,6 +6,7 @@
 #   BRABO_CLUSTER_TOOL=kind bash ...            # força kind (default: k3d)
 #   BRABO_SKIP_BUILD=1 bash ...                 # usa as imagens já no daemon
 #   BRABO_KEEP_CLUSTER=1 bash ...               # reaproveita cluster existente
+#   TAG=v0.2.0-qa.1 bash ...                    # valida uma TAG da esteira
 #
 # O que ele NÃO faz: instalar ingress controller ou mexer em DNS. Os serviços
 # saem em NodePorts mapeadas para as MESMAS portas do docker-compose.prod.yml
@@ -185,6 +186,25 @@ info "ferramenta de cluster: ${TOOL}"
 [[ "${TOOL}" == "k3d" ]] && ensure_k3d
 [[ "${TOOL}" == "kind" ]] && { command -v kind >/dev/null || die "kind não encontrado"; }
 ensure_helm
+
+# --- referência da esteira -------------------------------------------------
+#
+# `TAG=vX.Y.Z-qa.N` valida uma tag da esteira (FASE 6) em vez do working tree.
+# NÃO há deploy automático em ambiente nenhum: esta é a forma de olhar com os
+# próprios olhos o que a tag carimbou, no cluster local.
+#
+# O checkout é destacado e a árvore precisa estar limpa — sair de um estado
+# sujo perderia trabalho, e é melhor recusar do que adivinhar.
+if [[ -n "${TAG:-}" ]]; then
+  git -C "${REPO_ROOT}" rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null \
+    || die "tag '${TAG}' não existe. Busque com: git fetch --tags"
+  [[ -z "$(git -C "${REPO_ROOT}" status --porcelain)" ]] \
+    || die "a árvore tem mudanças não commitadas — commite ou guarde antes de usar TAG="
+  REF_ANTERIOR="$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD)"
+  [[ "${REF_ANTERIOR}" == "HEAD" ]] && REF_ANTERIOR="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
+  info "validando a tag ${TAG} (para voltar: git checkout ${REF_ANTERIOR})"
+  git -C "${REPO_ROOT}" checkout --quiet --detach "refs/tags/${TAG}"
+fi
 
 # --- imagens ---------------------------------------------------------------
 if [[ "${BRABO_SKIP_BUILD:-}" == "1" ]]; then
