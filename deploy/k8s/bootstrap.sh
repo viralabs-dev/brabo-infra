@@ -10,9 +10,8 @@
 #
 # O que ele NÃO faz: instalar ingress controller ou mexer em DNS. Os serviços
 # saem em NodePorts mapeadas para as MESMAS portas do docker-compose.prod.yml
-# (3000/4000/8080/8088), o que mantém válidos o realm de desenvolvimento e os
-# defaults do docker/smoke.sh, e evita depender de resolução de nome — nip.io e
-# afins precisam de internet.
+# (3000/4000/8088), o que mantém válidos os defaults do docker/smoke.sh e evita
+# depender de resolução de nome — nip.io e afins precisam de internet.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -107,7 +106,6 @@ create_cluster_k3d() {
     --agents 0 \
     --port "3000:30300@loadbalancer" \
     --port "4000:30400@loadbalancer" \
-    --port "8080:30080@loadbalancer" \
     --port "8088:30088@loadbalancer" \
     --port "3001:30030@loadbalancer" \
     --k3s-arg "--disable=traefik@server:0" \
@@ -136,7 +134,6 @@ nodes:
     extraPortMappings:
       - { containerPort: 30300, hostPort: 3000, protocol: TCP }
       - { containerPort: 30400, hostPort: 4000, protocol: TCP }
-      - { containerPort: 30080, hostPort: 8080, protocol: TCP }
       - { containerPort: 30088, hostPort: 8088, protocol: TCP }
       - { containerPort: 30030, hostPort: 3001, protocol: TCP }
 EOF

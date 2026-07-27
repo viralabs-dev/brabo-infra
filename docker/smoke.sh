@@ -20,7 +20,7 @@ COMPOSE_FILE="${REPO_ROOT}/docker/docker-compose.prod.yml"
 COMPOSE=(docker compose -f "${COMPOSE_FILE}")
 
 # Portas: os defaults do compose. Sobrescrevíveis pra rodar ao lado do stack de
-# desenvolvimento, que ocupa 3000/4000/8080.
+# desenvolvimento, que ocupa 3000/4000.
 API_PORT="${API_PORT:-3000}"
 ENGINE_PORT="${ENGINE_PORT:-4000}"
 WEB_PORT="${WEB_PORT:-8088}"
