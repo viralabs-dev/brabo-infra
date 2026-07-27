@@ -194,7 +194,8 @@ else
   docker build -q -f "${REPO_ROOT}/docker/api/Dockerfile.prod"    -t brabo-api:prod    "${REPO_ROOT}" >/dev/null
   docker build -q -f "${REPO_ROOT}/docker/engine/Dockerfile.prod" -t brabo-engine:prod "${REPO_ROOT}" >/dev/null
   docker build -q -f "${REPO_ROOT}/docker/web/Dockerfile.prod"    -t brabo-web:prod    "${REPO_ROOT}" >/dev/null
-  ok "três imagens construídas"
+  docker build -q -f "${REPO_ROOT}/docker/backup/Dockerfile.prod" -t brabo-backup:prod "${REPO_ROOT}" >/dev/null
+  ok "quatro imagens construídas"
 fi
 docker image inspect "${BUSYBOX_IMAGE}" >/dev/null 2>&1 || docker pull -q "${BUSYBOX_IMAGE}" >/dev/null
 
@@ -204,7 +205,7 @@ case "${TOOL}" in
   *)    die "ferramenta desconhecida: ${TOOL}" ;;
 esac
 
-for img in brabo-api:prod brabo-engine:prod brabo-web:prod; do
+for img in brabo-api:prod brabo-engine:prod brabo-web:prod brabo-backup:prod; do
   load_image "${img}"
 done
 load_image "${BUSYBOX_IMAGE}" optional
@@ -329,6 +330,10 @@ kubectl -n brabo create secret generic brabo \
   --from-literal=RELEASE_COOKIE="$(openssl rand -hex 24)" \
   --from-literal=KEYCLOAK_ADMIN=admin \
   --from-literal=KEYCLOAK_ADMIN_PASSWORD="${BRABO_SMOKE_PASSWORD:-admin123}" \
+  --from-literal=BACKUP_S3_ENDPOINT="http://minio.brabo.svc.cluster.local:9000" \
+  --from-literal=BACKUP_S3_BUCKET=brabo-backups \
+  --from-literal=BACKUP_S3_ACCESS_KEY=brabo-backup \
+  --from-literal=BACKUP_S3_SECRET_KEY="$(openssl rand -hex 20)" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 ok "Secret-fonte criado (nunca versionado)"
 
@@ -360,6 +365,77 @@ kubectl -n brabo rollout status statefulset/keycloak --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/api --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/engine --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/web --timeout=300s >/dev/null
-ok "api, engine, web e Keycloak Ready"
+kubectl -n brabo rollout status deployment/minio --timeout=300s >/dev/null
+ok "api, engine, web, Keycloak e MinIO Ready"
+
+# --- bucket de backup ------------------------------------------------------
+# Criado aqui e não por um Job no overlay: é setup de ambiente local, roda uma
+# vez e precisa ser idempotente. `mc mb --ignore-existing` num pod efêmero é
+# mais simples de depurar do que um Job que fica no histórico do cluster.
+#
+# O pod herda as credenciais do MESMO Secret que o backup usa — se divergirem,
+# o bucket é criado com uma chave e o CronJob autentica com outra.
+#
+# A espera não é zelo excessivo. "Pod Ready" e "ClusterIP roteando" são coisas
+# diferentes: entre o kubelet marcar o pod pronto e o kube-proxy programar a
+# regra do Service existe uma janela em que o ClusterIP responde `connection
+# refused` (REJECT, porque o Service não tem backend ainda). Sem esperar o
+# EndpointSlice, a criação do bucket falhava aqui — e o erro do mc dizia
+# "Unable to initialize new alias from the provided credentials", que manda
+# quem investiga procurar credencial errada em vez de corrida de rede.
+info "criando o bucket de backup no MinIO"
+
+for _ in $(seq 1 30); do
+  if [[ -n "$(kubectl -n brabo get endpoints minio -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null)" ]]; then
+    break
+  fi
+  sleep 2
+done
+
+criar_bucket() {
+  # A retentativa fica DENTRO do pod, não recriando pods.
+  #
+  # A janela de indisponibilidade é por pod: o k3s programa as regras de
+  # NetworkPolicy depois de o pod ganhar IP, e quem fala na primeira instrução
+  # leva `connection refused`. Recriar o pod recria a janela — foi assim que
+  # seis tentativas seguidas falharam igual. Esperar de dentro do mesmo
+  # container resolve na segunda, que é exatamente o que o backup.sh já faz.
+  #
+  # Nome único por tentativa mesmo assim: com `--rm` a remoção é assíncrona, e
+  # reusar o nome faz a chamada seguinte falhar com "already exists" — um erro
+  # que se disfarça de falha de conexão no log.
+  kubectl -n brabo run "minio-mb-$$-${1}" \
+    --rm --attach --restart=Never --quiet \
+    --image=brabo-backup:prod \
+    --image-pull-policy=IfNotPresent \
+    --overrides='{
+      "spec": {
+        "securityContext": {"runAsNonRoot": true, "runAsUser": 70, "runAsGroup": 70},
+        "containers": [{
+          "name": "mb",
+          "image": "brabo-backup:prod",
+          "imagePullPolicy": "IfNotPresent",
+          "command": ["sh","-c","for i in 1 2 3 4 5 6 7 8 9 10; do mc --quiet alias set d \"$BACKUP_S3_ENDPOINT\" \"$BACKUP_S3_ACCESS_KEY\" \"$BACKUP_S3_SECRET_KEY\" 2>&1 && mc --quiet mb --ignore-existing \"d/$BACKUP_S3_BUCKET\" 2>&1 && exit 0; echo \"destino indisponível (tentativa $i)\"; sleep 3; done; exit 1"],
+          "envFrom": [{"secretRef": {"name": "brabo-secrets"}}],
+          "volumeMounts": [{"name": "tmp", "mountPath": "/tmp"}]
+        }],
+        "volumes": [{"name": "tmp", "emptyDir": {}}],
+        "metadata": {"labels": {"app.kubernetes.io/name": "brabo-backup"}}
+      },
+      "metadata": {"labels": {"app.kubernetes.io/name": "brabo-backup"}}
+    }' 2>&1
+}
+
+bucket_criado=0
+for tentativa in 1 2 3 4 5 6; do
+  if saida_mb="$(criar_bucket "${tentativa}")"; then bucket_criado=1; break; fi
+  [[ ${tentativa} -lt 6 ]] && sleep 5
+done
+
+# `die` e não `warn`: sem bucket o backup falha em toda execução, e o
+# `make test-restore` reprova logo depois. Reportar "ok" aqui e falhar dez
+# minutos adiante é o pior dos dois mundos.
+[[ ${bucket_criado} -eq 1 ]] || die "não foi possível criar o bucket de backup: ${saida_mb:-sem saída}"
+ok "bucket de backup pronto"
 
 printf '\n\033[32m[bootstrap] cluster pronto\033[0m — web em http://localhost:8088, Grafana em http://localhost:3001\n'

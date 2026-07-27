@@ -8,6 +8,10 @@ resources:
   - ../../base
   - secretstore.yaml
   - netpol-external-egress.yaml
+  # Destino S3 do backup no cluster local. Em staging/prod o bucket é externo
+  # e nada disto é aplicado — ver minio/minio.yaml.
+  - minio/minio.yaml
+  - minio/netpol.yaml
 # O banco fica em `db/`, aplicado separadamente pelo bootstrap — ver o
 # comentário em db/kustomization.yaml.
 
@@ -47,4 +51,6 @@ images:
   - name: brabo-engine
     newTag: prod
   - name: brabo-web
+    newTag: prod
+  - name: brabo-backup
     newTag: prod

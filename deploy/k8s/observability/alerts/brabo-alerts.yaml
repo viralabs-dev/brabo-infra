@@ -102,3 +102,76 @@ groups:
               expression: custo
               conditions:
                 - evaluator: { type: gt, params: [5] }
+
+      # ---------------------------------------------------------------------
+      - uid: brabo-backup-atrasado
+        title: Backup do Postgres atrasado
+        condition: alerta
+        # Sem `for`: a idade do backup já é uma média de 24h por natureza, e
+        # esperar mais 5 minutos para avisar que faz 26 horas que não há backup
+        # não acrescenta informação nenhuma.
+        for: 0m
+        annotations:
+          summary: >-
+            O último backup bem-sucedido tem mais de 26 horas (a cadência é
+            diária, às 03:17 UTC, mais margem). Ou o CronJob não rodou, ou
+            rodou e falhou — `brabo_backup_last_status` distingue os dois.
+            Investigue com `kubectl -n brabo get cronjob brabo-backup` e
+            `select * from backup_runs order by finished_at desc limit 5`.
+            Restaurar sem backup recente é o pior lugar para descobrir isto.
+        labels:
+          severity: critical
+        data:
+          - refId: idade
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: brabo-prometheus
+            model:
+              # A métrica já vem calculada da api. Não é `time() - timestamp`
+              # aqui de propósito: aquele cálculo dispara igual quando nunca
+              # houve backup (gauge em 0 = epoch) e quando o backup atrasou, e
+              # as duas situações pedem ações diferentes. A api publica -1 no
+              # caso "nunca houve", que a condição abaixo trata à parte.
+              expr: brabo_backup_age_seconds
+              instant: true
+              refId: idade
+          - refId: alerta
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: idade
+              conditions:
+                # 26h = 93600s. O -1 de "nunca houve backup" NÃO dispara este
+                # alerta — num ambiente recém-criado ele soaria no primeiro dia
+                # sem nada quebrado. Quem cobre aquele caso é o alerta abaixo.
+                - evaluator: { type: gt, params: [93600] }
+
+      # ---------------------------------------------------------------------
+      - uid: brabo-backup-falhou
+        title: Última execução do backup falhou
+        condition: alerta
+        for: 0m
+        annotations:
+          summary: >-
+            O CronJob de backup rodou e terminou em erro. Diferente do alerta
+            de atraso: aqui ainda pode existir um backup bom de ontem, e é
+            justamente por isso que a falha passaria despercebida por dias.
+            A causa fica em `backup_runs.error_message`.
+        labels:
+          severity: warning
+        data:
+          - refId: status
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: brabo-prometheus
+            model:
+              # 1 = ok, 0 = falhou, -1 = nunca rodou. A condição pega só o 0:
+              # "nunca rodou" não é falha de execução.
+              expr: brabo_backup_last_status
+              instant: true
+              refId: status
+          - refId: alerta
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: status
+              conditions:
+                - evaluator: { type: within_range, params: [-0.5, 0.5] }

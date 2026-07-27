@@ -3,7 +3,7 @@
 # O resto do dia a dia continua em `pnpm` (ver package.json): este Makefile
 # existe para o que não é JavaScript nem Elixir — subir cluster, aplicar
 # manifests, validar. Não duplica nada do package.json de propósito.
-.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test k8s-validate k8s-logs k8s-down
+.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore k8s-validate k8s-logs k8s-down
 
 SHELL := /usr/bin/env bash
 K8S := deploy/k8s
@@ -29,6 +29,9 @@ hpa-test: ## Enche a fila do Oban e prova que o HPA do engine escala
 
 rollout-test: ## Abre sessões ativas, faz rollout restart e prova que nenhuma fica órfã
 	@bash $(K8S)/rollout-test.sh
+
+test-restore: ## Dispara um backup real, restaura numa database nova e valida
+	@bash $(K8S)/test-restore.sh
 
 k8s-validate: ## Monta os overlays e valida contra o schema do Kubernetes
 	@bash $(K8S)/validate.sh
