@@ -22,6 +22,17 @@ variable "TAG" {
   default = "prod"
 }
 
+# Segunda tag, opcional. Existe para o `release.yml`, que precisa de DUAS por
+# imagem: a versão (legível, é o que se cita numa conversa) e o SHA do commit
+# (imutável, identifica o build mesmo quando uma tag é movida).
+#
+# Vazia por padrão para o `ci.yml` não ganhar tag de enfeite. Cada alvo resolve
+# a lista com um ternário — repetido nos quatro em vez de escondido numa função,
+# porque quatro linhas explícitas se leem melhor que uma indireção.
+variable "TAG_EXTRA" {
+  default = ""
+}
+
 # `docker buildx bake` sem alvo constrói este grupo.
 group "default" {
   targets = ["api", "engine", "web", "backup"]
@@ -37,7 +48,7 @@ target "_comum" {
 target "api" {
   inherits   = ["_comum"]
   dockerfile = "docker/api/Dockerfile.prod"
-  tags       = ["brabo-api:${TAG}"]
+  tags       = TAG_EXTRA == "" ? ["brabo-api:${TAG}"] : ["brabo-api:${TAG}", "brabo-api:${TAG_EXTRA}"]
   cache-from = ["type=gha,scope=api"]
   cache-to   = ["type=gha,scope=api,mode=max"]
 }
@@ -45,7 +56,7 @@ target "api" {
 target "engine" {
   inherits   = ["_comum"]
   dockerfile = "docker/engine/Dockerfile.prod"
-  tags       = ["brabo-engine:${TAG}"]
+  tags       = TAG_EXTRA == "" ? ["brabo-engine:${TAG}"] : ["brabo-engine:${TAG}", "brabo-engine:${TAG_EXTRA}"]
   cache-from = ["type=gha,scope=engine"]
   cache-to   = ["type=gha,scope=engine,mode=max"]
 }
@@ -53,7 +64,7 @@ target "engine" {
 target "web" {
   inherits   = ["_comum"]
   dockerfile = "docker/web/Dockerfile.prod"
-  tags       = ["brabo-web:${TAG}"]
+  tags       = TAG_EXTRA == "" ? ["brabo-web:${TAG}"] : ["brabo-web:${TAG}", "brabo-web:${TAG_EXTRA}"]
   cache-from = ["type=gha,scope=web"]
   cache-to   = ["type=gha,scope=web,mode=max"]
 }
@@ -64,7 +75,7 @@ target "web" {
 target "backup" {
   inherits   = ["_comum"]
   dockerfile = "docker/backup/Dockerfile.prod"
-  tags       = ["brabo-backup:${TAG}"]
+  tags       = TAG_EXTRA == "" ? ["brabo-backup:${TAG}"] : ["brabo-backup:${TAG}", "brabo-backup:${TAG_EXTRA}"]
   cache-from = ["type=gha,scope=backup"]
   cache-to   = ["type=gha,scope=backup,mode=max"]
 }
