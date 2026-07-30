@@ -38,10 +38,15 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            # Estas cinco viram /config.js, gerado pelo entrypoint e lido pelo
-            # browser. É o que permite promover a MESMA imagem entre ambientes
-            # — antes as URLs eram inlinadas no bundle pelo Vite e cada
-            # ambiente exigia sua própria imagem (ADR 0024, limitação 1).
+            # API_URL, ENGINE_URL e LOG_LEVEL viram /config.js, gerado pelo
+            # entrypoint e lido pelo browser; CSP_CONNECT_SRC vai para o
+            # nginx.conf, não para o config.js. É o que permite promover a MESMA
+            # imagem entre ambientes — antes as URLs eram inlinadas no bundle
+            # pelo Vite e cada ambiente exigia sua própria imagem (ADR 0024,
+            # limitação 1).
+            #
+            # (O texto anterior dizia "estas cinco" e já não conferia com as três
+            # entradas que existiam; corrigido no ADR 0035, junto com LOG_LEVEL.)
             - name: API_URL
               valueFrom:
                 configMapKeyRef:
@@ -59,6 +64,15 @@ spec:
                 configMapKeyRef:
                   name: brabo-config
                   key: CSP_CONNECT_SRC
+            # Nível do logger JSON do browser (ADR 0035). O entrypoint já lia
+            # `LOG_LEVEL` e escrevia em /config.js; só ninguém passava a
+            # variável, então o nível ficava preso no default `info` e
+            # `logger.debug` nunca saía em ambiente publicado.
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: brabo-config
+                  key: WEB_LOG_LEVEL
           # O web é estático: as três probes podem ser a mesma. /healthz não
           # passa pelo fallback de SPA, então responde mesmo com docroot vazio
           # — o que distingue "nginx de pé" de "bundle presente".
