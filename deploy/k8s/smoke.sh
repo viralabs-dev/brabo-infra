@@ -16,7 +16,7 @@ API="${API_URL:-http://localhost:3000}"
 ENGINE="${ENGINE_URL:-http://localhost:4000}"
 WEB="${WEB_URL:-http://localhost:8088}"
 SMOKE_USER="${SMOKE_USER:-owner@brabo.dev}"
-SMOKE_PASSWORD="${BRABO_SMOKE_PASSWORD:-senha de dev do brabo}"
+SMOKE_PASSWORD="${BRABO_SMOKE_PASSWORD:-brabo12345678}"
 
 step=0
 info() { printf '\n\033[1m[smoke-k8s]\033[0m %s\n' "$*"; }
