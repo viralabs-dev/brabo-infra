@@ -25,7 +25,7 @@ set -euo pipefail
 NS="${BRABO_NAMESPACE:-brabo}"
 API="${API_URL:-http://localhost:3000}"
 SMOKE_USER="${SMOKE_USER:-owner@brabo.dev}"
-SMOKE_PASSWORD="${BRABO_SMOKE_PASSWORD:-senha de dev do brabo}"
+SMOKE_PASSWORD="${BRABO_SMOKE_PASSWORD:-brabo12345678}"
 COUNT="${ROLLOUT_SESSIONS:-5}"
 
 info() { printf '\n\033[1m[rollout-test]\033[0m %s\n' "$*"; }

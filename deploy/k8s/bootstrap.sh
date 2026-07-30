@@ -380,8 +380,8 @@ info "provisionando o usuário do smoke"
 API_IMAGE="$(kubectl -n brabo get deployment/api -o jsonpath='{.spec.template.spec.containers[0].image}')"
 kubectl -n brabo delete pod seed-smoke --ignore-not-found >/dev/null 2>&1 || true
 kubectl -n brabo run seed-smoke --restart=Never --image="${API_IMAGE}" \
-  --env="BRABO_SEED_PASSWORD=${BRABO_SMOKE_PASSWORD:-senha de dev do brabo}" \
-  --overrides="{\"spec\":{\"containers\":[{\"name\":\"seed-smoke\",\"image\":\"${API_IMAGE}\",\"command\":[\"node\",\"dist/db/seed.js\"],\"envFrom\":[{\"secretRef\":{\"name\":\"brabo-secrets\"}},{\"configMapRef\":{\"name\":\"brabo-config\"}}],\"env\":[{\"name\":\"BRABO_SEED_PASSWORD\",\"value\":\"${BRABO_SMOKE_PASSWORD:-senha de dev do brabo}\"}]}]}}" \
+  --env="BRABO_SEED_PASSWORD=${BRABO_SMOKE_PASSWORD:-brabo12345678}" \
+  --overrides="{\"spec\":{\"containers\":[{\"name\":\"seed-smoke\",\"image\":\"${API_IMAGE}\",\"command\":[\"node\",\"dist/db/seed.js\"],\"envFrom\":[{\"secretRef\":{\"name\":\"brabo-secrets\"}},{\"configMapRef\":{\"name\":\"brabo-config\"}}],\"env\":[{\"name\":\"BRABO_SEED_PASSWORD\",\"value\":\"${BRABO_SMOKE_PASSWORD:-brabo12345678}\"}]}]}}" \
   >/dev/null 2>&1 || true
 # O seed é idempotente: rodar de novo não duplica usuário nem workspace.
 kubectl -n brabo wait --for=condition=Ready=false pod/seed-smoke --timeout=120s >/dev/null 2>&1 || true

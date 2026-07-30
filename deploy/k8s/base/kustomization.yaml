@@ -48,12 +48,21 @@ configMapGenerator:
     literals:
       # Endereços internos: nome de Service, iguais em qualquer ambiente.
       # OpenTelemetry (Fase 5, item 3). Endereço do Collector, não do Tempo: é
-      # ele que desacopla a instrumentação do backend. Definir esta variável é o
-      # que LIGA a instrumentação — sem ela, api e engine não criam span nenhuma
-      # (ver apps/api/src/tracing.ts e Engine.Telemetry.Otel).
+      # ele que desacopla a instrumentação do backend.
+      #
+      # ATENÇÃO (ADR 0035): esta variável NÃO liga mais a instrumentação — ela
+      # liga a EXPORTAÇÃO. api e engine criam span e carregam `trace_id` no log
+      # com ou sem ela; sem ela a span simplesmente não sai do processo. O texto
+      # anterior dizia o contrário, e era o que fazia todo mundo achar que
+      # desenvolvimento não tinha trace por opção de projeto.
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318
       - API_URL=http://api:3000
       - ENGINE_URL=http://engine:4000
+      # Nível do logger JSON da web (ADR 0035). Toda a encanação já existia —
+      # entrypoint → /config.js → runtime-config → logger — e faltava só a
+      # variável, então `logger.debug` era código morto em TODO ambiente
+      # publicado. Um nível que ninguém consegue ligar é pior que nível nenhum.
+      - WEB_LOG_LEVEL=info
 
 images:
   # As tags são substituídas por overlay. No local ficam as :prod construídas
