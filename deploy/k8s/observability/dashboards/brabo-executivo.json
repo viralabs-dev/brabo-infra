@@ -199,6 +199,37 @@
         "defaults": {},
         "overrides": []
       }
+    },
+    {
+      "id": 7,
+      "title": "Custo acumulado (USD) por provider subjacente",
+      "description": "Num hub (OpenRouter) o custo real e' do provedor que SERVIU a chamada, nao do hub. Sem hub, `upstream_provider` repete o proprio provider, entao este painel soma o custo INTEIRO e nao so o que passou por hub.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "brabo-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (upstream_provider) (brabo_llm_cost_micros_total) / 1000000",
+          "legendFormat": "{{upstream_provider}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "brabo-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
     }
   ]
 }
