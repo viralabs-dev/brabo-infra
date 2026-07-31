@@ -26,7 +26,7 @@ ENGINE_PORT="${ENGINE_PORT:-4000}"
 WEB_PORT="${WEB_PORT:-8088}"
 SMOKE_USER="${SMOKE_USER:-owner@brabo.dev}"
 # A política do domínio exige 12 caracteres — "admin123" não passaria.
-SMOKE_PASSWORD="${SMOKE_PASSWORD:-senha de dev do brabo}"
+SMOKE_PASSWORD="${SMOKE_PASSWORD:-brabo12345678}"
 
 API="http://localhost:${API_PORT}"
 ENGINE="http://localhost:${ENGINE_PORT}"

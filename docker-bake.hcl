@@ -33,6 +33,17 @@ variable "TAG_EXTRA" {
   default = ""
 }
 
+# Versão do ARTEFATO, assada nas imagens da api e do web (ADR 0036).
+#
+# Separada de `TAG` de propósito, apesar de o `release.yml` passar o mesmo valor
+# para as duas. `TAG` é o nome com que a imagem é referenciada e o `ci.yml` a põe
+# em "prod"; se a versão viesse dela, o rodapé da web mostraria "prod" e todo span
+# da api sairia com `service.version=prod` — que não é versão de nada. Com
+# variável própria, quem não é release fica em "dev", que é a verdade.
+variable "VERSION" {
+  default = "dev"
+}
+
 # `docker buildx bake` sem alvo constrói este grupo.
 group "default" {
   targets = ["api", "engine", "web", "backup"]
@@ -49,6 +60,7 @@ target "api" {
   inherits   = ["_comum"]
   dockerfile = "docker/api/Dockerfile.prod"
   tags       = TAG_EXTRA == "" ? ["brabo-api:${TAG}"] : ["brabo-api:${TAG}", "brabo-api:${TAG_EXTRA}"]
+  args       = { BRABO_VERSION = VERSION }
   cache-from = ["type=gha,scope=api"]
   cache-to   = ["type=gha,scope=api,mode=max"]
 }
@@ -65,6 +77,7 @@ target "web" {
   inherits   = ["_comum"]
   dockerfile = "docker/web/Dockerfile.prod"
   tags       = TAG_EXTRA == "" ? ["brabo-web:${TAG}"] : ["brabo-web:${TAG}", "brabo-web:${TAG_EXTRA}"]
+  args       = { VITE_BRABO_VERSION = VERSION }
   cache-from = ["type=gha,scope=web"]
   cache-to   = ["type=gha,scope=web,mode=max"]
 }
