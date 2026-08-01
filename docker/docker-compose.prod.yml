@@ -111,7 +111,9 @@ services:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       # Origem do web NESTE compose (nginx publicado abaixo), não a de dev.
-      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8088}
+      # DERIVA de WEB_PORT: dois defaults independentes deixavam trocar a porta
+      # publicada e quebrar o CORS em silêncio (ADR 0037 — a porta é contrato).
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-8088}}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
       OLLAMA_REQUEST_TIMEOUT_MS: ${OLLAMA_REQUEST_TIMEOUT_MS:-300000}
       # Os quatro segredos abaixo têm default de DESENVOLVIMENTO só para este
@@ -176,7 +178,9 @@ services:
       PHX_HOST: ${PHX_HOST:-localhost}
       # Libera a origem do web no handshake do websocket dos canais. Sem isto o
       # painel do time ao vivo fica mudo em :prod (check_origin estrito).
-      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8088}
+      # Mesma derivação de WEB_PORT da api acima — as duas leem a MESMA
+      # variável, e é isso que impede o engine e a api de divergirem (ADR 0037).
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-8088}}
       API_URL: ${API_URL:-http://api:3000}
       PROJECT_WORKSPACES_ROOT: /data/project-workspaces
       SESSION_HEARTBEAT_TIMEOUT_MS: ${SESSION_HEARTBEAT_TIMEOUT_MS:-30000}
