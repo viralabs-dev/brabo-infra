@@ -52,7 +52,13 @@ services:
     environment:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
-      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
+      # DERIVA de WEB_PORT de propósito. A porta faz parte do contrato de CORS
+      # (ADR 0037), e com dois defaults independentes bastava trocar WEB_PORT
+      # para o browser abrir em :5174 enquanto a api só aceitava :5173 — CORS
+      # quebrado em silêncio, com a mensagem apontando para o lugar errado. O
+      # `strictPort` do Vite fechou o lado de quem escolhe a porta sozinho;
+      # isto fecha o lado de quem a escolhe de propósito.
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-5173}}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
       # Teto de INATIVIDADE do socket na chamada ao Ollama (ver
       # ollama-provider.ts). Precisa ser >= o LLM_TURN_TIMEOUT_MS do engine,
