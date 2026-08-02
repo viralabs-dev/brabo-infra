@@ -373,19 +373,6 @@ kubectl -n brabo wait --for=condition=complete job/migrate-api --timeout=300s >/
 kubectl -n brabo wait --for=condition=complete job/migrate-engine --timeout=300s >/dev/null
 ok "schema da api e do engine migrados"
 
-# Sem IdP externo não existe mais credencial pronta para o smoke. O seed cria
-# um usuário com senha conhecida e e-mail já verificado; ele recusa rodar com
-# NODE_ENV=production (ver apps/api/src/scripts/provisionar-usuario.ts).
-info "provisionando o usuário do smoke"
-API_IMAGE="$(kubectl -n brabo get deployment/api -o jsonpath='{.spec.template.spec.containers[0].image}')"
-kubectl -n brabo delete pod seed-smoke --ignore-not-found >/dev/null 2>&1 || true
-kubectl -n brabo run seed-smoke --restart=Never --image="${API_IMAGE}" \
-  --env="BRABO_SEED_PASSWORD=${BRABO_SMOKE_PASSWORD:-brabo12345678}" \
-  --overrides="{\"spec\":{\"containers\":[{\"name\":\"seed-smoke\",\"image\":\"${API_IMAGE}\",\"command\":[\"node\",\"dist/db/seed.js\"],\"envFrom\":[{\"secretRef\":{\"name\":\"brabo-secrets\"}},{\"configMapRef\":{\"name\":\"brabo-config\"}}],\"env\":[{\"name\":\"BRABO_SEED_PASSWORD\",\"value\":\"${BRABO_SMOKE_PASSWORD:-brabo12345678}\"}]}]}}" \
-  >/dev/null 2>&1 || true
-# O seed é idempotente: rodar de novo não duplica usuário nem workspace.
-kubectl -n brabo wait --for=condition=Ready=false pod/seed-smoke --timeout=120s >/dev/null 2>&1 || true
-ok "usuário do smoke pronto"
 
 info "esperando os workloads ficarem Ready"
 kubectl -n brabo rollout status deployment/api --timeout=300s >/dev/null
@@ -393,6 +380,95 @@ kubectl -n brabo rollout status deployment/engine --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/web --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/minio --timeout=300s >/dev/null
 ok "api, engine, web e MinIO Ready"
+
+# O seed roda DEPOIS dos rollouts, e não antes: o último passo dele ativa uma
+# sessão, o que faz a api chamar o engine por HTTP. Rodando antes, aquele passo
+# morria com ECONNREFUSED em engine:4000 — o usuário já estava criado, mas o
+# pod terminava em erro.
+# Sem IdP externo não existe mais credencial pronta para o smoke. O seed cria
+# um usuário com senha conhecida e e-mail já verificado; ele recusa rodar com
+# NODE_ENV=production (ver apps/api/src/scripts/provisionar-usuario.ts).
+info "provisionando o usuário do smoke"
+API_IMAGE="$(kubectl -n brabo get deployment/api -o jsonpath='{.spec.template.spec.containers[0].image}')"
+
+# TRÊS defeitos empilhados neste pod, todos aparecendo só lá na frente como um
+# "login 401", e todos escondidos pelo `wait` errado no fim deste bloco:
+#
+# 1. o caminho do seed é `db/seed.js`, não `dist/db/seed.js`. A imagem de
+#    produção copia `apps/api/dist` para a RAIZ do WORKDIR
+#    (`COPY --from=build /repo/apps/api/dist ./`), e é por isso que o `CMD` da
+#    imagem é `node main.js` e não `node dist/main.js`.
+# 2. o ConfigMap tem sufixo de hash — ver abaixo.
+# 3. `BRABO_FORCE_SEED=1`. A imagem roda com `NODE_ENV=production`, e o seed
+#    RECUSA criar conta com senha conhecida nesse modo — a guarda está descrita
+#    no comentário acima desde que este bloco foi escrito, e mesmo assim a
+#    variável nunca foi passada. Aqui ela é legítima: este cluster existe para
+#    o smoke, e a conta é justamente o que ele precisa.
+#
+# O NOME REAL do ConfigMap, lido do Deployment da api em vez de hardcoded.
+# O `configMapGenerator` do Kustomize acrescenta um sufixo de hash
+# (`brabo-config-4tchmmt6bk`), que é justamente o que faz um pod ser
+# recriado quando a configuração muda. Este pod pedia `brabo-config` puro, que
+# não existe: ele ficava em `CreateContainerConfigError`, o usuário do smoke
+# NUNCA era criado, e o login respondia 401 — sintoma que é fácil confundir
+# com a api quebrada.
+CONFIG_MAP="$(kubectl -n brabo get deployment/api \
+  -o jsonpath='{.spec.template.spec.containers[0].envFrom[?(@.configMapRef)].configMapRef.name}')"
+[[ -n "${CONFIG_MAP}" ]] || die "não achei o ConfigMap referenciado pelo Deployment da api"
+
+kubectl -n brabo delete pod seed-smoke --ignore-not-found >/dev/null 2>&1 || true
+# 4. o LABEL. `kubectl run` marca o pod com `run=seed-smoke`, e a política
+#    `allow-db-egress` libera 5432 só para
+#    `app.kubernetes.io/name in [api, engine, migrate-api, ...]`. Sem o rótulo,
+#    o `default-deny` da linha de base bloqueia a saída e o seed morre com
+#    ECONNREFUSED no Postgres. `migrate-api` é a classe certa: mesma imagem,
+#    mesmo papel de job efêmero da api contra o banco. Rotular aqui é melhor do
+#    que acrescentar `seed-smoke` à política, que afrouxaria também produção
+#    por causa de um pod que só existe no cluster local.
+kubectl -n brabo run seed-smoke --restart=Never --image="${API_IMAGE}" \
+  --labels="app.kubernetes.io/name=migrate-api" \
+  --env="BRABO_SEED_PASSWORD=${BRABO_SMOKE_PASSWORD:-brabo12345678}" \
+  --overrides="{\"spec\":{\"containers\":[{\"name\":\"seed-smoke\",\"image\":\"${API_IMAGE}\",\"command\":[\"node\",\"db/seed.js\"],\"envFrom\":[{\"secretRef\":{\"name\":\"brabo-secrets\"}},{\"configMapRef\":{\"name\":\"${CONFIG_MAP}\"}}],\"env\":[{\"name\":\"BRABO_SEED_PASSWORD\",\"value\":\"${BRABO_SMOKE_PASSWORD:-brabo12345678}\"},{\"name\":\"BRABO_FORCE_SEED\",\"value\":\"1\"}]}]}}" \
+  >/dev/null 2>&1 || true
+
+# O que importa é o RESULTADO, não o processo: o smoke precisa conseguir logar.
+#
+# Verificar o login em vez do status do pod resolve dois problemas de uma vez.
+# O primeiro é o que estava quebrado: `wait --for=condition=Ready=false` é
+# satisfeito por um pod que NUNCA rodou, e foi isso que deixou o bootstrap
+# anunciar "usuário do smoke pronto" com o seed em CreateContainerConfigError.
+#
+# O segundo é que o seed NÃO é idempotente, ao contrário do que este bloco
+# afirmava: `createWorkspace` não faz upsert, então uma segunda execução morre
+# em `workspaces_slug_unique` — o que acontece sempre que se reaproveita um
+# cluster com BRABO_KEEP_CLUSTER=1. Nesse caso o pod termina em erro e está
+# tudo certo: o usuário já existe desde a primeira vez.
+kubectl -n brabo wait --for=jsonpath='{.status.phase}'=Succeeded \
+  pod/seed-smoke --timeout=180s >/dev/null 2>&1 || true
+
+seed_login_ok=0
+for _ in $(seq 1 10); do
+  if curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+      -H 'Content-Type: application/json' \
+      -d "{\"email\":\"${SMOKE_USER:-owner@brabo.dev}\",\"senha\":\"${BRABO_SMOKE_PASSWORD:-brabo12345678}\"}" \
+      "http://localhost:3000/auth/login" 2>/dev/null | grep -q '^200$'; then
+    seed_login_ok=1
+    break
+  fi
+  sleep 3
+done
+
+if [[ "${seed_login_ok}" != "1" ]]; then
+  kubectl -n brabo logs pod/seed-smoke --tail=30 2>&1 || true
+  die "o usuário do smoke não consegue logar — o seed não completou"
+fi
+# Some com o pod depois de verificar. Ele é one-shot, e um `seed-smoke` em
+# Error deixado para trás reprova o passo 1 do smoke ("pods fora de
+# Running/Completed") — que é justamente o caso normal de reexecutar o
+# bootstrap num cluster reaproveitado, com o seed morrendo por não ser
+# idempotente.
+kubectl -n brabo delete pod seed-smoke --ignore-not-found >/dev/null 2>&1 || true
+ok "usuário do smoke pronto (login verificado)"
 
 # --- bucket de backup ------------------------------------------------------
 # Criado aqui e não por um Job no overlay: é setup de ambiente local, roda uma
