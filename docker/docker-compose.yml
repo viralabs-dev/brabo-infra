@@ -136,6 +136,10 @@ services:
       # checkout do bare repo (montado abaixo, read-only) ali dentro.
       PROJECT_WORKSPACES_ROOT: /data/project-workspaces
       TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
+      # Teto de BYTES da saída de um comando (RN-074). A saída fica no
+      # histórico do laço e viaja em TODO turno seguinte — sem teto, um `find`
+      # numa árvore grande derruba a execução com 413 do provider.
+      TERMINAL_OUTPUT_MAX_BYTES: ${TERMINAL_OUTPUT_MAX_BYTES:-32768}
       SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
       # Já era lido do ambiente pelo runtime.exs, mas não era exposto aqui —
       # o default (8) é justo pro caminho feliz e apertado quando o agente
