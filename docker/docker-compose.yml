@@ -144,7 +144,13 @@ services:
       # Já era lido do ambiente pelo runtime.exs, mas não era exposto aqui —
       # o default (8) é justo pro caminho feliz e apertado quando o agente
       # precisa de ciclos de correção (escrever, testar, corrigir, testar).
+      #
+      # Desde a FASE 14d este `8` é só o do agente CONVERSACIONAL: quem
+      # trabalha com ferramenta pesada tem teto próprio, e a razão de cada um
+      # está em `Engine.Harness.Iteracoes`.
       TOOL_LOOP_MAX_ITERATIONS: ${TOOL_LOOP_MAX_ITERATIONS:-8}
+      TOOL_LOOP_MAX_ITERATIONS_EXECUCAO: ${TOOL_LOOP_MAX_ITERATIONS_EXECUCAO:-60}
+      TOOL_LOOP_MAX_ITERATIONS_GATE: ${TOOL_LOOP_MAX_ITERATIONS_GATE:-60}
       # Também já era lido do runtime.exs sem estar exposto aqui. Com modelo
       # local o primeiro turno carrega os pesos antes do primeiro token, e
       # trocar de modelo entre agentes (dev e qa) paga esse custo mais de uma
