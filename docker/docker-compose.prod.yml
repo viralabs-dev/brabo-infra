@@ -116,9 +116,10 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-8088}}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
       OLLAMA_REQUEST_TIMEOUT_MS: ${OLLAMA_REQUEST_TIMEOUT_MS:-300000}
-      # Os quatro segredos abaixo têm default de DESENVOLVIMENTO só para este
-      # compose subir sem configuração. Em produção real são obrigatórios e
-      # vindos de um cofre — ver docs/adr/0024.
+      # Os segredos abaixo têm default de DESENVOLVIMENTO só para este compose
+      # subir sem configuração. Em produção real são obrigatórios e vindos de um
+      # cofre — ver docs/adr/0024. A exceção é GIT_OAUTH_STATE_SECRET, logo
+      # abaixo: lá o default virou falha de boot (ADR 0059).
       CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-dev-master-key-change-me}
       # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
       # assina o access token; BRABO_SERVICE_TOKEN autentica o tráfego interno
@@ -130,7 +131,13 @@ services:
       # sem dizer que a variável existe.
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-auth-jwt-secret-change-me}
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
-      GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-dev-oauth-state-secret-change-me}
+      # SEM default, ao contrário dos dois acima: este compose roda com
+      # NODE_ENV=production, e `oauth-state-secret.ts` recusa a chave de exemplo
+      # ali. Repetir o literal aqui era o caminho REAL pelo qual uma produção
+      # subia assinando o `state` do OAuth com uma chave publicada neste repo —
+      # a variável ficava definida, então "exigir que não seja vazia" não teria
+      # pego nada. Vazia, o boot falha dizendo o que gerar.
+      GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
       GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}

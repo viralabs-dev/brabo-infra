@@ -28,6 +28,13 @@ SMOKE_USER="${SMOKE_USER:-owner@brabo.dev}"
 # A política do domínio exige 12 caracteres — "admin123" não passaria.
 SMOKE_PASSWORD="${SMOKE_PASSWORD:-brabo12345678}"
 
+# Este compose roda com NODE_ENV=production, e desde o ADR 0059 a api recusa
+# subir sem uma chave própria para assinar o `state` do OAuth de git. Gerada
+# aqui, e descartada com o stack: o smoke não conecta git em provider nenhum,
+# só precisa que o boot passe. Um valor fixo no script seria mais um literal
+# público — exatamente o que a checagem existe para impedir.
+export GIT_OAUTH_STATE_SECRET="${GIT_OAUTH_STATE_SECRET:-$(openssl rand -base64 32)}"
+
 API="http://localhost:${API_PORT}"
 ENGINE="http://localhost:${ENGINE_PORT}"
 WEB="http://localhost:${WEB_PORT}"
