@@ -152,7 +152,15 @@ PROJ_ID="$(printf '%s' "${proj}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
 [[ -n "${PROJ_ID}" ]] || fail "projeto sem id na resposta: ${proj}"
 ok "projeto ${PROJ_ID}"
 
+# `kind` é OBRIGATÓRIO desde a FASE 20: o tipo da sessão é escolha de quem a
+# abre, e a rota recusa com 400 sem ele. Esta linha é a prova de que a mudança
+# tem consumidor fora do web — foi ela que reprovou o smoke quando o campo
+# nasceu sem que ninguém aqui soubesse.
+#
+# `consultiva` porque o smoke só exercita criar → ativar → encerrar; ele nunca
+# ativa EXECUÇÃO, e `execution.activated` numa consultiva é 409 por desenho.
 sess="$(curl -sS --max-time 60 -X POST "${auth[@]}" \
+  -d '{"kind":"consultiva"}' \
   "${API}/projects/${PROJ_ID}/sessions")" || fail "POST /projects/:id/sessions não respondeu"
 SESS_ID="$(printf '%s' "${sess}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
 [[ -n "${SESS_ID}" ]] || fail "sessão sem id na resposta: ${sess}"
