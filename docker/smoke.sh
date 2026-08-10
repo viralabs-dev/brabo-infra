@@ -35,7 +35,7 @@ SMOKE_PASSWORD="${SMOKE_PASSWORD:-brabo12345678}"
 # público — exatamente o que a checagem existe para impedir.
 export GIT_OAUTH_STATE_SECRET="${GIT_OAUTH_STATE_SECRET:-$(openssl rand -base64 32)}"
 
-# Os quatro segredos irmãos (RN-110, mesmo padrão do ADR 0059/RN-093): a api
+# Os quatro segredos irmãos (RN-114, mesmo padrão do ADR 0059/RN-093): a api
 # recusa subir com o literal de exemplo, e o compose de produção parou de
 # suprir esses defaults. Mesma lógica do de cima — gerados aqui, descartados
 # com o stack.
