@@ -92,7 +92,7 @@ services:
       # SEM default: o `runtime.exs` já derruba o boot sem ela (bloco :prod,
       # boilerplate padrão do Phoenix) — o defeito real era este compose
       # suprir o literal público como fallback e mascarar esse `raise`
-      # (RN-110, mesmo padrão do ADR 0059/RN-093).
+      # (RN-114, mesmo padrão do ADR 0059/RN-093).
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-}
       # Sem PHX_SERVER aqui: migração não sobe endpoint HTTP.
     command: ["/app/bin/engine", "eval", "Engine.Release.migrate()"]
@@ -130,7 +130,7 @@ services:
       # caminho REAL pelo qual uma produção subia com uma chave publicada
       # neste repo — a variável ficava definida, então "exigir que não seja
       # vazia" não pegaria nada. Vazia, o boot falha dizendo o que gerar
-      # (ADR 0059, RN-093/RN-110). A linha continua aqui, com valor vazio,
+      # (ADR 0059, RN-093/RN-114). A linha continua aqui, com valor vazio,
       # porque omiti-la esconderia que a variável existe.
       CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-}
       # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
@@ -186,7 +186,7 @@ services:
       PHX_SERVER: "true"
       # SEM default (ver o comentário no serviço `migrate-engine`, acima): o
       # `raise` já existe no `runtime.exs`, e era este fallback que o
-      # mascarava (RN-110).
+      # mascarava (RN-114).
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-}
       PHX_HOST: ${PHX_HOST:-localhost}
       # Libera a origem do web no handshake do websocket dos canais. Sem isto o
