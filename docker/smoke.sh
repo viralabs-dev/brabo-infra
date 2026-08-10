@@ -35,6 +35,16 @@ SMOKE_PASSWORD="${SMOKE_PASSWORD:-brabo12345678}"
 # público — exatamente o que a checagem existe para impedir.
 export GIT_OAUTH_STATE_SECRET="${GIT_OAUTH_STATE_SECRET:-$(openssl rand -base64 32)}"
 
+# Os quatro segredos irmãos (RN-110, mesmo padrão do ADR 0059/RN-093): a api
+# recusa subir com o literal de exemplo, e o compose de produção parou de
+# suprir esses defaults. Mesma lógica do de cima — gerados aqui, descartados
+# com o stack.
+export AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-$(openssl rand -base64 32)}"
+export BRABO_SERVICE_TOKEN="${BRABO_SERVICE_TOKEN:-$(openssl rand -base64 32)}"
+export CREDENTIALS_MASTER_KEY="${CREDENTIALS_MASTER_KEY:-$(openssl rand -base64 32)}"
+# Phoenix quer pelo menos 64 bytes — o dobro do tamanho dos outros três.
+export SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -base64 64)}"
+
 API="http://localhost:${API_PORT}"
 ENGINE="http://localhost:${ENGINE_PORT}"
 WEB="http://localhost:${WEB_PORT}"
