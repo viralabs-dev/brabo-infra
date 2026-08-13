@@ -101,8 +101,14 @@ services:
       - api_root_node_modules:/workspace/node_modules
       - api_app_node_modules:/workspace/apps/api/node_modules
       - api_shared_node_modules:/workspace/packages/shared/node_modules
-      - git_local_repos:/data/git-repos
-      - project_workspaces:/data/project-workspaces
+      # As duas linhas abaixo aceitam pasta REAL do host, não só volume
+      # Docker gerenciado — ver GIT_LOCAL_REPOS_HOST_DIR/PROJECT_WORKSPACES_HOST_DIR
+      # em .env.example. Sem a variável definida, o lado esquerdo é o NOME de
+      # um volume declarado (comportamento de hoje, inalterado); definida com
+      # um caminho (absoluto, `./relativo` ou `~/...`), o Compose troca para
+      # bind mount na hora — mesma linha serve os dois casos.
+      - ${GIT_LOCAL_REPOS_HOST_DIR:-git_local_repos}:/data/git-repos
+      - ${PROJECT_WORKSPACES_HOST_DIR:-project_workspaces}:/data/project-workspaces
     depends_on:
       postgres:
         condition: service_healthy
@@ -193,8 +199,12 @@ services:
       # repo local. Com o mount read-only o push morre em "remote unpack
       # failed: unable to create temporary object directory", e a PR do dev
       # agent nunca chega a abrir.
-      - git_local_repos:/data/git-repos
-      - project_workspaces:/data/project-workspaces
+      #
+      # Mesma troca opcional para pasta real do host que o serviço `api` já
+      # faz acima — TEM que ser o MESMO valor nos dois serviços (mesmo
+      # volume/pasta), senão api e engine enxergam árvores diferentes.
+      - ${GIT_LOCAL_REPOS_HOST_DIR:-git_local_repos}:/data/git-repos
+      - ${PROJECT_WORKSPACES_HOST_DIR:-project_workspaces}:/data/project-workspaces
     depends_on:
       postgres:
         condition: service_healthy
