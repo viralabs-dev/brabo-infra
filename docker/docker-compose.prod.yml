@@ -89,7 +89,11 @@ services:
       - /home/engine
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
-      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-only-secret-key-base-at-least-64-bytes-long-change-me-in-production}
+      # SEM default: o `runtime.exs` já derruba o boot sem ela (bloco :prod,
+      # boilerplate padrão do Phoenix) — o defeito real era este compose
+      # suprir o literal público como fallback e mascarar esse `raise`
+      # (RN-114, mesmo padrão do ADR 0059/RN-093).
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-}
       # Sem PHX_SERVER aqui: migração não sobe endpoint HTTP.
     command: ["/app/bin/engine", "eval", "Engine.Release.migrate()"]
     depends_on:
@@ -116,27 +120,25 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-8088}}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
       OLLAMA_REQUEST_TIMEOUT_MS: ${OLLAMA_REQUEST_TIMEOUT_MS:-300000}
-      # Os segredos abaixo têm default de DESENVOLVIMENTO só para este compose
-      # subir sem configuração. Em produção real são obrigatórios e vindos de um
-      # cofre — ver docs/adr/0024. A exceção é GIT_OAUTH_STATE_SECRET, logo
-      # abaixo: lá o default virou falha de boot (ADR 0059).
-      CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-dev-master-key-change-me}
+      # Os quatro segredos abaixo (mais o GIT_OAUTH_STATE_SECRET, logo em
+      # seguida) NÃO têm default de desenvolvimento aqui, de propósito. Este
+      # compose roda com NODE_ENV=production, e cada resolutor
+      # (auth-key-material.ts, service-token.ts,
+      # envelope-encryption.service.ts) recusa subir com o valor ausente, com
+      # o literal de exemplo do repositório (que é PÚBLICO — está no
+      # `.env.example`), ou curto demais. Repetir o literal aqui era o
+      # caminho REAL pelo qual uma produção subia com uma chave publicada
+      # neste repo — a variável ficava definida, então "exigir que não seja
+      # vazia" não pegaria nada. Vazia, o boot falha dizendo o que gerar
+      # (ADR 0059, RN-093/RN-114). A linha continua aqui, com valor vazio,
+      # porque omiti-la esconderia que a variável existe.
+      CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-}
       # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
       # assina o access token; BRABO_SERVICE_TOKEN autentica o tráfego interno
-      # engine <-> api nos dois sentidos.
-      #
-      # Os defaults são os MESMOS do código (auth-key-material.ts,
-      # service-token.ts e o runtime.exs do engine). Ter que repetir o valor
-      # aqui é chato, mas a alternativa — omitir a linha — deixaria o compose
-      # sem dizer que a variável existe.
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-auth-jwt-secret-change-me}
-      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
-      # SEM default, ao contrário dos dois acima: este compose roda com
-      # NODE_ENV=production, e `oauth-state-secret.ts` recusa a chave de exemplo
-      # ali. Repetir o literal aqui era o caminho REAL pelo qual uma produção
-      # subia assinando o `state` do OAuth com uma chave publicada neste repo —
-      # a variável ficava definida, então "exigir que não seja vazia" não teria
-      # pego nada. Vazia, o boot falha dizendo o que gerar.
+      # engine <-> api nos dois sentidos — MESMO valor nos dois serviços deste
+      # compose (ver a env do serviço `engine`, abaixo).
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
       GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
@@ -172,16 +174,20 @@ services:
       - /tmp
       - /home/engine
     environment:
-      # MESMO default do lado da api — se as duas pontas divergissem, o engine
+      # MESMA variável do lado da api, sem default (ver o comentário grande no
+      # serviço `api`, acima) — se as duas pontas divergissem, o engine
       # levaria 401 em toda chamada interna e o sintoma apareceria só no
       # primeiro handoff.
-      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
       PORT: 4000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       # Obrigatórios no release (runtime.exs, bloco :prod):
       # PHX_SERVER liga o endpoint HTTP — sem ele o container sobe e não escuta.
       PHX_SERVER: "true"
-      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-only-secret-key-base-at-least-64-bytes-long-change-me-in-production}
+      # SEM default (ver o comentário no serviço `migrate-engine`, acima): o
+      # `raise` já existe no `runtime.exs`, e era este fallback que o
+      # mascarava (RN-114).
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-}
       PHX_HOST: ${PHX_HOST:-localhost}
       # Libera a origem do web no handshake do websocket dos canais. Sem isto o
       # painel do time ao vivo fica mudo em :prod (check_origin estrito).
