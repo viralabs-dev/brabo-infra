@@ -72,6 +72,75 @@ configurar_cores() {
 }
 
 # ---------------------------------------------------------------------------
+# .env ausente (auto-cura)
+#
+# POR QUE EXISTE: todo item de Docker do menu chama `${COMPOSE}`, que é
+# `docker compose --env-file .env` — sem o arquivo, o compose falha (ou sobe
+# com as variáveis todas vazias) antes de qualquer container existir. Em vez
+# de fazer quem clona o repo pela primeira vez descobrir isso batendo a
+# cabeça no erro do compose, o menu copia `.env.example` (valores de dev,
+# já documentados linha a linha) para `.env` sozinho, na primeira vez.
+# ---------------------------------------------------------------------------
+garantir_env() {
+  local env="${REPO_ROOT}/.env" exemplo="${REPO_ROOT}/.env.example"
+  [[ -e "${env}" ]] && return 0
+  printf '%s%s%s\n' "${C_WARNING}" "bootstrap: .env não existe — copiando de .env.example" "${C_RESET}" >&2
+  cp "${exemplo}" "${env}"
+}
+
+# ---------------------------------------------------------------------------
+# Donos corrompidos por container (auto-cura)
+#
+# POR QUE EXISTE: os Dockerfiles de dev (docker/*/Dockerfile) não têm `USER` e
+# rodam `pnpm install`/`mix deps.get` como root dentro de `/workspace`, que é
+# bind-mount do repo (`..:/workspace`). O compose isola a maior parte disso
+# com volumes nomeados (api_app_node_modules, engine_build...), mas pastas
+# fora dessa lista — `.pnpm-store`, `website/node_modules`, `apps/*/dist` — ou
+# que já existiam ANTES dos volumes serem adicionados, ficam com dono root no
+# host. Todo item do menu que roda `pnpm`/`mix` fora do Docker (Test, DB
+# generate...) esbarra nelas com "permission denied". Em vez de depender de
+# alguém lembrar de rodar `sudo chown` à mão — em toda máquina, toda vez que
+# regredir —, o menu se auto-cura ANTES de abrir: varre a mesma lista de
+# pastas regeneráveis do `.gitignore` e devolve o dono quando encontra algo
+# escrito por root.
+# ---------------------------------------------------------------------------
+PASTAS_REGENERAVEIS=(
+  node_modules
+  dist
+  .pnpm-store
+  apps/api/node_modules
+  apps/api/dist
+  apps/web/node_modules
+  apps/web/dist
+  apps/engine/_build
+  apps/engine/deps
+  packages/shared/node_modules
+  packages/shared/dist
+  website/node_modules
+  website/build
+)
+
+corrigir_donos() {
+  local meu_uid alvo caminho pendentes=()
+  meu_uid="$(id -u)"
+
+  for alvo in "${PASTAS_REGENERAVEIS[@]}"; do
+    caminho="${REPO_ROOT}/${alvo}"
+    [[ -e "${caminho}" ]] || continue
+    # head -n1 (não `-quit`, que é só GNU find) pra funcionar igual em BSD find.
+    if [[ -n "$(find "${caminho}" -not -user "${meu_uid}" -print 2>/dev/null | head -n 1)" ]]; then
+      pendentes+=("${caminho}")
+    fi
+  done
+
+  (( ${#pendentes[@]} == 0 )) && return 0
+
+  printf '%s%s%s\n' "${C_WARNING}" "bootstrap: pastas com dono root (escritas pelo Docker) — corrigindo antes de continuar:" "${C_RESET}" >&2
+  printf '  %s\n' "${pendentes[@]}" >&2
+  sudo chown -R "${meu_uid}:$(id -g)" "${pendentes[@]}"
+}
+
+# ---------------------------------------------------------------------------
 # A árvore de menus
 #
 # Um mapa de caminho ("1.1.2") para rótulo, comando e estado. É dado, não
@@ -449,13 +518,13 @@ desenhar_execucao_expandida() {
 
 executar() {
   local caminho="$1"
-  local rotulo comando log pid modo inicio quadro tecla codigo decorrido
+  local rotulo comando log pid modo modo_anterior inicio quadro tecla codigo decorrido
   rotulo="$(trilha "${caminho}")"
   comando="${CMD[$caminho]}"
   log="$(mktemp "${TMPDIR:-/tmp}/brabo-bootstrap.XXXXXX")"
   LOGS+=("${log}")
 
-  modo=compacto; quadro=0; inicio="${SECONDS}"; ABORTADO=0
+  modo=compacto; modo_anterior=compacto; quadro=0; inicio="${SECONDS}"; ABORTADO=0
   limpar_corpo
 
   # stdin vem de /dev/null de propósito: o comando roda em background enquanto
@@ -468,6 +537,14 @@ executar() {
 
   while kill -0 "${pid}" 2>/dev/null; do
     decorrido=$(( SECONDS - inicio ))
+    # Compacta só reescreve 2 linhas; expandida ocupa da ALTURA_BANNER+2 até
+    # LINHAS-3. Redesenhar sem limpar na TROCA de modo deixava o texto da
+    # saída expandida vazando por trás do spinner ao recolher — `limpar_corpo`
+    # só na virada (não a cada quadro) tira o resto sem piscar a animação.
+    if [[ "${modo}" != "${modo_anterior}" ]]; then
+      limpar_corpo
+      modo_anterior="${modo}"
+    fi
     if [[ "${modo}" == "compacto" ]]; then
       desenhar_execucao_compacta "${rotulo}" "${quadro}" "${decorrido}"
       rodape "$(( LINHAS - 2 ))" "${C_TEXT}↓${C_MUTED} ver a saída   ${C_TEXT}Ctrl+C${C_MUTED} abortar"
@@ -563,7 +640,15 @@ principal() {
       q) exit "${ULTIMO_CODIGO}" ;;
       # Sobe um nível: "1.1.1" → "1.1" → "1" → ".". Um caminho sem ponto já
       # está no primeiro nível, então o pai dele é a raiz.
-      v) if [[ "${caminho}" == *.* ]]; then
+      #
+      # Na RAIZ, desativado: sem a guarda, "." também "casa" com o padrão de
+      # glob `*.*` (o próprio ponto serve de literal) e `${caminho%.*}` corta
+      # a string inteira, deixando `caminho=""` — um estado sem folha nem
+      # filhos que só se recupera apertando `v` de novo. A raiz não tem pai;
+      # o rodapé dela já nem mostra a dica de "voltar".
+      v) if [[ "${caminho}" == "." ]]; then
+           continue
+         elif [[ "${caminho}" == *.* ]]; then
            caminho="${caminho%.*}"
          else
            caminho="."
@@ -622,6 +707,9 @@ if [[ ! -t 0 || ! -t 1 ]]; then
   printf 'sem TTY, use: bash scripts/dev/bootstrap.sh --print-commands\n' >&2
   exit 2
 fi
+
+garantir_env
+corrigir_donos
 
 STTY_ORIGINAL="$(stty -g 2>/dev/null || true)"
 trap ao_sair EXIT
