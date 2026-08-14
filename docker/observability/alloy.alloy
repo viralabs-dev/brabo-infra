@@ -1,0 +1,140 @@
+// Coleta de logs do ambiente local, equivalente ao que o Alloy faz no cluster
+// (deploy/k8s/helm/alloy-values.yaml).
+//
+// A DIFERENÇA que importa: no Kubernetes a descoberta é pela API do
+// Kubernetes e as linhas são JSON de uma linha (produção). Aqui a descoberta é
+// pelo socket do Docker e as linhas vêm do `pino-pretty`, que desenha a árvore
+// legível de desenvolvimento (ver o docblock em
+// apps/api/src/infrastructure/observability/logger.config.ts). Por isso as
+// etapas de parsing são regex, e não `stage.json`.
+//
+// O que NÃO muda entre os dois ambientes são os RÓTULOS: `app` (api/engine/web)
+// e `container`, com `trace_id` em metadado estruturado. É isso que faz o mesmo
+// dashboard funcionar nos dois lugares.
+
+logging {
+  level  = "warn"
+  format = "logfmt"
+}
+
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+
+discovery.relabel "brabo" {
+  targets = discovery.docker.containers.targets
+
+  // Só os containers deste projeto. Sem isto, qualquer container da máquina do
+  // desenvolvedor entraria no Loki.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "brabo"
+    action        = "keep"
+  }
+
+  // E, dentro do projeto, só as três APLICAÇÕES.
+  //
+  // Não é só higiene: o stack de observabilidade roda no MESMO projeto compose,
+  // então sem este filtro o Loki ingere o próprio log — e o log dessa ingestão,
+  // e assim por diante. Um laço que se alimenta sozinho, com o custo caindo em
+  // cima da máquina de quem está desenvolvendo.
+  //
+  // Postgres e Ollama ficam de fora por outro motivo: são infraestrutura de
+  // terceiros, o log deles é ruído em volume alto, e quem precisa investigá-los
+  // tem `docker compose logs`.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "api|engine|web"
+    action        = "keep"
+  }
+
+  // O serviço do compose vira `app` — o MESMO rótulo que o Alloy do cluster
+  // produz a partir de `app.kubernetes.io/name`. É a chave da portabilidade do
+  // dashboard.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "app"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/?(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "brabo" {
+  host             = "unix:///var/run/docker.sock"
+  targets          = discovery.relabel.brabo.output
+  forward_to       = [loki.process.brabo.receiver]
+  refresh_interval = "5s"
+}
+
+loki.process "brabo" {
+  forward_to = [loki.write.default.receiver]
+
+  // 1. Fora os escapes ANSI. O `pino-pretty` decide colorir pelo suporte do
+  //    terminal, e o `customPrettifiers` da árvore emite atenuação (ESC[2m)
+  //    mesmo fora de TTY. Sem esta limpeza, o nível extraído no passo seguinte
+  //    viria grudado num escape e viraria um rótulo por variação de cor.
+  //    A classe `[[:cntrl:]]` e não `\x1b`: o River processa escapes na string
+  //    ANTES de a regex ser compilada, então quantas barras invertidas escrever
+  //    vira adivinhação — e o modo de falha é silencioso (config válida, regex
+  //    que nunca casa, ANSI vazando para o painel). A classe POSIX não depende
+  //    dessa camada.
+  //    O PARÊNTESE não é enfeite: o `stage.replace` substitui os GRUPOS DE
+  //    CAPTURA, não o trecho casado. Sem grupo, a regex casa e nada é
+  //    substituído — config válida, zero erro no log, e o ANSI vazando para o
+  //    painel.
+  stage.replace {
+    expression = "([[:cntrl:]]\\[[0-9;]*[a-zA-Z])"
+    replace    = ""
+  }
+
+  // 2. Nível, do formato de desenvolvimento: "[00:10:03.654] INFO: ...".
+  stage.regex {
+    expression = "^\\[\\d{2}:\\d{2}:\\d{2}\\.\\d+\\]\\s+(?P<level>[A-Z]+):"
+  }
+
+  // 3. Nível do Elixir: "13:17:07.532 debug QUERY OK ...". O engine não usa
+  //    pino; são dois formatos no mesmo pipeline, e cada regex que não casa
+  //    simplesmente não captura nada.
+  stage.regex {
+    expression = "^\\d{2}:\\d{2}:\\d{2}\\.\\d+\\s+\\[?(?P<level_ex>debug|info|warn|warning|error|notice)\\]?"
+  }
+
+  // Um template só, com os três casos EXPLÍCITOS.
+  //
+  // O `else` final não é zelo: sem ele, o template do Go renderiza a chave
+  // ausente como o texto literal `<NO VALUE>`, e era isso que aparecia como
+  // valor de nível no seletor do dashboard. Linha de continuação da árvore do
+  // pino-pretty não tem nível de verdade — dizer `OUTRO` é honesto e mantém a
+  // cardinalidade fechada.
+  stage.template {
+    source   = "level"
+    template = "{{ if .Value }}{{ ToUpper .Value }}{{ else if .level_ex }}{{ ToUpper .level_ex }}{{ else }}OUTRO{{ end }}"
+  }
+
+  // `level` é RÓTULO (cardinalidade baixa e fechada: DEBUG/INFO/WARN/ERROR),
+  // então serve de filtro barato no dashboard.
+  stage.labels {
+    values = { level = "level" }
+  }
+
+  // 4. `trace_id` é metadado ESTRUTURADO, nunca rótulo — é alta cardinalidade,
+  //    e virar rótulo explodiria o índice do Loki. Mesma decisão do cluster.
+  stage.regex {
+    expression = "trace_id:\\s*(?P<trace_id>[0-9a-f]{32})"
+  }
+
+  stage.structured_metadata {
+    values = { trace_id = "trace_id" }
+  }
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

@@ -1,0 +1,21 @@
+# Carrega os dashboards versionados do repositório.
+#
+# O diretório montado é `deploy/k8s/observability/dashboards/` — o MESMO que o
+# bootstrap do cluster transforma em ConfigMap. Um dashboard novo entra nos dois
+# ambientes de uma vez; não há cópia local para divergir.
+apiVersion: 1
+
+providers:
+  - name: brabo
+    orgId: 1
+    folder: Brabo
+    type: file
+    disableDeletion: true
+    # `editable: false` de propósito: o dashboard é código. Editar pela UI e
+    # perder no próximo boot é pior que não poder editar.
+    editable: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/brabo
+      foldersFromFilesStructure: false
