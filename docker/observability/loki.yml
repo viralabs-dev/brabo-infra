@@ -1,0 +1,53 @@
+# Loki do ambiente local, espelhando as decisões de deploy/k8s/helm/loki-values.yaml.
+#
+# A config padrão da imagem não serve por UM motivo concreto: ela não habilita
+# `allow_structured_metadata`, e sem isso o `stage.structured_metadata` do
+# coletor não guarda o `trace_id` — a etapa roda, não dá erro, e o campo
+# simplesmente não existe na consulta. Mesmo modo de falha silenciosa do
+# `stage.replace` sem grupo de captura.
+#
+# Retenção de 24h, igual ao cluster: isto é ferramenta de investigação do dia,
+# não arquivo histórico.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    # `tsdb` + `v13` é o que suporta metadado estruturado. Schema antigo aceita
+    # a flag e ignora o campo.
+    - from: 2024-04-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  allow_structured_metadata: true
+  retention_period: 24h
+  volume_enabled: true
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+# Sem telemetria para o Grafana Labs a partir da máquina de quem desenvolve.
+analytics:
+  reporting_enabled: false
