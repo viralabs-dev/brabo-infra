@@ -1,0 +1,169 @@
+{
+  "uid": "brabo-logs",
+  "title": "Brabo — logs",
+  "tags": ["brabo", "logs"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "app",
+        "label": "Serviço",
+        "description": "api, engine ou web. Deixe em All para ver os três juntos.",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "brabo-loki" },
+        "query": "label_values(app)",
+        "refresh": 1,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] }
+      },
+      {
+        "name": "nivel",
+        "label": "Nível",
+        "description": "Linha sem nível reconhecido continua aparecendo em All — por isso o curinga aqui é .* e não .+",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "brabo-loki" },
+        "query": "label_values(level)",
+        "refresh": 1,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] }
+      },
+      {
+        "name": "busca",
+        "label": "Contém",
+        "description": "Filtro de texto livre, sem distinção de maiúsculas. Vazio não filtra.",
+        "type": "textbox",
+        "query": "",
+        "current": { "selected": false, "text": "", "value": "" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Linhas por minuto, por serviço",
+      "description": "Volume de log. Um serviço que despenca para zero costuma ser o primeiro sinal de que ele morreu ou travou.",
+      "datasource": { "type": "loki", "uid": "brabo-loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 12, "showPoints": "never", "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "brabo-loki" },
+          "expr": "sum by (app) (count_over_time({app=~\"$app\"} [1m]))",
+          "legendFormat": "{{app}}",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Linhas por minuto, por nível",
+      "description": "ERROR e WARN subindo enquanto INFO fica igual é degradação sem queda — o caso que passa despercebido.",
+      "datasource": { "type": "loki", "uid": "brabo-loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 12, "showPoints": "never", "lineWidth": 1 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "ERROR" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "WARN" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "brabo-loki" },
+          "expr": "sum by (level) (count_over_time({app=~\"$app\"} [1m]))",
+          "legendFormat": "{{level}}",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Logs — $app",
+      "description": "O fio completo. Escolha o serviço no seletor acima, ou deixe All para ver api, engine e web intercalados em ordem cronológica.",
+      "datasource": { "type": "loki", "uid": "brabo-loki" },
+      "gridPos": { "h": 15, "w": 24, "x": 0, "y": 8 },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "brabo-loki" },
+          "expr": "{app=~\"$app\", level=~\"$nivel\"} |~ `(?i)$busca`",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "logs",
+      "title": "Só erros e avisos",
+      "description": "Independe do seletor de nível: casa pelo RÓTULO quando o parser reconheceu o nível, e pelo TEXTO quando não reconheceu — é o que evita perder o erro de um formato de log ainda não mapeado.",
+      "datasource": { "type": "loki", "uid": "brabo-loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 23 },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "brabo-loki" },
+          "expr": "{app=~\"$app\"} |~ `(?i)error|exception|warn|falhou|CRASH`",
+          "queryType": "range"
+        }
+      ]
+    }
+  ]
+}
