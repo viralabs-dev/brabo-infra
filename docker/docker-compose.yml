@@ -109,6 +109,20 @@ services:
       # bind mount na hora — mesma linha serve os dois casos.
       - ${GIT_LOCAL_REPOS_HOST_DIR:-git_local_repos}:/data/git-repos
       - ${PROJECT_WORKSPACES_HOST_DIR:-project_workspaces}:/data/project-workspaces
+      # PROJETO NO MODO **LOCAL** (ADR 0072): o código mora numa pasta SUA, de
+      # caminho livre, e as duas linhas acima não participam disso. Para cada
+      # pasta que você for usar, acrescente aqui E no serviço `engine` a MESMA
+      # linha, com o mesmo caminho absoluto dos dois lados do `:` — é o caminho
+      # gravado em `projects.workspace_path`, lido pelos DOIS processos, e
+      # montar em lugares diferentes faria o engine escrever onde a api não lê:
+      #
+      #   - /home/voce/projetos/loja:/home/voce/projetos/loja
+      #
+      # Sem a montagem, a CRIAÇÃO do projeto é recusada com 400 e a mensagem
+      # traz esta linha (RN-170) — o projeto não nasce para travar depois, na
+      # primeira ferramenta do primeiro agente. Ver docs/runbook.md, seção
+      # "Projeto no modo Local". Não é variável de ambiente de propósito: o
+      # caminho é dado do PROJETO, não da instalação.
     depends_on:
       postgres:
         condition: service_healthy
@@ -205,6 +219,15 @@ services:
       # volume/pasta), senão api e engine enxergam árvores diferentes.
       - ${GIT_LOCAL_REPOS_HOST_DIR:-git_local_repos}:/data/git-repos
       - ${PROJECT_WORKSPACES_HOST_DIR:-project_workspaces}:/data/project-workspaces
+      # PROJETO NO MODO **LOCAL** (ADR 0072): a MESMA linha que você
+      # acrescentar no serviço `api` precisa vir aqui também, com o mesmo
+      # caminho absoluto — o engine é quem monta o worktree e escreve o código:
+      #
+      #   - /home/voce/projetos/loja:/home/voce/projetos/loja
+      #
+      # Montar só na api produz um projeto que a api ACEITA (ela valida o que
+      # ela vê) e o engine não enxerga. Ver docs/runbook.md, "Projeto no modo
+      # Local".
     depends_on:
       postgres:
         condition: service_healthy

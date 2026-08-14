@@ -15,6 +15,8 @@
 #                                              # imprime a árvore inteira e sai
 #   bash scripts/dev/bootstrap.sh --print-commands --path 1.1
 #                                              # só a subárvore de um caminho
+#   bash scripts/dev/bootstrap.sh --print-window <log> <linhas> <deslocamento>
+#                                              # recorta a janela do log (teste)
 #
 # Variáveis de ambiente:
 #   NO_COLOR=1          desliga a cor (o script também desliga sozinho sem TTY)
@@ -22,7 +24,9 @@
 #   POSTGRES_DB         banco do Postgres    (default: brabo, igual ao compose)
 #
 # Teclas: dígito escolhe (sem Enter), `v` volta, `q` sai, `↓`/`↑` mostram e
-# escondem a saída de um comando em execução. Todas aparecem no rodapé.
+# escondem a saída de um comando em execução. Com a saída à mostra, a roda do
+# mouse, `j`/`k` e PageUp/PageDown rolam o log inteiro e `G` volta ao fim (ao
+# vivo). Todas aparecem no rodapé.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -300,7 +304,25 @@ limpar_corpo() {
 
 definir_regiao() { printf '\033[%d;%dr' "$(( ALTURA_BANNER + 1 ))" "${LINHAS}"; }
 
+# ---------------------------------------------------------------------------
+# Roda do mouse
+#
+# `?1000` liga o rastreio de botão (a roda entra nele como botão 64/65) e
+# `?1006` pede o relato em SGR — `ESC [ < Cb ; Cx ; Cy M`, tudo em ASCII
+# imprimível. O modo X10 original relata a posição como BYTES CRUS somados a
+# 32, e coluna > 95 vira byte fora do ASCII: sob locale UTF-8 o `read` do bash
+# junta esse byte ao seguinte e a sequência chega quebrada. Por isso SGR, e não
+# o modo antigo.
+#
+# Ligar é local à tela de execução (é a única onde rolar significa algo), mas
+# DESLIGAR é incondicional em `restaurar_terminal`: um terminal que sai daqui
+# ainda relatando mouse enche o shell de lixo a cada clique.
+# ---------------------------------------------------------------------------
+ligar_mouse()    { printf '\033[?1000h\033[?1006h'; }
+desligar_mouse() { printf '\033[?1006l\033[?1000l'; }
+
 restaurar_terminal() {
+  desligar_mouse       # antes de tudo: sair relatando mouse quebra o shell
   printf '\033[r'      # solta a região de rolagem
   printf '\033[?25h'   # cursor de volta
   printf '%s' "${C_RESET}"
@@ -365,26 +387,60 @@ regua() {
 # ---------------------------------------------------------------------------
 # Leitura de tecla
 #
-# Seta é sequência de escape: chega `ESC` e mais dois bytes. O timeout curto
-# no segundo `read` é o que separa uma seta de um ESC solto.
+# Seta é sequência de escape, e o timeout curto no segundo `read` é o que
+# separa uma seta de um ESC solto.
+#
+# O parser é GENÉRICO de propósito. Ler dois bytes fixos depois do ESC — o que
+# havia aqui — cobre `↑`/`↓` (`\e[A`/`\e[B`) e mais nada: PageUp é `\e[5~`
+# (quatro bytes) e a roda do mouse em SGR é `\e[<64;12;34M` (comprimento
+# variável). E o estrago não é perder a tecla: os bytes que sobram voltam como
+# teclas SOLTAS na leitura seguinte — como o menu trata `[1-9]` como escolha,
+# um giro de roda dispararia itens do menu. Por isso a leitura vai até o byte
+# FINAL da sequência CSI (0x40–0x7E), qualquer que seja o tamanho dela.
 # ---------------------------------------------------------------------------
+BYTES_DE_PARAMETRO='^[0-9;:<=>?]$'   # 0x30–0x3F: o miolo de uma sequência CSI
+
 ler_tecla() {
-  local tempo="${1:-}" k resto
+  local tempo="${1:-}" k introdutor corpo byte botao
   if [[ -n "${tempo}" ]]; then
     IFS= read -rsn1 -t "${tempo}" k || { printf ''; return 0; }
   else
     IFS= read -rsn1 k || { printf 'q'; return 0; }
   fi
-  if [[ "${k}" == $'\033' ]]; then
-    IFS= read -rsn2 -t 0.05 resto || resto=''
-    case "${resto}" in
-      '[A') printf 'cima' ;;
-      '[B') printf 'baixo' ;;
-      *)    printf 'esc' ;;
+  if [[ "${k}" != $'\033' ]]; then printf '%s' "${k}"; return 0; fi
+
+  # Só `[` (CSI) e `O` (SS3, as setas em modo de aplicação) abrem sequência.
+  IFS= read -rsn1 -t 0.05 introdutor || introdutor=''
+  if [[ "${introdutor}" != '[' && "${introdutor}" != 'O' ]]; then
+    printf 'esc'; return 0
+  fi
+
+  corpo=''
+  while IFS= read -rsn1 -t 0.05 byte; do
+    corpo+="${byte}"
+    [[ "${byte}" =~ ${BYTES_DE_PARAMETRO} ]] || break
+  done
+
+  # Mouse em SGR: `<botão;coluna;linha` e `M` (pressão) ou `m` (soltura). Só a
+  # roda interessa — clique e arraste não têm significado neste menu, e devolver
+  # vazio para eles é o que impede um clique de virar tecla.
+  if [[ "${corpo}" == '<'* ]]; then
+    botao="${corpo#<}"; botao="${botao%%;*}"
+    case "${botao}" in
+      64) printf 'roda_cima' ;;
+      65) printf 'roda_baixo' ;;
+      *)  printf '' ;;
     esac
     return 0
   fi
-  printf '%s' "${k}"
+
+  case "${corpo}" in
+    'A')  printf 'cima' ;;
+    'B')  printf 'baixo' ;;
+    '5~') printf 'pagina_cima' ;;
+    '6~') printf 'pagina_baixo' ;;
+    *)    printf '' ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
@@ -478,6 +534,61 @@ postgres_de_pe() {
 PID_ATUAL=0
 ABORTADO=0
 
+# Quantas linhas a janela do log está deslocada para TRÁS. Zero significa colada
+# no fim — o comportamento antigo, acompanhando a saída ao vivo.
+DESLOCAMENTO=0
+
+rolar() {
+  local log="$1" delta="$2" total teto
+  total="$(contar_linhas "${log}")"
+  # Rolar além do começo do arquivo mostraria tela vazia e daria a impressão de
+  # que o log sumiu; o teto é o que sobra depois do que já cabe na tela.
+  teto=$(( total - $(altura_janela) ))
+  (( teto < 0 )) && teto=0
+  DESLOCAMENTO=$(( DESLOCAMENTO + delta ))
+  (( DESLOCAMENTO < 0 )) && DESLOCAMENTO=0
+  (( DESLOCAMENTO > teto )) && DESLOCAMENTO="${teto}"
+  return 0
+}
+
+# Devolve 0 quando a tecla era de rolagem (e já a aplicou), 1 quando não era.
+# Quem chama usa a resposta para ABRIR a saída: rolar com ela escondida não teria
+# efeito visível nenhum, e o usuário concluiria que a roda não funciona.
+#
+# A roda anda 3 linhas (o passo que os terminais usam), `j`/`k` andam uma e
+# PageUp/PageDown andam uma tela cheia menos uma linha — a linha repetida é o
+# que dá a costura entre uma página e a seguinte.
+tratar_rolagem() {
+  local tecla="$1" log="$2" pagina
+  pagina=$(( $(altura_janela) - 1 )); (( pagina < 1 )) && pagina=1
+  case "${tecla}" in
+    roda_cima)    rolar "${log}" 3 ;;
+    roda_baixo)   rolar "${log}" -3 ;;
+    k)            rolar "${log}" 1 ;;
+    j)            rolar "${log}" -1 ;;
+    pagina_cima)  rolar "${log}" "${pagina}" ;;
+    pagina_baixo) rolar "${log}" "-${pagina}" ;;
+    G)            DESLOCAMENTO=0 ;;
+    *)            return 1 ;;
+  esac
+  return 0
+}
+
+# O rodapé precisa dizer que a janela CONGELOU, senão o log parado no meio de um
+# comando que ainda escreve parece o comando ter travado.
+dicas_rolagem() {
+  if (( DESLOCAMENTO > 0 )); then
+    printf '%scongelado%s em -%s linhas   %sG%s ao vivo' \
+      "${C_WARNING}" "${C_MUTED}" "${DESLOCAMENTO}" "${C_TEXT}" "${C_MUTED}"
+  else
+    # Com o rastreio de mouse ligado, arrastar não seleciona mais texto: o
+    # terminal manda o arrasto para cá. Segurar Shift devolve a seleção nativa —
+    # e quem não souber disso vai achar que o menu quebrou o copiar e colar.
+    printf '%sroda/jk/PgUp%s rolar   %sShift%s p/ selecionar' \
+      "${C_TEXT}" "${C_MUTED}" "${C_TEXT}" "${C_MUTED}"
+  fi
+}
+
 matar_arvore() {
   local p="$1"
   pkill -TERM -P "${p}" 2>/dev/null || true
@@ -502,29 +613,68 @@ desenhar_execucao_compacta() {
   mover $(( linha + 2 )) 1; printf '\033[2K      %sexecutando… %ss%s' "${C_MUTED}" "${decorrido}" "${C_RESET}"
 }
 
+# ---------------------------------------------------------------------------
+# A janela do log
+#
+# `tail -n` só sabe mostrar o FIM do arquivo — e é por isso que rolar não era
+# questão de ler a roda do mouse melhor: não existia DESLOCAMENTO nenhum para
+# onde rolar. A janela é o recorte `[fim - altura - deslocamento, ...]`, com
+# `sed -n 'a,bp'` (já usado no `--help` deste mesmo script), sem ferramenta nova.
+#
+# Extraída em função própria porque é a única parte disto que se testa sem TTY,
+# pelo modo `--print-window`.
+# ---------------------------------------------------------------------------
+contar_linhas() {
+  local n
+  n="$(wc -l < "$1" 2>/dev/null || printf '0')"
+  n="${n//[^0-9]/}"          # o `wc` do BSD alinha o número com espaços
+  printf '%s' "${n:-0}"
+}
+
+janela_log() {
+  local log="$1" altura="$2" deslocamento="$3" total inicio
+  (( altura < 1 )) && return 0
+  (( deslocamento < 0 )) && deslocamento=0
+  total="$(contar_linhas "${log}")"
+  inicio=$(( total - altura - deslocamento + 1 ))
+  (( inicio < 1 )) && inicio=1
+  sed -n "${inicio},$(( inicio + altura - 1 ))p" "${log}" 2>/dev/null || true
+}
+
+# Quantas linhas do log cabem na tela. Uma conta só, porque quem desenha e quem
+# rola (o passo de página, o teto do deslocamento) precisam do MESMO número.
+altura_janela() { printf '%s' "$(( LINHAS - 3 - (ALTURA_BANNER + 2) ))"; }
+
 desenhar_execucao_expandida() {
   local rotulo="$1" log="$2"
   local topo=$(( ALTURA_BANNER + 2 )) base=$(( LINHAS - 3 ))
-  local disponiveis=$(( base - topo )) l=0 texto
+  local disponiveis l=0 texto
+  disponiveis="$(altura_janela)"
   mover "${topo}" 1; printf '\033[2K   %s%s%s' "${C_TEXT}" "${rotulo}" "${C_RESET}"
   l=$(( topo + 1 ))
   while IFS= read -r texto; do
+    (( l > base )) && break
     mover "${l}" 1
     printf '\033[2K   %s%s%s' "${C_MUTED}" "${texto:0:$(( COLUNAS - 5 ))}" "${C_RESET}"
     l=$(( l + 1 ))
-  done < <(tail -n "${disponiveis}" "${log}" 2>/dev/null || true)
+  done < <(janela_log "${log}" "${disponiveis}" "${DESLOCAMENTO}")
   while (( l <= base )); do mover "${l}" 1; printf '\033[2K'; l=$(( l + 1 )); done
 }
 
 executar() {
   local caminho="$1"
   local rotulo comando log pid modo modo_anterior inicio quadro tecla codigo decorrido
+  local total_agora total_anterior=0
   rotulo="$(trilha "${caminho}")"
   comando="${CMD[$caminho]}"
   log="$(mktemp "${TMPDIR:-/tmp}/brabo-bootstrap.XXXXXX")"
   LOGS+=("${log}")
 
   modo=compacto; modo_anterior=compacto; quadro=0; inicio="${SECONDS}"; ABORTADO=0
+  DESLOCAMENTO=0
+  # A roda só é ligada aqui: esta é a única tela onde rolar significa algo, e
+  # rastrear mouse no menu custaria a seleção de texto por nada.
+  ligar_mouse
   limpar_corpo
 
   # stdin vem de /dev/null de propósito: o comando roda em background enquanto
@@ -549,14 +699,37 @@ executar() {
       desenhar_execucao_compacta "${rotulo}" "${quadro}" "${decorrido}"
       rodape "$(( LINHAS - 2 ))" "${C_TEXT}↓${C_MUTED} ver a saída   ${C_TEXT}Ctrl+C${C_MUTED} abortar"
     else
+      # Congelar de verdade exige compensar o CRESCIMENTO do log: o
+      # deslocamento conta linhas a partir do FIM, e o fim anda enquanto o
+      # comando escreve. Sem somar o que entrou desde o quadro anterior, a
+      # janela escorregaria uma linha a cada linha nova — e "congelado" que
+      # anda cinco vezes por segundo é pior que não congelar.
+      total_agora="$(contar_linhas "${log}")"
+      if (( DESLOCAMENTO > 0 && total_agora > total_anterior )); then
+        DESLOCAMENTO=$(( DESLOCAMENTO + total_agora - total_anterior ))
+      fi
+      total_anterior="${total_agora}"
       desenhar_execucao_expandida "${rotulo}" "${log}"
-      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↑${C_MUTED} esconder a saída   ${C_TEXT}Ctrl+C${C_MUTED} abortar"
+      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↑${C_MUTED} esconder   $(dicas_rolagem)   ${C_TEXT}Ctrl+C${C_MUTED} abortar"
     fi
     quadro=$(( quadro + 1 ))
     tecla="$(ler_tecla 0.2)"
+    if tratar_rolagem "${tecla}" "${log}"; then
+      if [[ "${modo}" == "compacto" ]]; then
+        modo=expandido
+        # A âncora do congelamento começa AGORA: herdar a contagem de antes de
+        # a saída ser escondida faria a compensação somar de uma vez tudo que o
+        # comando escreveu enquanto ninguém olhava.
+        total_anterior="$(contar_linhas "${log}")"
+      fi
+      continue
+    fi
     case "${tecla}" in
       baixo) modo=expandido ;;
-      cima)  modo=compacto ;;
+      # Recolher volta a acompanhar o fim: reabrir a saída no ponto em que se
+      # parou de olhar, minutos depois, mostraria um trecho que já não é o que
+      # está acontecendo.
+      cima)  modo=compacto; DESLOCAMENTO=0 ;;
     esac
   done
 
@@ -585,24 +758,30 @@ executar() {
 
   ULTIMO_CODIGO="${codigo}"
 
-  modo=compacto
+  modo=compacto; DESLOCAMENTO=0
   while true; do
     if [[ "${modo}" == "expandido" ]]; then
       desenhar_execucao_expandida "${rotulo}" "${log}"
-      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↑${C_MUTED} esconder   ${C_TEXT}v${C_MUTED} voltar   ${C_TEXT}q${C_MUTED} sair"
+      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↑${C_MUTED} esconder   $(dicas_rolagem)   ${C_TEXT}v${C_MUTED} voltar   ${C_TEXT}q${C_MUTED} sair"
     else
       rodape "$(( LINHAS - 2 ))" "${C_TEXT}↓${C_MUTED} ver a saída   ${C_TEXT}v${C_MUTED} voltar   ${C_TEXT}q${C_MUTED} sair"
     fi
     tecla="$(ler_tecla)"
+    # Depois que o comando termina o log está parado, então aqui não há o que
+    # congelar — mas é justamente aqui que se rola de verdade: ler o erro que
+    # passou voando é o motivo de a rolagem existir.
+    if tratar_rolagem "${tecla}" "${log}"; then modo=expandido; continue; fi
     case "${tecla}" in
       baixo) modo=expandido ;;
-      cima)  modo=compacto; limpar_corpo; mover "${linha}" 1
+      cima)  modo=compacto; DESLOCAMENTO=0; limpar_corpo; mover "${linha}" 1
              if (( codigo == 0 )); then
                printf '   %sok%s  %s%s%s' "${C_SUCCESS}" "${C_RESET}" "${C_TEXT}" "${rotulo}" "${C_RESET}"
              else
                printf '   %sfalhou%s  %s%s%s  %s(exit %s)%s' "${C_DANGER}" "${C_RESET}" "${C_TEXT}" "${rotulo}" "${C_RESET}" "${C_MUTED}" "${codigo}" "${C_RESET}"
              fi ;;
-      v)     return 0 ;;
+      # Voltar ao menu desliga o mouse na mesma volta em que ele deixa de ter
+      # uso; sair não precisa, porque o trap de EXIT desliga de qualquer jeito.
+      v)     desligar_mouse; return 0 ;;
       q)     exit "${codigo}" ;;
     esac
   done
@@ -684,18 +863,41 @@ principal() {
 # ---------------------------------------------------------------------------
 modo_impressao=0
 caminho_impressao='.'
+# `--print-window <log> <altura> <deslocamento>` existe pelo mesmo motivo do
+# `--print-commands`: um TUI não se testa por unidade, mas o RECORTE do log é
+# aritmética pura e é o que erra na prática (a borda do começo do arquivo, o
+# deslocamento maior que o log). Sem TTY e sem desenhar nada.
+janela_argumentos=()
 while (( $# > 0 )); do
   case "$1" in
     --print-commands) modo_impressao=1; shift ;;
+    --print-window)
+      shift
+      if (( $# < 3 )); then
+        printf 'uso: --print-window <log> <altura> <deslocamento>\n' >&2
+        exit 2
+      fi
+      janela_argumentos=("$1" "$2" "$3"); shift 3 ;;
     --path) caminho_impressao="${2:-}"; shift 2 ;;
     -h|--help)
-      sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      # 2,29 é EXATAMENTE o bloco de comentário do topo. O intervalo era maior
+      # que ele e o --help imprimia `set -euo pipefail` junto com a ajuda.
+      sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) printf 'argumento desconhecido: %s\n' "$1" >&2; exit 2 ;;
   esac
 done
 
 configurar_cores
+
+if (( ${#janela_argumentos[@]} == 3 )); then
+  if [[ ! -r "${janela_argumentos[0]}" ]]; then
+    printf 'log ilegível: %s\n' "${janela_argumentos[0]}" >&2
+    exit 2
+  fi
+  janela_log "${janela_argumentos[@]}"
+  exit 0
+fi
 
 if (( modo_impressao )); then
   imprimir_comandos "${caminho_impressao}"
