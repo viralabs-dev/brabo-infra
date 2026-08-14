@@ -1,0 +1,96 @@
+# Observabilidade local: Prometheus (métrica), Loki (log) e Grafana (as duas).
+#
+# É um OVERLAY opt-in, não parte do `pnpm dev`. O motivo é custo: são quatro
+# containers a mais numa máquina que já roda Postgres, Ollama e três apps.
+# Quem não está investigando nada não deve pagar por eles.
+#
+#   pnpm dev:obs        sobe o stack de dev COM observabilidade
+#   pnpm obs:down       derruba só os quatro containers de observabilidade
+#
+# O que este arquivo NÃO faz, e por quê: não sobe Tempo nem OpenTelemetry
+# Collector. Trace exige o Collector no meio (ADR 0026, decisão 9) e é escopo
+# próprio; aqui a resposta é métrica e log. O `trace_id` continua no log e serve
+# para cruzar api e engine à mão.
+#
+# Fidelidade ao cluster: os UIDs de datasource, os rótulos (`app`, `pod`,
+# `container`, `level`) e os arquivos de dashboard são os MESMOS de
+# deploy/k8s/. Um dashboard novo vale nos dois ambientes sem cópia.
+name: brabo
+
+services:
+  loki:
+    image: grafana/loki:3.3.2
+    command: -config.file=/etc/loki/loki.yml
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./observability/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3100/ready | grep -q ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  alloy:
+    image: grafana/alloy:v1.11.0
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./observability/alloy.alloy:/etc/alloy/config.alloy:ro
+      # Somente leitura: o Alloy precisa LISTAR containers e LER o log deles.
+      # Um socket do Docker montado com escrita é acesso de root ao host — em
+      # ambiente de desenvolvimento ainda assim, e por isso `:ro`.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      # 2h, igual ao cluster: isto é ferramenta de investigação do dia, não
+      # série histórica.
+      - --storage.tsdb.retention.time=2h
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    environment:
+      # Sem login em desenvolvimento: a fricção de digitar admin/admin toda vez
+      # que o container recicla não compra segurança nenhuma numa porta local.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_LOG_LEVEL: warn
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      # Os dashboards vêm do diretório versionado que o cluster também usa.
+      - ../deploy/k8s/observability/dashboards:/var/lib/grafana/dashboards/brabo:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+
+volumes:
+  loki_data:
+  alloy_data:
+  prometheus_data:
+  grafana_data:

@@ -1,0 +1,38 @@
+# Scrape do ambiente local, equivalente ao do cluster
+# (deploy/k8s/helm/prometheus-values.yaml).
+#
+# Lá os alvos vêm de `kubernetes_sd_configs` com relabel; aqui são estáticos —
+# o compose tem um container por serviço e o DNS da rede resolve pelo nome.
+#
+# Os rótulos `app` e `pod` NÃO são decoração: os dashboards versionados em
+# deploy/k8s/observability/dashboards/ agrupam por eles (o painel "Sessões
+# hospedadas por réplica do engine" usa `{{pod}}`). Emiti-los aqui é o que faz
+# o MESMO dashboard funcionar nos dois ambientes, sem uma cópia divergente.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: brabo-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['api:3000']
+        labels:
+          app: api
+          pod: brabo-api-1
+          namespace: brabo
+
+  - job_name: brabo-engine
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['engine:4000']
+        labels:
+          app: engine
+          pod: brabo-engine-1
+          namespace: brabo
+
+  # O próprio Prometheus, para saber se o scrape está vivo quando um painel
+  # aparece vazio — a primeira pergunta do runbook nesse caso.
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

@@ -1,0 +1,38 @@
+# Datasources do Grafana local.
+#
+# Os UIDs são os MESMOS do cluster (deploy/k8s/helm/grafana-values.yaml):
+# `brabo-prometheus` e `brabo-loki`. Não é detalhe — os dashboards versionados
+# referenciam datasource por UID, então mudar aqui obrigaria a manter uma cópia
+# separada dos JSON só para o ambiente local.
+#
+# O que NÃO está aqui, e por quê: o Tempo. Este stack cobre métrica e log; trace
+# exige o OpenTelemetry Collector no meio (ADR 0026, decisão 9) e é escopo
+# próprio. Em desenvolvimento o `trace_id` continua aparecendo no log — o que
+# falta é o desenho da árvore, não a correlação.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: brabo-prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+
+  - name: Loki
+    type: loki
+    uid: brabo-loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      # `trace_id` chega como metadado estruturado (ver docker/observability/
+      # alloy.alloy). Sem o Tempo aqui, ele não vira link clicável — fica como
+      # campo, que é o suficiente para copiar e cruzar com o log de outro
+      # serviço.
+      derivedFields:
+        - name: TraceID
+          matcherType: label
+          matcherRegex: trace_id
+          url: ''
