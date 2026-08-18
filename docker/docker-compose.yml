@@ -70,8 +70,18 @@ services:
       # engine <-> api nos dois sentidos.
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-auth-jwt-secret-change-me}
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
-      # Sem SMTP ainda: o link de verificação/reset sai no log da api.
+      # MAIL_TRANSPORT=log (default) — o link de verificação/reset sai no log
+      # da api. Definir MAIL_TRANSPORT=smtp aqui (contra um MailHog local, por
+      # exemplo) exige também SMTP_HOST/SMTP_USER/SMTP_PASSWORD/SMTP_FROM —
+      # ver .env.example (backlog "SMTP real no MailSender", ADR 0096).
       AUTH_MAIL_LOG_TOKENS: ${AUTH_MAIL_LOG_TOKENS:-true}
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-log}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       # (o navegador/curl no host usam localhost:8080) — precisa bater
       # aqui dentro do container.
       # Git providers (Fase 2): OAuth Apps do GitHub/GitLab + provisionamento
