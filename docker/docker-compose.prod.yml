@@ -146,6 +146,19 @@ services:
       GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
       GITLAB_OAUTH_CLIENT_ID: ${GITLAB_OAUTH_CLIENT_ID:-}
       GITLAB_OAUTH_CLIENT_SECRET: ${GITLAB_OAUTH_CLIENT_SECRET:-}
+      # SMTP real (backlog "SMTP real no MailSender" — ADR 0096). Sem
+      # MAIL_TRANSPORT, o comportamento continua log-only mesmo aqui, em
+      # produção — enviar e-mail de verdade é OPT-IN do operador. Nenhuma
+      # das cinco variáveis abaixo tem default de desenvolvimento: ausentes
+      # (string vazia) com MAIL_TRANSPORT=smtp, o boot recusa subir
+      # (RN-114).
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-log}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       # MESMOS caminhos absolutos do engine — obrigatório, ver comentário nos
       # dois Dockerfile.prod.
       GIT_LOCAL_REPOS_ROOT: /data/git-repos
