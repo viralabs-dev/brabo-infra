@@ -45,6 +45,14 @@ export CREDENTIALS_MASTER_KEY="${CREDENTIALS_MASTER_KEY:-$(openssl rand -base64 
 # Phoenix quer pelo menos 64 bytes — o dobro do tamanho dos outros três.
 export SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -base64 64)}"
 
+# Grafo de conhecimento (ADR 0099/RN-413): NEO4J_URI e NEO4J_USER já têm
+# default de dev no compose (bolt://neo4j:7687, neo4j — não são segredo).
+# NEO4J_PASSWORD segue o mesmo padrão dos quatro segredos acima: sem valor
+# aqui, o entrypoint do próprio Neo4j recusa subir (senha < 8 caracteres) e a
+# api recusa o boot em produção (neo4j-config.ts) — gerada aqui e descartada
+# com o stack.
+export NEO4J_PASSWORD="${NEO4J_PASSWORD:-$(openssl rand -base64 32)}"
+
 API="http://localhost:${API_PORT}"
 ENGINE="http://localhost:${ENGINE_PORT}"
 WEB="http://localhost:${WEB_PORT}"
