@@ -1,0 +1,72 @@
+# Job ONE-SHOT que puxaria os modelos Ollama exigidos no boot — equivalente
+# ao serviço `ollama-model-loader` do docker-compose.yml/docker-compose.prod.yml
+# (docker/ollama/pull-models.sh é a lógica de referência; aqui ela está
+# reduzida inline porque este arquivo é TEMPLATE, não parte do deploy ativo —
+# ver README.md deste diretório).
+#
+# NÃO ESTÁ REFERENCIADO em nenhuma kustomization.yaml (nem base, nem
+# overlay). deploy/k8s/ não tem HOJE nenhum manifest do `ollama` em si — este
+# Job pressupõe um Service `ollama:11434` que ainda não existe no cluster.
+# Adicioná-lo ao deploy ativo sem esse Service faria o Job falhar
+# (CrashLoopBackOff) em TODO `kubectl apply -k` real.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ollama-model-loader
+  labels:
+    app.kubernetes.io/name: ollama-model-loader
+    app.kubernetes.io/part-of: brabo
+spec:
+  backoffLimit: 5
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ollama-model-loader
+        app.kubernetes.io/part-of: brabo
+    spec:
+      restartPolicy: OnFailure
+      # CHUTE não testado (ver README.md): a imagem ollama/ollama pode
+      # exigir root ou um uid diferente — sem cluster real pra confirmar,
+      # mantido conservador em vez de omitido.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ollama-model-loader
+          image: ollama/ollama:latest
+          env:
+            - name: OLLAMA_HOST
+              value: http://ollama:11434
+            - name: OLLAMA_REQUIRED_MODELS
+              value: "gemma:1b,yi-coder:1.5b,nomic-embed-text"
+          command: ["sh", "-c"]
+          args:
+            - |
+              until ollama list >/dev/null 2>&1; do sleep 2; done
+              status=0
+              old_ifs=$IFS
+              IFS=","
+              for m in $OLLAMA_REQUIRED_MODELS; do
+                IFS="$old_ifs"
+                [ -z "$m" ] && { IFS=","; continue; }
+                echo "puxando $m"
+                ollama pull "$m" || status=1
+                IFS=","
+              done
+              IFS="$old_ifs"
+              exit "$status"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi

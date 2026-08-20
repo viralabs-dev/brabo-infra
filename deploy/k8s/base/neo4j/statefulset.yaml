@@ -1,0 +1,143 @@
+# Neo4j — grafo de conhecimento (templates de prompt + memória relacional).
+# NÃO VALIDADO CONTRA CLUSTER REAL — ver README.md deste diretório.
+#
+# Community Edition, instância ÚNICA: Causal Cluster (múltiplas réplicas) é
+# recurso Enterprise, então StatefulSet aqui não significa "escalável", só
+# "tem PVC por identidade estável" — o padrão correto pra um processo com
+# estado, mesmo com replicas: 1 fixo.
+#
+# Diferente do Postgres (externo por padrão em produção — ver ADR 0025 e
+# common/externalsecrets.yaml), não existe hoje decisão de "Neo4j gerenciado
+# externo": este StatefulSet é a única forma declarada. `storageClassName`
+# fica em aberto nos volumeClaimTemplates (default do cluster) — Neo4j só
+# precisa de ReadWriteOnce (ao contrário do PVC compartilhado api/engine em
+# common/pvc-shared-data.yaml, que exige RWX), e RWO é o que praticamente
+# toda StorageClass default oferece, então nenhum overlay precisa sobrescrever
+# isto ainda.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+  labels:
+    app.kubernetes.io/name: neo4j
+    app.kubernetes.io/part-of: brabo
+spec:
+  serviceName: neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: neo4j
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: neo4j
+        app.kubernetes.io/part-of: brabo
+    spec:
+      # A imagem oficial já roda como o usuário `neo4j` (uid/gid 7474) por
+      # desenho do próprio entrypoint — não é uma escolha nossa de hardening,
+      # é o comportamento padrão documentado da imagem.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 7474
+        runAsGroup: 7474
+        fsGroup: 7474
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: neo4j
+          image: neo4j:5.26-community
+          ports:
+            - name: bolt
+              containerPort: 7687
+            - name: http
+              containerPort: 7474
+          env:
+            # NEO4J_AUTH composto por variável DEPENDENTE ($(...) referencia
+            # um env var anterior do MESMO container — recurso padrão do
+            # Kubernetes), pra guardar só a senha como segredo em vez de
+            # duplicar "neo4j/<senha>" pronto no provider de segredo.
+            - name: NEO4J_USER
+              value: neo4j
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: brabo-secrets
+                  key: NEO4J_PASSWORD
+            - name: NEO4J_AUTH
+              value: "$(NEO4J_USER)/$(NEO4J_PASSWORD)"
+            # Heap/pagecache com teto EXPLÍCITO — mesmo motivo e mesmos
+            # valores do docker-compose.yml de dev (ver o comentário lá): sem
+            # isto, o default do Neo4j dimensiona o heap como fração da RAM
+            # do NÓ inteiro, não do `resources.limits` do container.
+            - name: NEO4J_server_memory_heap_max__size
+              value: "512m"
+            - name: NEO4J_server_memory_heap_initial__size
+              value: "512m"
+            - name: NEO4J_server_memory_pagecache_size
+              value: "256m"
+            # NÃO chame isto NEO4J_PASSWORD_ARG nem qualquer coisa com
+            # prefixo NEO4J_ — achado testando de verdade em
+            # docker-compose.yml (ver o comentário lá): o entrypoint converte
+            # QUALQUER env `NEO4J_*` numa chave de config, e uma env de nome
+            # arbitrário não existe como config — o container morre no boot
+            # com "Unrecognized setting". As probes abaixo passam a
+            # credencial como ARGUMENTO de linha de comando, lendo esta env
+            # SEM o prefixo problemático.
+            - name: PASSWORD_ARG
+              valueFrom:
+                secretKeyRef:
+                  name: brabo-secrets
+                  key: NEO4J_PASSWORD
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "cypher-shell -u neo4j -p \"$PASSWORD_ARG\" 'RETURN 1'"
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: bolt
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          # Requests/limits são um CHUTE conservador pra caber ao lado de
+          # api/engine numa máquina de dev de 15GB (mesma ordem de grandeza do
+          # docker-compose) — nunca medido sob carga real. Ver README.md.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 768Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: logs
+              mountPath: /logs
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: neo4j
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+    - metadata:
+        name: logs
+        labels:
+          app.kubernetes.io/name: neo4j
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

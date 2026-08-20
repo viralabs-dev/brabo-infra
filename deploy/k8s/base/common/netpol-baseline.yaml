@@ -94,3 +94,31 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+---
+# Neo4j — grafo de conhecimento. Ao contrário do Postgres acima, o Neo4j de
+# HOJE só existe DENTRO do namespace `brabo` (StatefulSet em
+# neo4j/statefulset.yaml, NÃO validado contra cluster real — ver
+# neo4j/README.md) — não há decisão de "gerenciado externo" pra ele, então o
+# destino é por rótulo dentro do MESMO namespace, sem `namespaceSelector`.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-neo4j-egress
+  labels:
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [api, engine]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: neo4j
+      ports:
+        - protocol: TCP
+          port: 7687
