@@ -168,7 +168,9 @@ services:
       TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
       # Teto de BYTES da saída de um comando (RN-074). A saída fica no
       # histórico do laço e viaja em TODO turno seguinte — sem teto, um `find`
-      # numa árvore grande derruba a execução com 413 do provider.
+      # numa árvore grande derruba a execução com 413 da api do Brabo (o
+      # corpo de POST .../llm-turn estourando o limite de transporte dela,
+      # não um limite do provider de LLM).
       TERMINAL_OUTPUT_MAX_BYTES: ${TERMINAL_OUTPUT_MAX_BYTES:-32768}
       SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
       # Já era lido do ambiente pelo runtime.exs, mas não era exposto aqui —
