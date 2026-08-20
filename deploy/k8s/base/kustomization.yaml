@@ -23,6 +23,9 @@ resources:
   - common/externalsecrets.yaml
   - common/netpol-baseline.yaml
   - common/netpol-observability.yaml
+  - neo4j/statefulset.yaml
+  - neo4j/service.yaml
+  - neo4j/netpol.yaml
   - api/deployment.yaml
   - api/service.yaml
   - api/hpa.yaml

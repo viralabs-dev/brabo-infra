@@ -1,0 +1,22 @@
+# Headless (clusterIP: None) — é o padrão pra Service de StatefulSet, pra que
+# o DNS de cada pod (neo4j-0.neo4j...) resolva individualmente. Com réplica
+# única isso não importa hoje, mas é o padrão correto e o custo de seguir é
+# zero.
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j
+  labels:
+    app.kubernetes.io/name: neo4j
+    app.kubernetes.io/part-of: brabo
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: neo4j
+  ports:
+    - name: bolt
+      port: 7687
+      targetPort: bolt
+    - name: http
+      port: 7474
+      targetPort: http

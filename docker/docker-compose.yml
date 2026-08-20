@@ -18,6 +18,51 @@ services:
       timeout: 5s
       retries: 20
 
+  # Neo4j — grafo de conhecimento (templates de prompt + memória relacional).
+  # Community, instância única, sem cluster (Causal Cluster é recurso
+  # Enterprise). Auth via NEO4J_AUTH; sem NEO4J_PASSWORD definido, a senha vira
+  # vazia e o PRÓPRIO entrypoint da imagem recusa subir (exige >= 8
+  # caracteres) — não é validação nossa, mas cumpre o mesmo espírito de "sem
+  # default público que vira fallback silencioso" que o resto do compose segue
+  # (ADR 0059).
+  neo4j:
+    image: neo4j:5.26-community
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-dev-neo4j-password-change-me}
+      # NÃO defina NEO4J_USERNAME/NEO4J_PASSWORD aqui (só NEO4J_AUTH acima) —
+      # achado testando de verdade: o entrypoint da imagem converte TODA
+      # variável com prefixo NEO4J_ num caminho de config
+      # (server.<resto_convertido>), e "USERNAME"/"PASSWORD" não são chaves de
+      # config válidas — com `server.config.strict_validation.enabled` (default
+      # true) o container morre no boot com "Unrecognized setting". O
+      # healthcheck abaixo passa a credencial como ARGUMENTO de linha de
+      # comando (mesmo padrão do `pg_isready -U` do postgres, acima), não via
+      # env.
+      # Heap com teto EXPLÍCITO, mesmo motivo do OLLAMA_MAX_LOADED_MODELS
+      # abaixo: sem isto o default do Neo4j dimensiona o heap como fração da
+      # RAM do HOST inteiro (não do container), e a máquina de dev de 15GB já
+      # reparte entre postgres, ollama, api, engine e web. Nome da env var
+      # mudou entre Neo4j 4.x (NEO4J_dbms_memory_heap_max__size) e 5.x — esta é
+      # a de 5.x, confirmada contra a doc oficial (server.memory.heap.max_size,
+      # dois "_" representam o "_" literal da chave, um "_" representa ".").
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    ports:
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      # cypher-shell vem embutido na imagem oficial (mesmo espírito do
+      # pg_isready do postgres, acima).
+      test: ["CMD-SHELL", "cypher-shell -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD:-dev-neo4j-password-change-me} 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
   # Ollama local — baixa um modelo pequeno (llama3.2:1b) automaticamente
   # no primeiro start, pra o chat funcionar via curl sem passo manual.
   ollama:
@@ -43,6 +88,31 @@ services:
       # perdia as próprias instruções a partir do 2º/3º turno e passava a imitar
       # o que sobrava no fim do contexto (o schema das ferramentas). Ver ADR 0020.
       OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-16384}
+
+  # Loader ONE-SHOT: puxa os modelos que o produto exige no boot
+  # (OLLAMA_REQUIRED_MODELS), sem duplicar nem substituir o entrypoint do
+  # `ollama` acima — aquele continua só com llama3.2:1b, para o uso direto do
+  # engine. Este container NUNCA roda `ollama serve`: é um CLIENTE do daemon
+  # do container `ollama` vizinho, falando com ele via OLLAMA_HOST (a CLI
+  # `ollama pull`/`ollama list` é HTTP puro contra ${OLLAMA_HOST}/api/*, não
+  # precisa de daemon local). Sem isto, `nomic-embed-text` nunca é puxado
+  # automaticamente e o Chat RAG degrada em silêncio para busca léxico-only em
+  # qualquer ambiente limpo — bug real de hoje, não só desta feature.
+  #
+  # A lógica mora em docker/ollama/pull-models.sh (montado read-only) em vez
+  # de inline, para poder ser lida/testada fora do compose.
+  ollama-model-loader:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_REQUIRED_MODELS: ${OLLAMA_REQUIRED_MODELS:-gemma:1b,yi-coder:1.5b,nomic-embed-text}
+    entrypoint: ["sh", "/pull-models.sh"]
+    volumes:
+      - ./ollama/pull-models.sh:/pull-models.sh:ro
+    restart: "no"
 
   api:
     build:
@@ -266,6 +336,8 @@ services:
 
 volumes:
   pgdata:
+  neo4j_data:
+  neo4j_logs:
   ollama_data:
   git_local_repos:
   api_root_node_modules:
