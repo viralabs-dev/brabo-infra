@@ -199,6 +199,13 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      # Grafo de conhecimento (ADR 0099). URI e usuário têm o mesmo default
+      # de dev do serviço `neo4j` abaixo (não são segredo); a senha segue o
+      # padrão RN-114 dos outros segredos desta lista — sem default público,
+      # e o boot da api recusa subir em produção sem ela (neo4j-config.ts).
+      NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-}
       # MESMOS caminhos absolutos do engine — obrigatório, ver comentário nos
       # dois Dockerfile.prod.
       GIT_LOCAL_REPOS_ROOT: /data/git-repos
@@ -210,6 +217,8 @@ services:
       - project_workspaces:/data/project-workspaces
     depends_on:
       postgres:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
       migrate-api:
         condition: service_completed_successfully
