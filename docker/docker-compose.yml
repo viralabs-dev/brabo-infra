@@ -170,6 +170,14 @@ services:
       # ativação) — autenticado pelo segredo de serviço, simétrico à direção
       # engine -> api que já existe.
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
+      # URL do engine alcançável PELO BROWSER (fora da rede Docker) — usada
+      # só para montar `engineWsUrl` no ticket do terminal/runner (RN-419,
+      # ADR 0103/0104). Sem este default, o fallback do código caía em
+      # `ENGINE_URL` (`http://engine:4000`, hostname que só resolve DENTRO
+      # da rede do Compose) e a aba Terminal ficava presa em "Abrindo
+      # terminal..." pra sempre — o browser nunca conseguia abrir o socket.
+      # Mesmo padrão que `VITE_ENGINE_URL` já usa logo abaixo, no serviço `web`.
+      ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://localhost:4000}
       # Pipeline de ações propostas (Fase 1 item 5): raiz compartilhada com
       # o engine (mesmo path, mesmo volume) onde mora o permissions.json
       # de cada projeto.
