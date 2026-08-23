@@ -13,7 +13,7 @@
 #   VERIFICAR_KEEP_UP=1 bash scripts/dev/verificar-modelos-ollama.sh   # não derruba no final
 #   OLLAMA_REQUIRED_MODELS=all-minilm bash scripts/dev/verificar-modelos-ollama.sh
 #     # troca a lista por algo pequeno pra um smoke rápido, sem baixar os
-#     # ~3-4GB da lista real de produto (gemma:1b + yi-coder:1.5b + nomic-embed-text)
+#     # ~3-4GB da lista real de produto (gemma3:1b + yi-coder:1.5b + nomic-embed-text)
 #
 # Como isto entraria no bootstrap (scripts/dev/bootstrap.sh): um item novo em
 # Docker › Test, chamando este script — não foi feito aqui porque o corte
@@ -32,7 +32,7 @@ COMPOSE=(docker compose -f "${COMPOSE_FILE}")
 # arquivo que este script possa importar; duplicar o literal aqui é o mesmo
 # padrão que RAG_EMBEDDING_MODEL aceita em rag-search-limits.ts (constante,
 # não config lida em runtime).
-OLLAMA_REQUIRED_MODELS="${OLLAMA_REQUIRED_MODELS:-gemma:1b,yi-coder:1.5b,nomic-embed-text}"
+OLLAMA_REQUIRED_MODELS="${OLLAMA_REQUIRED_MODELS:-gemma3:1b,yi-coder:1.5b,nomic-embed-text}"
 
 info() { printf '\n\033[1m[verificar-modelos-ollama]\033[0m %s\n' "$*"; }
 ok()   { printf '  \033[32mok\033[0m   %s\n' "$*"; }
