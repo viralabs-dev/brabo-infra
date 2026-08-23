@@ -16,7 +16,7 @@
 set -eu
 
 OLLAMA_HOST="${OLLAMA_HOST:-http://ollama:11434}"
-OLLAMA_REQUIRED_MODELS="${OLLAMA_REQUIRED_MODELS:-gemma:1b,yi-coder:1.5b,nomic-embed-text}"
+OLLAMA_REQUIRED_MODELS="${OLLAMA_REQUIRED_MODELS:-gemma3:1b,yi-coder:1.5b,nomic-embed-text}"
 
 echo "[ollama-model-loader] aguardando o daemon em ${OLLAMA_HOST}..."
 until ollama list >/dev/null 2>&1; do

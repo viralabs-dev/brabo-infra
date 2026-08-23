@@ -43,7 +43,7 @@ spec:
             - name: OLLAMA_HOST
               value: http://ollama:11434
             - name: OLLAMA_REQUIRED_MODELS
-              value: "gemma:1b,yi-coder:1.5b,nomic-embed-text"
+              value: "gemma3:1b,yi-coder:1.5b,nomic-embed-text"
           command: ["sh", "-c"]
           args:
             - |

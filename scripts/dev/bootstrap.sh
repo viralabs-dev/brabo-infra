@@ -158,7 +158,7 @@ COMPOSE="docker compose -f docker/docker-compose.yml --env-file .env"
 
 ROTULO["."]="Brabo";     FILHOS["."]="1 2 3 4"
 
-ROTULO["1"]="Docker";    FILHOS["1"]="1.1 1.2 1.3"
+ROTULO["1"]="Docker";    FILHOS["1"]="1.1 1.2 1.3 1.4"
 ROTULO["2"]="K8s";       FILHOS["2"]="2.1 2.2 2.3"
 ROTULO["3"]="Database";  FILHOS["3"]="3.1 3.2 3.3 3.4"
 ROTULO["4"]="Test";      FILHOS["4"]="4.1 4.2 4.3 4.4 4.5 4.6"
@@ -177,6 +177,15 @@ ROTULO["1.1.1"]="All";    CMD["1.1.1"]="${COMPOSE} up -d --build"
 ROTULO["1.1.2"]="Api";    CMD["1.1.2"]="${COMPOSE} up -d --build api"
 ROTULO["1.1.3"]="Engine"; CMD["1.1.3"]="${COMPOSE} up -d --build engine"
 ROTULO["1.1.4"]="Web";    CMD["1.1.4"]="${COMPOSE} up -d --build web"
+
+# Reset total: rebuild + apaga o banco + sobe até saudável + migra + semeia,
+# numa tacada só — ver scripts/dev/reset-total.sh. É a única folha de Docker
+# que também mexe no banco, e por isso pede confirmação PRÓPRIA
+# (`confirmar_reset`, não `confirmar` — essa é só do Database › Delete) e não
+# exige o Postgres já de pé: o próprio comando sobe o compose do zero.
+ROTULO["1.4"]="Reset total"; CMD["1.4"]="bash scripts/dev/reset-total.sh"
+ESTADO["1.4"]="confirmar_reset"
+NOTA["1.4"]="rebuild + apaga o banco + sobe até saudável + migra + semeia (credenciais de .env inclusas)"
 
 # -- 2. K8s -----------------------------------------------------------------
 # Só `All` existe: o bootstrap do cluster instala api, engine e web juntos, e
@@ -204,18 +213,28 @@ NOTA["3.1"]="drizzle-kit gera a migration a partir do schema"
 NOTA["3.2"]="aplica as migrations pendentes da api"
 NOTA["3.3"]="popula dados de demonstração (workspace, usuários, projeto, sessão)"
 
-# Delete zera o SCHEMA e mantém container e volume de pé. Duas armadilhas
-# reais, confirmadas no código, e não suposições:
+# Delete zera o SCHEMA e mantém container e volume de pé. TRÊS armadilhas
+# reais, confirmadas no código (a terceira, rodando o reset de ponta a ponta
+# — só um DROP SCHEMA public não bastava), e não suposições:
 #
 # 1. `docker/postgres/init.sql` cria a extensão pgvector e roda SÓ na primeira
 #    inicialização do volume. Um DROP SCHEMA puro levaria o pgvector junto, e a
 #    migration seguinte falharia — por isso a extensão é recriada aqui.
-# 2. O engine (Ecto/Oban) divide o MESMO banco: as tabelas dele também somem.
-#    Recuperar exige `pnpm db:migrate` E `pnpm engine:migrate`.
+# 2. O engine (Ecto/Oban) divide o MESMO banco, mas em schema PRÓPRIO
+#    (`engine`, não `public`) — dropar só `public` não apaga `engine.*`
+#    (dev_agent_states, session_states, oban_jobs...). `mix ecto.migrate`
+#    então tenta recriar tabela que já existe e falha com `duplicate_table`.
+# 3. drizzle-kit guarda o PRÓPRIO controle de migration em `drizzle.
+#    __drizzle_migrations` — schema à parte, também sobrevivendo a um DROP de
+#    só `public`. Sem apagá-lo junto, `pnpm db:migrate` acha que já rodou tudo
+#    (pelo controle intacto) e não recria NENHUMA tabela em `public` — a api
+#    fica com o banco vazio, silenciosamente, sem erro nenhum.
+# Por isso os DOIS schemas de controle são dropados ANTES do `public`, e
+# recuperar exige `pnpm db:migrate` E `pnpm engine:migrate`, nesta ordem.
 ROTULO["3.4"]="Delete"
 ESTADO["3.4"]="confirmar"
-NOTA["3.4"]="apaga TODAS as tabelas (api e engine); containers seguem de pé"
-CMD["3.4"]="${COMPOSE} exec -T postgres psql -v ON_ERROR_STOP=1 -U \"\${POSTGRES_USER:-brabo}\" -d \"\${POSTGRES_DB:-brabo}\" -c 'DROP SCHEMA public CASCADE;' -c 'CREATE SCHEMA public;' -c 'CREATE EXTENSION IF NOT EXISTS vector;'"
+NOTA["3.4"]="apaga TODAS as tabelas (api, engine e o controle de migration dos dois); containers seguem de pé"
+CMD["3.4"]="${COMPOSE} exec -T postgres psql -v ON_ERROR_STOP=1 -U \"\${POSTGRES_USER:-brabo}\" -d \"\${POSTGRES_DB:-brabo}\" -c 'DROP SCHEMA IF EXISTS engine CASCADE;' -c 'DROP SCHEMA IF EXISTS drizzle CASCADE;' -c 'DROP SCHEMA public CASCADE;' -c 'CREATE SCHEMA public;' -c 'CREATE EXTENSION IF NOT EXISTS vector;'"
 
 # -- 4. Test ----------------------------------------------------------------
 # `All` soma engine e scripts ao `pnpm test` da raiz, que cobre só api e web.
@@ -479,7 +498,7 @@ desenhar_menu() {
         "${C_MUTED}${C_DIM}" "(indisponível — ${nota})" "${C_RESET}"
     else
       marcador=''
-      [[ "${estado}" == "confirmar" ]] && marcador="${C_WARNING}!${C_RESET} "
+      [[ "${estado}" == "confirmar" || "${estado}" == "confirmar_reset" ]] && marcador="${C_WARNING}!${C_RESET} "
       printf '   %s%s.%s %s%-9s%s %s%s%s%s' \
         "${C_ACCENT}" "${digito}" "${C_RESET}" \
         "${C_TEXT}" "${rotulo}" "${C_RESET}" \
@@ -505,8 +524,8 @@ confirmar_delete() {
   local linha=$(( ALTURA_BANNER + 2 )) resposta banco="${POSTGRES_DB:-brabo}"
   limpar_corpo
   mover "${linha}" 1;       printf '  %s%sIsto apaga TODAS as tabelas do banco "%s".%s' "${C_BOLD}" "${C_WARNING}" "${banco}" "${C_RESET}"
-  mover $(( linha + 2 )) 1; printf '  %sO schema public é derrubado e recriado, com a extensão pgvector.%s' "${C_MUTED}" "${C_RESET}"
-  mover $(( linha + 3 )) 1; printf '  %sO engine divide o mesmo banco: as tabelas dele somem também.%s' "${C_MUTED}" "${C_RESET}"
+  mover $(( linha + 2 )) 1; printf '  %sOs schemas engine, drizzle e public são derrubados e o public recriado, com pgvector.%s' "${C_MUTED}" "${C_RESET}"
+  mover $(( linha + 3 )) 1; printf '  %sO engine divide o mesmo banco (schema próprio): as tabelas dele somem também.%s' "${C_MUTED}" "${C_RESET}"
   mover $(( linha + 5 )) 1; printf '  %sContainers e volume seguem de pé. Recuperar:%s' "${C_MUTED}" "${C_RESET}"
   mover $(( linha + 6 )) 1; printf '    %spnpm db:migrate  &&  pnpm engine:migrate%s' "${C_TEXT}" "${C_RESET}"
   rodape "$(( LINHAS - 4 ))" "digite ${C_TEXT}${banco}${C_MUTED} e Enter para confirmar — qualquer outra coisa cancela"
@@ -517,6 +536,25 @@ confirmar_delete() {
   printf '\033[?25l'
 
   [[ "${resposta}" == "${banco}" ]]
+}
+
+# Confirmação do Reset total — mesma régua da Delete (só Enter não conta),
+# mas a frase digitada é fixa: este item não gira em torno do NOME do banco,
+# gira em torno de rebuild + apagar + subir + migrar + semear numa tacada só.
+confirmar_reset_total() {
+  local linha=$(( ALTURA_BANNER + 2 )) resposta
+  limpar_corpo
+  mover "${linha}" 1;       printf '  %s%sIsto reconstrói as imagens, apaga TODAS as tabelas e semeia de novo.%s' "${C_BOLD}" "${C_WARNING}" "${C_RESET}"
+  mover $(( linha + 2 )) 1; printf '  %sOrdem: preflight, build + up --wait, DROP SCHEMA (api e engine), migrate, seed.%s' "${C_MUTED}" "${C_RESET}"
+  mover $(( linha + 3 )) 1; printf '  %sCredenciais de provider em .env (*_TEST_KEY) entram já ativas no owner.%s' "${C_MUTED}" "${C_RESET}"
+  rodape "$(( LINHAS - 4 ))" "digite ${C_TEXT}RESET${C_MUTED} e Enter para confirmar — qualquer outra coisa cancela"
+
+  mover "$(( LINHAS - 1 ))" 1; printf '\033[2K  '
+  printf '\033[?25h'
+  IFS= read -r resposta || resposta=''
+  printf '\033[?25l'
+
+  [[ "${resposta}" == "RESET" ]]
 }
 
 # O `</dev/null` não é decoração: sem ele o `docker compose` herda o terminal e
@@ -844,13 +882,21 @@ principal() {
           continue
         fi
         if eh_folha "${escolhido}"; then
-          if [[ "${ESTADO[$escolhido]:-ok}" == "confirmar" ]]; then
-            if ! postgres_de_pe; then
-              avisar "o container postgres não está de pé — suba com Docker › Create"
-              continue
-            fi
-            confirmar_delete || { avisar "cancelado — nada foi apagado"; continue; }
-          fi
+          case "${ESTADO[$escolhido]:-ok}" in
+            confirmar)
+              # Só a Delete: ela roda `${COMPOSE} exec postgres`, então precisa
+              # do container já de pé — ao contrário do Reset total, que sobe
+              # o compose sozinho.
+              if ! postgres_de_pe; then
+                avisar "o container postgres não está de pé — suba com Docker › Create"
+                continue
+              fi
+              confirmar_delete || { avisar "cancelado — nada foi apagado"; continue; }
+              ;;
+            confirmar_reset)
+              confirmar_reset_total || { avisar "cancelado — nada foi alterado"; continue; }
+              ;;
+          esac
           executar "${escolhido}"
         else
           caminho="${escolhido}"
