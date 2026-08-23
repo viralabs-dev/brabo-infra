@@ -160,7 +160,7 @@ ROTULO["."]="Brabo";     FILHOS["."]="1 2 3 4"
 
 ROTULO["1"]="Docker";    FILHOS["1"]="1.1 1.2 1.3"
 ROTULO["2"]="K8s";       FILHOS["2"]="2.1 2.2 2.3"
-ROTULO["3"]="Database";  FILHOS["3"]="3.1 3.2 3.3"
+ROTULO["3"]="Database";  FILHOS["3"]="3.1 3.2 3.3 3.4"
 ROTULO["4"]="Test";      FILHOS["4"]="4.1 4.2 4.3 4.4 4.5 4.6"
 
 # -- 1. Docker --------------------------------------------------------------
@@ -199,8 +199,10 @@ NOTA["2.1.4"]="${NOTA["2.1.2"]}"
 # -- 3. Database ------------------------------------------------------------
 ROTULO["3.1"]="Generate"; CMD["3.1"]="pnpm db:generate"
 ROTULO["3.2"]="Migrate";  CMD["3.2"]="pnpm db:migrate"
+ROTULO["3.3"]="Seed";     CMD["3.3"]="pnpm --filter api seed"
 NOTA["3.1"]="drizzle-kit gera a migration a partir do schema"
 NOTA["3.2"]="aplica as migrations pendentes da api"
+NOTA["3.3"]="popula dados de demonstração (workspace, usuários, projeto, sessão)"
 
 # Delete zera o SCHEMA e mantém container e volume de pé. Duas armadilhas
 # reais, confirmadas no código, e não suposições:
@@ -210,10 +212,10 @@ NOTA["3.2"]="aplica as migrations pendentes da api"
 #    migration seguinte falharia — por isso a extensão é recriada aqui.
 # 2. O engine (Ecto/Oban) divide o MESMO banco: as tabelas dele também somem.
 #    Recuperar exige `pnpm db:migrate` E `pnpm engine:migrate`.
-ROTULO["3.3"]="Delete"
-ESTADO["3.3"]="confirmar"
-NOTA["3.3"]="apaga TODAS as tabelas (api e engine); containers seguem de pé"
-CMD["3.3"]="${COMPOSE} exec -T postgres psql -v ON_ERROR_STOP=1 -U \"\${POSTGRES_USER:-brabo}\" -d \"\${POSTGRES_DB:-brabo}\" -c 'DROP SCHEMA public CASCADE;' -c 'CREATE SCHEMA public;' -c 'CREATE EXTENSION IF NOT EXISTS vector;'"
+ROTULO["3.4"]="Delete"
+ESTADO["3.4"]="confirmar"
+NOTA["3.4"]="apaga TODAS as tabelas (api e engine); containers seguem de pé"
+CMD["3.4"]="${COMPOSE} exec -T postgres psql -v ON_ERROR_STOP=1 -U \"\${POSTGRES_USER:-brabo}\" -d \"\${POSTGRES_DB:-brabo}\" -c 'DROP SCHEMA public CASCADE;' -c 'CREATE SCHEMA public;' -c 'CREATE EXTENSION IF NOT EXISTS vector;'"
 
 # -- 4. Test ----------------------------------------------------------------
 # `All` soma engine e scripts ao `pnpm test` da raiz, que cobre só api e web.
@@ -751,7 +753,7 @@ executar() {
 
   # A dica do banco só aparece quando o Delete de fato rodou: o engine divide
   # o mesmo banco, e migrar só a api deixaria o Oban sem tabela.
-  if [[ "${caminho}" == "3.3" ]] && (( codigo == 0 )) && (( ! ABORTADO )); then
+  if [[ "${caminho}" == "3.4" ]] && (( codigo == 0 )) && (( ! ABORTADO )); then
     mover $(( linha + 2 )) 1; printf '   %spara recuperar:%s %spnpm db:migrate  &&  pnpm engine:migrate%s' \
       "${C_MUTED}" "${C_RESET}" "${C_TEXT}" "${C_RESET}"
   fi

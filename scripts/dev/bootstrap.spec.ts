@@ -43,13 +43,13 @@ describe('bootstrap.sh — árvore de comandos', () => {
     expect([...areas].sort()).toEqual(['1', '2', '3', '4']);
   });
 
-  it('tem 21 folhas — 6 Docker, 6 K8s, 3 Database, 6 Test', () => {
+  it('tem 22 folhas — 6 Docker, 6 K8s, 4 Database, 6 Test', () => {
     const conta = (area: string) =>
       folhas.filter((f) => f.caminho.startsWith(`${area}.`)).length;
-    expect(folhas).toHaveLength(21);
+    expect(folhas).toHaveLength(22);
     expect(conta('1')).toBe(6);
     expect(conta('2')).toBe(6);
-    expect(conta('3')).toBe(3);
+    expect(conta('3')).toBe(4);
     expect(conta('4')).toBe(6);
   });
 
@@ -99,7 +99,7 @@ describe('bootstrap.sh — árvore de comandos', () => {
     // `docker/postgres/init.sql` só roda na primeira inicialização do volume,
     // então um DROP SCHEMA puro levaria o pgvector junto e a migration
     // seguinte falharia.
-    const apagar = porCaminho(folhas, '3.3');
+    const apagar = porCaminho(folhas, '3.4');
     expect(apagar.estado).toBe('confirmar');
     expect(apagar.comando).toContain('DROP SCHEMA public CASCADE;');
     expect(apagar.comando).toContain('CREATE SCHEMA public;');
@@ -107,9 +107,16 @@ describe('bootstrap.sh — árvore de comandos', () => {
     expect(apagar.comando).toContain('ON_ERROR_STOP=1');
   });
 
+  it('Database › Seed usa o script de demonstração que já existe', () => {
+    // O menu não reimplementa nada: o seed vive em apps/api (`pnpm --filter api
+    // seed`) e roda os use cases reais via application context do Nest.
+    expect(porCaminho(folhas, '3.3').comando).toBe('pnpm --filter api seed');
+    expect(porCaminho(folhas, '3.3').estado).toBe('ok');
+  });
+
   it('Database › Delete é a única folha que exige confirmação', () => {
     const confirmam = folhas.filter((f) => f.estado === 'confirmar');
-    expect(confirmam.map((f) => f.caminho)).toEqual(['3.3']);
+    expect(confirmam.map((f) => f.caminho)).toEqual(['3.4']);
   });
 
   it('Test › All cobre engine e scripts, que o `pnpm test` da raiz não cobre', () => {
