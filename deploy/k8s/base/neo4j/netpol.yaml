@@ -1,0 +1,42 @@
+# Ingress do Neo4j: mesmo padrão de api/netpol.yaml e engine/netpol.yaml
+# (cada componente declara o próprio ingress). Só bolt (7687) — ninguém
+# dentro do cluster deveria abrir o browser HTTP (7474) do banco; quem quiser
+# olhar usa port-forward.
+#
+# O egress simétrico (api/engine -> neo4j) mora em
+# common/netpol-baseline.yaml, ao lado de `allow-db-egress` — mesma razão:
+# é um fluxo que os DOIS workloads (api e engine) precisam, não um detalhe de
+# um serviço só.
+#
+# Neo4j NÃO tem NetworkPolicy de egress própria aqui — a imagem faz uma
+# chamada de telemetria ("Anonymous Usage Data") pra neo4j.com no boot
+# (observado rodando localmente; não há env documentada em 5.26 que desligue
+# isto — tentativas com o nome antigo, NEO4J_dbms_usage_report_enabled, foram
+# recusadas pela validação estrita da config). Sem egress liberado para fora
+# do cluster, essa chamada falha e é ignorada — não impede o boot, só perde
+# uma métrica que não usamos. Declarado, não escondido: se algum dia isto
+# importar, é aqui que entra uma política de egress restrita ao domínio da
+# Neo4j Inc.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: neo4j
+  labels:
+    app.kubernetes.io/name: neo4j
+    app.kubernetes.io/part-of: brabo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: neo4j
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [api, engine]
+      ports:
+        - protocol: TCP
+          port: 7687

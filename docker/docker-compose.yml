@@ -18,6 +18,51 @@ services:
       timeout: 5s
       retries: 20
 
+  # Neo4j — grafo de conhecimento (templates de prompt + memória relacional).
+  # Community, instância única, sem cluster (Causal Cluster é recurso
+  # Enterprise). Auth via NEO4J_AUTH; sem NEO4J_PASSWORD definido, a senha vira
+  # vazia e o PRÓPRIO entrypoint da imagem recusa subir (exige >= 8
+  # caracteres) — não é validação nossa, mas cumpre o mesmo espírito de "sem
+  # default público que vira fallback silencioso" que o resto do compose segue
+  # (ADR 0059).
+  neo4j:
+    image: neo4j:5.26-community
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-dev-neo4j-password-change-me}
+      # NÃO defina NEO4J_USERNAME/NEO4J_PASSWORD aqui (só NEO4J_AUTH acima) —
+      # achado testando de verdade: o entrypoint da imagem converte TODA
+      # variável com prefixo NEO4J_ num caminho de config
+      # (server.<resto_convertido>), e "USERNAME"/"PASSWORD" não são chaves de
+      # config válidas — com `server.config.strict_validation.enabled` (default
+      # true) o container morre no boot com "Unrecognized setting". O
+      # healthcheck abaixo passa a credencial como ARGUMENTO de linha de
+      # comando (mesmo padrão do `pg_isready -U` do postgres, acima), não via
+      # env.
+      # Heap com teto EXPLÍCITO, mesmo motivo do OLLAMA_MAX_LOADED_MODELS
+      # abaixo: sem isto o default do Neo4j dimensiona o heap como fração da
+      # RAM do HOST inteiro (não do container), e a máquina de dev de 15GB já
+      # reparte entre postgres, ollama, api, engine e web. Nome da env var
+      # mudou entre Neo4j 4.x (NEO4J_dbms_memory_heap_max__size) e 5.x — esta é
+      # a de 5.x, confirmada contra a doc oficial (server.memory.heap.max_size,
+      # dois "_" representam o "_" literal da chave, um "_" representa ".").
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    ports:
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      # cypher-shell vem embutido na imagem oficial (mesmo espírito do
+      # pg_isready do postgres, acima).
+      test: ["CMD-SHELL", "cypher-shell -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD:-dev-neo4j-password-change-me} 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
   # Ollama local — baixa um modelo pequeno (llama3.2:1b) automaticamente
   # no primeiro start, pra o chat funcionar via curl sem passo manual.
   ollama:
@@ -43,6 +88,31 @@ services:
       # perdia as próprias instruções a partir do 2º/3º turno e passava a imitar
       # o que sobrava no fim do contexto (o schema das ferramentas). Ver ADR 0020.
       OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-16384}
+
+  # Loader ONE-SHOT: puxa os modelos que o produto exige no boot
+  # (OLLAMA_REQUIRED_MODELS), sem duplicar nem substituir o entrypoint do
+  # `ollama` acima — aquele continua só com llama3.2:1b, para o uso direto do
+  # engine. Este container NUNCA roda `ollama serve`: é um CLIENTE do daemon
+  # do container `ollama` vizinho, falando com ele via OLLAMA_HOST (a CLI
+  # `ollama pull`/`ollama list` é HTTP puro contra ${OLLAMA_HOST}/api/*, não
+  # precisa de daemon local). Sem isto, `nomic-embed-text` nunca é puxado
+  # automaticamente e o Chat RAG degrada em silêncio para busca léxico-only em
+  # qualquer ambiente limpo — bug real de hoje, não só desta feature.
+  #
+  # A lógica mora em docker/ollama/pull-models.sh (montado read-only) em vez
+  # de inline, para poder ser lida/testada fora do compose.
+  ollama-model-loader:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_REQUIRED_MODELS: ${OLLAMA_REQUIRED_MODELS:-gemma3:1b,yi-coder:1.5b,nomic-embed-text}
+    entrypoint: ["sh", "/pull-models.sh"]
+    volumes:
+      - ./ollama/pull-models.sh:/pull-models.sh:ro
+    restart: "no"
 
   api:
     build:
@@ -70,8 +140,18 @@ services:
       # engine <-> api nos dois sentidos.
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-auth-jwt-secret-change-me}
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
-      # Sem SMTP ainda: o link de verificação/reset sai no log da api.
+      # MAIL_TRANSPORT=log (default) — o link de verificação/reset sai no log
+      # da api. Definir MAIL_TRANSPORT=smtp aqui (contra um MailHog local, por
+      # exemplo) exige também SMTP_HOST/SMTP_USER/SMTP_PASSWORD/SMTP_FROM —
+      # ver .env.example (backlog "SMTP real no MailSender", ADR 0096).
       AUTH_MAIL_LOG_TOKENS: ${AUTH_MAIL_LOG_TOKENS:-true}
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-log}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       # (o navegador/curl no host usam localhost:8080) — precisa bater
       # aqui dentro do container.
       # Git providers (Fase 2): OAuth Apps do GitHub/GitLab + provisionamento
@@ -90,6 +170,14 @@ services:
       # ativação) — autenticado pelo segredo de serviço, simétrico à direção
       # engine -> api que já existe.
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
+      # URL do engine alcançável PELO BROWSER (fora da rede Docker) — usada
+      # só para montar `engineWsUrl` no ticket do terminal/runner (RN-419,
+      # ADR 0103/0104). Sem este default, o fallback do código caía em
+      # `ENGINE_URL` (`http://engine:4000`, hostname que só resolve DENTRO
+      # da rede do Compose) e a aba Terminal ficava presa em "Abrindo
+      # terminal..." pra sempre — o browser nunca conseguia abrir o socket.
+      # Mesmo padrão que `VITE_ENGINE_URL` já usa logo abaixo, no serviço `web`.
+      ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://localhost:4000}
       # Pipeline de ações propostas (Fase 1 item 5): raiz compartilhada com
       # o engine (mesmo path, mesmo volume) onde mora o permissions.json
       # de cada projeto.
@@ -158,7 +246,9 @@ services:
       TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
       # Teto de BYTES da saída de um comando (RN-074). A saída fica no
       # histórico do laço e viaja em TODO turno seguinte — sem teto, um `find`
-      # numa árvore grande derruba a execução com 413 do provider.
+      # numa árvore grande derruba a execução com 413 da api do Brabo (o
+      # corpo de POST .../llm-turn estourando o limite de transporte dela,
+      # não um limite do provider de LLM).
       TERMINAL_OUTPUT_MAX_BYTES: ${TERMINAL_OUTPUT_MAX_BYTES:-32768}
       SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
       # Já era lido do ambiente pelo runtime.exs, mas não era exposto aqui —
@@ -254,6 +344,8 @@ services:
 
 volumes:
   pgdata:
+  neo4j_data:
+  neo4j_logs:
   ollama_data:
   git_local_repos:
   api_root_node_modules:
