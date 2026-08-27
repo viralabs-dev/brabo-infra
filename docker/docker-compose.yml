@@ -65,8 +65,21 @@ services:
 
   # Ollama local — baixa um modelo pequeno (llama3.2:1b) automaticamente
   # no primeiro start, pra o chat funcionar via curl sem passo manual.
+  #
+  # `profiles: ["local-llm"]` (mesmo padrão já usado para os dois serviços
+  # `ollama`/`ollama-model-loader` em docker-compose.prod.yml, lá sob o nome
+  # `llm`): um `docker compose up` sem `--profile` NÃO sobe este serviço.
+  # Existe porque a porta publicada abaixo (OLLAMA_PORT, default 11434) é o
+  # MESMO default de uma instalação nativa de Ollama na máquina do
+  # desenvolvedor — com os dois de pé, o `up` falhava com "port is already
+  # allocated". scripts/dev/preflight.mjs detecta o Ollama nativo e escolhe
+  # o modo certo em `.env` (OLLAMA_MODE=host|container); quem sobe a stack
+  # (scripts/dev/reset-total.sh e o bootstrap.sh, via
+  # scripts/dev/perfil-ollama.sh) passa `--profile local-llm` só quando o
+  # modo atual NÃO é `host`.
   ollama:
     image: ollama/ollama:latest
+    profiles: ["local-llm"]
     entrypoint: ["sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2:1b; wait"]
     volumes:
       - ollama_data:/root/.ollama
@@ -103,6 +116,7 @@ services:
   # de inline, para poder ser lida/testada fora do compose.
   ollama-model-loader:
     image: ollama/ollama:latest
+    profiles: ["local-llm"]
     depends_on:
       ollama:
         condition: service_started
@@ -119,6 +133,14 @@ services:
       context: ..
       dockerfile: docker/api/Dockerfile
     working_dir: /workspace
+    # `host.docker.internal` resolve de graça no Docker Desktop, mas NÃO no
+    # Docker Engine nativo do Linux — precisa deste mapeamento explícito para
+    # o gateway da bridge. É o que permite OLLAMA_HOST=http://host.docker.
+    # internal:<porta> (OLLAMA_MODE=host, ver scripts/dev/preflight.mjs)
+    # alcançar um Ollama nativo rodando no HOST a partir de dentro do
+    # container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
@@ -211,17 +233,28 @@ services:
       # primeira ferramenta do primeiro agente. Ver docs/runbook.md, seção
       # "Projeto no modo Local". Não é variável de ambiente de propósito: o
       # caminho é dado do PROJETO, não da instalação.
+    # SEM depends_on de `ollama` aqui, de propósito: desde que ele entrou em
+    # `profiles: ["local-llm"]` (ver o comentário no serviço, acima), um
+    # `docker compose up`/`config`/`ps` SEM `--profile` recusa o arquivo
+    # inteiro com "depends on undefined service" quando um serviço FORA do
+    # profile depende de um DENTRO dele — confirmado testando: quebrava até
+    # o `preflight.mjs`, que lê `docker compose config`. A api já não
+    # precisa da ordem de boot: o Ollama só é chamado quando um agente pede
+    # um turno de LLM, nunca no startup dela.
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_started
 
   engine:
     build:
       context: ..
       dockerfile: docker/engine/Dockerfile
     working_dir: /workspace/apps/engine
+    # Mesmo motivo do serviço `api`, acima: `host.docker.internal` não
+    # resolve por padrão no Docker Engine nativo do Linux (só no Docker
+    # Desktop).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # Mesmo segredo dos dois lados — ver EngineServiceGuard e
       # EngineWeb.Plugs.VerifyServiceToken.

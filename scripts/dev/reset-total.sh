@@ -17,10 +17,17 @@ cd "${REPO_ROOT}"
 COMPOSE="docker compose -f docker/docker-compose.yml --env-file .env"
 
 echo "==> preflight de portas…"
+# Entre outras coisas, detecta um Ollama nativo já rodando na porta de
+# OLLAMA_PORT e, se for o caso, grava OLLAMA_MODE/OLLAMA_HOST em .env — é
+# essa gravação que scripts/dev/perfil-ollama.sh lê logo abaixo.
 node scripts/dev/preflight.mjs
 
 echo "==> reconstruindo imagens e subindo até tudo saudável (--wait)…"
-${COMPOSE} up -d --build --wait --wait-timeout "${BRABO_RESET_WAIT_TIMEOUT:-180}"
+# `$(bash scripts/dev/perfil-ollama.sh)` some com --profile local-llm quando
+# `.env` (já atualizado pelo preflight, acima) tem OLLAMA_MODE=host — sem
+# isto o `up` tentaria publicar a 11434 de novo e chocaria com a instalação
+# nativa que o preflight acabou de detectar.
+${COMPOSE} $(bash scripts/dev/perfil-ollama.sh) up -d --build --wait --wait-timeout "${BRABO_RESET_WAIT_TIMEOUT:-180}"
 
 echo "==> apagando engine, drizzle e public (api e engine dividem o mesmo banco)…"
 # Mesmo SQL do item Database › Delete — as TRÊS armadilhas documentadas ali:

@@ -26,7 +26,10 @@
 # Teclas: dígito escolhe (sem Enter), `v` volta, `q` sai, `↓`/`↑` mostram e
 # escondem a saída de um comando em execução. Com a saída à mostra, a roda do
 # mouse, `j`/`k` e PageUp/PageDown rolam o log inteiro e `G` volta ao fim (ao
-# vivo). Todas aparecem no rodapé.
+# vivo). Na tela de um comando (rodando ou já concluído), `c` copia o comando
+# real para a área de transferência (OSC 52) e também imprime a mesma linha
+# no log, como segunda via — não há como confirmar de dentro do bash que a
+# transferência funcionou. Todas aparecem no rodapé.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -158,7 +161,7 @@ COMPOSE="docker compose -f docker/docker-compose.yml --env-file .env"
 
 ROTULO["."]="Brabo";     FILHOS["."]="1 2 3 4"
 
-ROTULO["1"]="Docker";    FILHOS["1"]="1.1 1.2 1.3 1.4"
+ROTULO["1"]="Docker";    FILHOS["1"]="1.1 1.2 1.3 1.4 1.5"
 ROTULO["2"]="K8s";       FILHOS["2"]="2.1 2.2 2.3"
 ROTULO["3"]="Database";  FILHOS["3"]="3.1 3.2 3.3 3.4"
 ROTULO["4"]="Test";      FILHOS["4"]="4.1 4.2 4.3 4.4 4.5 4.6"
@@ -167,13 +170,26 @@ ROTULO["4"]="Test";      FILHOS["4"]="4.1 4.2 4.3 4.4 4.5 4.6"
 # Deploy publica código num ambiente que JÁ existe (por isso é o granular).
 # Create provisiona do zero — e passa pelo preflight, que confere as portas
 # 3000/4000/8080 e é o que evita o choque conhecido com `make deploy-local`.
+#
+# `$(bash scripts/dev/perfil-ollama.sh)` — ESCAPADO com `\$` de propósito, para
+# ficar gravado LITERAL no mapa (senão o `$(...)` rodaria uma vez só, aqui, na
+# hora em que este arquivo é fonteado, e nunca de novo) — decide em tempo de
+# EXECUÇÃO se o comando sobe (ou derruba) ollama/ollama-model-loader junto
+# (mesmo padrão de `\${POSTGRES_USER:-brabo}` no CMD["3.4"], abaixo: escapar
+# é o que faz a variável ser lida quando o comando RODA, não quando o menu é
+# montado). Os três itens que operam a STACK INTEIRA (nenhum serviço
+# específico) precisam disso — Api/Engine/Web (1.1.2..4) não tocam ollama.
+# Destroy também precisa: `docker compose down` SEM `--profile` ignora
+# containers de um profile inativo (deixa `ollama`/`ollama-model-loader` de
+# pé, órfãos, e a rede presa) — mesmo `--profile` do `up`, para desfazer
+# exatamente o que ele fez.
 ROTULO["1.1"]="Deploy";  FILHOS["1.1"]="1.1.1 1.1.2 1.1.3 1.1.4"
-ROTULO["1.2"]="Create";  CMD["1.2"]="node scripts/dev/preflight.mjs && ${COMPOSE} up -d"
-ROTULO["1.3"]="Destroy"; CMD["1.3"]="${COMPOSE} down"
+ROTULO["1.2"]="Create";  CMD["1.2"]="node scripts/dev/preflight.mjs && ${COMPOSE} \$(bash scripts/dev/perfil-ollama.sh) up -d"
+ROTULO["1.3"]="Destroy"; CMD["1.3"]="${COMPOSE} \$(bash scripts/dev/perfil-ollama.sh) down"
 NOTA["1.2"]="cria a rede, os volumes e os containers (sem reconstruir imagem)"
-NOTA["1.3"]="para e remove os containers; os volumes sobrevivem"
+NOTA["1.3"]="para e remove os containers (incl. ollama/ollama-model-loader se estiverem de pé); os volumes sobrevivem"
 
-ROTULO["1.1.1"]="All";    CMD["1.1.1"]="${COMPOSE} up -d --build"
+ROTULO["1.1.1"]="All";    CMD["1.1.1"]="${COMPOSE} \$(bash scripts/dev/perfil-ollama.sh) up -d --build"
 ROTULO["1.1.2"]="Api";    CMD["1.1.2"]="${COMPOSE} up -d --build api"
 ROTULO["1.1.3"]="Engine"; CMD["1.1.3"]="${COMPOSE} up -d --build engine"
 ROTULO["1.1.4"]="Web";    CMD["1.1.4"]="${COMPOSE} up -d --build web"
@@ -186,6 +202,15 @@ ROTULO["1.1.4"]="Web";    CMD["1.1.4"]="${COMPOSE} up -d --build web"
 ROTULO["1.4"]="Reset total"; CMD["1.4"]="bash scripts/dev/reset-total.sh"
 ESTADO["1.4"]="confirmar_reset"
 NOTA["1.4"]="rebuild + apaga o banco + sobe até saudável + migra + semeia (credenciais de .env inclusas)"
+
+# Reconfigurar Ollama: esquece a decisão host/container gravada em `.env` por
+# scripts/dev/preflight.mjs (RN de detecção de Ollama nativo), forçando a
+# pergunta de novo na próxima subida. NÃO mexe em dado nenhum (só três chaves
+# de `.env`) — segue o idioma predominante dos itens não-triviais-mas-não-
+# destrutivos deste menu (Generate, Migrate, Seed...) e executa direto, sem
+# tela de confirmação: essa régua é só para o que apaga banco.
+ROTULO["1.5"]="Reconfigurar Ollama"; CMD["1.5"]="bash scripts/dev/reconfigurar-ollama.sh"
+NOTA["1.5"]="remove OLLAMA_MODE/OLLAMA_HOST de .env — a próxima subida pergunta de novo"
 
 # -- 2. K8s -----------------------------------------------------------------
 # Só `All` existe: o bootstrap do cluster instala api, engine e web juntos, e
@@ -701,6 +726,27 @@ desenhar_execucao_expandida() {
   while (( l <= base )); do mover "${l}" 1; printf '\033[2K'; l=$(( l + 1 )); done
 }
 
+# ---------------------------------------------------------------------------
+# Copiar comando (tecla `c`, nas duas telas de execução — rodando e já
+# concluída)
+#
+# OSC 52 é a única forma de um processo escrever na área de transferência do
+# LADO DO CLIENTE a partir do bash — funciona local e sobre SSH, na maioria
+# dos terminais modernos —, mas não há como confirmar sucesso: o terminal não
+# devolve nada de volta. Por isso o texto puro do comando SEMPRE também vai
+# para a janela de log (o mecanismo que já existe e sempre funciona), como
+# segunda via — quem estiver num terminal sem suporte a OSC 52 ainda sai
+# daqui com o comando para copiar à mão.
+# ---------------------------------------------------------------------------
+copiar_comando() {
+  local comando="$1" log="$2"
+  printf '\033]52;c;%s\033\\' "$(base64 -w0 <<< "${comando}")" > /dev/tty 2>/dev/null || true
+  {
+    printf '%s\n' "${comando}"
+    printf 'Comando copiado (ou copie a linha acima manualmente).\n'
+  } >> "${log}"
+}
+
 executar() {
   local caminho="$1"
   local rotulo comando log pid modo modo_anterior inicio quadro tecla codigo decorrido
@@ -737,7 +783,7 @@ executar() {
     fi
     if [[ "${modo}" == "compacto" ]]; then
       desenhar_execucao_compacta "${rotulo}" "${quadro}" "${decorrido}"
-      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↓${C_MUTED} ver a saída   ${C_TEXT}Ctrl+C${C_MUTED} abortar"
+      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↓${C_MUTED} ver a saída   ${C_TEXT}c${C_MUTED} copiar comando   ${C_TEXT}Ctrl+C${C_MUTED} abortar"
     else
       # Congelar de verdade exige compensar o CRESCIMENTO do log: o
       # deslocamento conta linhas a partir do FIM, e o fim anda enquanto o
@@ -750,7 +796,7 @@ executar() {
       fi
       total_anterior="${total_agora}"
       desenhar_execucao_expandida "${rotulo}" "${log}"
-      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↑${C_MUTED} esconder   $(dicas_rolagem)   ${C_TEXT}Ctrl+C${C_MUTED} abortar"
+      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↑${C_MUTED} esconder   $(dicas_rolagem)   ${C_TEXT}c${C_MUTED} copiar comando   ${C_TEXT}Ctrl+C${C_MUTED} abortar"
     fi
     quadro=$(( quadro + 1 ))
     tecla="$(ler_tecla 0.2)"
@@ -770,6 +816,10 @@ executar() {
       # parou de olhar, minutos depois, mostraria um trecho que já não é o que
       # está acontecendo.
       cima)  modo=compacto; DESLOCAMENTO=0 ;;
+      # Não é destrutiva e não precisa de Enter — mesmo idioma de tecla única
+      # do resto do menu. Funciona também com o comando ainda RODANDO: é o
+      # texto do comando que se copia, não a saída dele.
+      c)     copiar_comando "${comando}" "${log}" ;;
     esac
   done
 
@@ -802,9 +852,9 @@ executar() {
   while true; do
     if [[ "${modo}" == "expandido" ]]; then
       desenhar_execucao_expandida "${rotulo}" "${log}"
-      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↑${C_MUTED} esconder   $(dicas_rolagem)   ${C_TEXT}v${C_MUTED} voltar   ${C_TEXT}q${C_MUTED} sair"
+      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↑${C_MUTED} esconder   $(dicas_rolagem)   ${C_TEXT}c${C_MUTED} copiar comando   ${C_TEXT}v${C_MUTED} voltar   ${C_TEXT}q${C_MUTED} sair"
     else
-      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↓${C_MUTED} ver a saída   ${C_TEXT}v${C_MUTED} voltar   ${C_TEXT}q${C_MUTED} sair"
+      rodape "$(( LINHAS - 2 ))" "${C_TEXT}↓${C_MUTED} ver a saída   ${C_TEXT}c${C_MUTED} copiar comando   ${C_TEXT}v${C_MUTED} voltar   ${C_TEXT}q${C_MUTED} sair"
     fi
     tecla="$(ler_tecla)"
     # Depois que o comando termina o log está parado, então aqui não há o que
@@ -819,6 +869,7 @@ executar() {
              else
                printf '   %sfalhou%s  %s%s%s  %s(exit %s)%s' "${C_DANGER}" "${C_RESET}" "${C_TEXT}" "${rotulo}" "${C_RESET}" "${C_MUTED}" "${codigo}" "${C_RESET}"
              fi ;;
+      c)     copiar_comando "${comando}" "${log}" ;;
       # Voltar ao menu desliga o mouse na mesma volta em que ele deixa de ter
       # uso; sair não precisa, porque o trap de EXIT desliga de qualquer jeito.
       v)     desligar_mouse; return 0 ;;
@@ -928,9 +979,9 @@ while (( $# > 0 )); do
       janela_argumentos=("$1" "$2" "$3"); shift 3 ;;
     --path) caminho_impressao="${2:-}"; shift 2 ;;
     -h|--help)
-      # 2,29 é EXATAMENTE o bloco de comentário do topo. O intervalo era maior
+      # 2,32 é EXATAMENTE o bloco de comentário do topo. O intervalo era maior
       # que ele e o --help imprimia `set -euo pipefail` junto com a ajuda.
-      sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) printf 'argumento desconhecido: %s\n' "$1" >&2; exit 2 ;;
   esac

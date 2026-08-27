@@ -43,11 +43,11 @@ describe('bootstrap.sh — árvore de comandos', () => {
     expect([...areas].sort()).toEqual(['1', '2', '3', '4']);
   });
 
-  it('tem 23 folhas — 7 Docker, 6 K8s, 4 Database, 6 Test', () => {
+  it('tem 24 folhas — 8 Docker, 6 K8s, 4 Database, 6 Test', () => {
     const conta = (area: string) =>
       folhas.filter((f) => f.caminho.startsWith(`${area}.`)).length;
-    expect(folhas).toHaveLength(23);
-    expect(conta('1')).toBe(7);
+    expect(folhas).toHaveLength(24);
+    expect(conta('1')).toBe(8);
     expect(conta('2')).toBe(6);
     expect(conta('3')).toBe(4);
     expect(conta('4')).toBe(6);
@@ -55,7 +55,14 @@ describe('bootstrap.sh — árvore de comandos', () => {
 
   it('Docker › Deploy reconstrói a imagem de cada serviço', () => {
     const compose = 'docker compose -f docker/docker-compose.yml --env-file .env';
-    expect(porCaminho(folhas, '1.1.1').comando).toBe(`${compose} up -d --build`);
+    // "All" sobe a STACK INTEIRA (nenhum serviço específico) — por isso, e só
+    // por isso entre os quatro, ele decide em tempo de execução se ollama
+    // entra junto (ver "sobe a stack inteira passa pelo perfil do Ollama",
+    // abaixo). Api/Engine/Web têm cada um o SEU serviço como alvo e não
+    // tocam ollama, então ficam como sempre foram.
+    expect(porCaminho(folhas, '1.1.1').comando).toBe(
+      `${compose} $(bash scripts/dev/perfil-ollama.sh) up -d --build`,
+    );
     expect(porCaminho(folhas, '1.1.2').comando).toBe(`${compose} up -d --build api`);
     expect(porCaminho(folhas, '1.1.3').comando).toBe(`${compose} up -d --build engine`);
     expect(porCaminho(folhas, '1.1.4').comando).toBe(`${compose} up -d --build web`);
@@ -70,11 +77,38 @@ describe('bootstrap.sh — árvore de comandos', () => {
     expect(criar).not.toContain('--build');
   });
 
+  it('sobe a stack inteira (Deploy › All e Create) passa pelo perfil do Ollama', () => {
+    // Os dois únicos itens de Docker que sobem TUDO, sem apontar um serviço
+    // específico — os candidatos reais a chocar de porta com um Ollama
+    // nativo. `$(...)` precisa estar ESCAPADO na fonte (`\$(...)`) para ser
+    // gravado literal no mapa e só rodar quando o item é EXECUTADO, não
+    // quando este arquivo é fonteado — o mesmo padrão de `\${POSTGRES_USER}`
+    // no CMD de Database › Delete, adiante.
+    expect(porCaminho(folhas, '1.1.1').comando).toContain('$(bash scripts/dev/perfil-ollama.sh)');
+    expect(porCaminho(folhas, '1.2').comando).toContain('$(bash scripts/dev/perfil-ollama.sh)');
+  });
+
+  it('Docker › Reconfigurar Ollama chama o script dedicado e não pede confirmação', () => {
+    // Não é destrutivo a dado nenhum (só três chaves de `.env`) — mesmo
+    // idioma dos outros itens não-triviais-mas-não-destrutivos do menu.
+    const reconfigurar = porCaminho(folhas, '1.5');
+    expect(reconfigurar.comando).toBe('bash scripts/dev/reconfigurar-ollama.sh');
+    expect(reconfigurar.estado).toBe('ok');
+  });
+
   it('Docker › Destroy preserva os volumes', () => {
     // `down -v` apagaria o pgdata. Destruir containers não é destruir dados:
     // quem quer zerar o banco usa Database › Delete, que avisa antes.
     expect(porCaminho(folhas, '1.3').comando).toMatch(/down$/);
     expect(porCaminho(folhas, '1.3').comando).not.toContain('-v');
+  });
+
+  it('Docker › Destroy também passa pelo perfil do Ollama, para derrubar o que o up subiu', () => {
+    // `docker compose down` SEM `--profile` ignora containers de um profile
+    // inativo — sem isso, `ollama`/`ollama-model-loader` ficam órfãos (e a
+    // rede presa, "resource still in use") sempre que tiverem subido sob
+    // `profiles: ["local-llm"]`.
+    expect(porCaminho(folhas, '1.3').comando).toContain('$(bash scripts/dev/perfil-ollama.sh)');
   });
 
   it('Docker › Reset total chama o script dedicado e pede confirmação própria', () => {
