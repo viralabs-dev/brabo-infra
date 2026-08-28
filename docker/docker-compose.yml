@@ -132,6 +132,16 @@ services:
     build:
       context: ..
       dockerfile: docker/api/Dockerfile
+      args:
+        # UID/GID do usuário do container — casam com o dono do bind mount
+        # no host, pra ele nunca escrever como root (ver .env.example e
+        # docs/getting-started.md). NÃO leia ${UID} do shell aqui: é
+        # somente-leitura no bash e não é exportado ao ambiente por padrão,
+        # então o Compose sempre veria vazio. `DEV_UID`/`DEV_GID` são
+        # variáveis PRÓPRIAS, definidas no `.env` ou exportadas antes do
+        # `docker compose up`.
+        DEV_UID: ${DEV_UID:-1000}
+        DEV_GID: ${DEV_GID:-1000}
     working_dir: /workspace
     # `host.docker.internal` resolve de graça no Docker Desktop, mas NÃO no
     # Docker Engine nativo do Linux — precisa deste mapeamento explícito para
@@ -249,6 +259,9 @@ services:
     build:
       context: ..
       dockerfile: docker/engine/Dockerfile
+      args:
+        DEV_UID: ${DEV_UID:-1000}
+        DEV_GID: ${DEV_GID:-1000}
     working_dir: /workspace/apps/engine
     # Mesmo motivo do serviço `api`, acima: `host.docker.internal` não
     # resolve por padrão no Docker Engine nativo do Linux (só no Docker
@@ -359,6 +372,9 @@ services:
     build:
       context: ..
       dockerfile: docker/web/Dockerfile
+      args:
+        DEV_UID: ${DEV_UID:-1000}
+        DEV_GID: ${DEV_GID:-1000}
     working_dir: /workspace
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
