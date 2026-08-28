@@ -78,7 +78,11 @@ services:
   # scripts/dev/perfil-ollama.sh) passa `--profile local-llm` só quando o
   # modo atual NÃO é `host`.
   ollama:
-    image: ollama/ollama:latest
+    # Pin deliberado (mesmo motivo do pgvector/pg16 e do neo4j:5.26 acima):
+    # `latest` muda sob o pé sem aviso, e um upgrade silencioso de Ollama já
+    # quebrou build antes (mudança de rota da API). Atualizar é decisão
+    # manual — subir o número aqui, não seguir `latest`.
+    image: ollama/ollama:0.33.1
     profiles: ["local-llm"]
     entrypoint: ["sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2:1b; wait"]
     volumes:
@@ -115,7 +119,10 @@ services:
   # A lógica mora em docker/ollama/pull-models.sh (montado read-only) em vez
   # de inline, para poder ser lida/testada fora do compose.
   ollama-model-loader:
-    image: ollama/ollama:latest
+    # MESMA tag do serviço `ollama` acima, de propósito: os dois falam o
+    # mesmo protocolo HTTP, e divergir a versão entre daemon e CLI é o tipo
+    # de coisa que só aparece em produção.
+    image: ollama/ollama:0.33.1
     profiles: ["local-llm"]
     depends_on:
       ollama:

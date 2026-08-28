@@ -325,7 +325,12 @@ services:
   #   docker compose -f docker/docker-compose.prod.yml --profile llm up -d
   # -------------------------------------------------------------------------
   ollama:
-    image: ollama/ollama:latest
+    # Pin deliberado (mesma tag do docker-compose.yml de dev, de propósito —
+    # dev e prod não podem divergir de versão aqui): `latest` muda sob o pé
+    # sem aviso, e um upgrade silencioso de Ollama já quebrou build antes
+    # (mudança de rota da API). Atualizar é decisão manual — subir o número
+    # aqui, não seguir `latest`.
+    image: ollama/ollama:0.33.1
     profiles: ["llm"]
     entrypoint: ["sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2:1b; wait"]
     volumes:
@@ -343,7 +348,10 @@ services:
   # que puxar. Ver docker/ollama/pull-models.sh e o comentário equivalente no
   # docker-compose.yml de dev para o desenho completo.
   ollama-model-loader:
-    image: ollama/ollama:latest
+    # MESMA tag do serviço `ollama` acima, de propósito: os dois falam o
+    # mesmo protocolo HTTP, e divergir a versão entre daemon e CLI é o tipo
+    # de coisa que só aparece em produção.
+    image: ollama/ollama:0.33.1
     profiles: ["llm"]
     depends_on:
       ollama:
