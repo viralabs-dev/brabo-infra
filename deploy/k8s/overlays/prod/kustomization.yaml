@@ -6,10 +6,13 @@
 # **monta** e que os manifests são válidos contra o schema — o resto é
 # responsabilidade do ambiente.
 #
-# Pré-requisito conhecido e ainda não atendido: o CI de hoje constrói as
-# imagens com `load: true` e tags fixas `:prod`, sem publicar em registry
-# nenhum. Promover para staging/prod exige antes publicar por digest — está
-# registrado como fora de escopo em docs/adr/0025.
+# O pré-requisito que faltava (imagens publicadas por digest) foi atendido pelo
+# ADR 0119: `release.yml` publica as quatro no GHCR a cada tag final e registra
+# os digests em `.release/images.json`. Aplicar aqui é
+# `make imagens-do-release OVERLAY=prod` — nunca à mão, e o resultado NÃO se
+# commita: `kustomize edit` reescreve o arquivo inteiro (reordena as chaves e
+# desloca estes comentários), e o repositório guarda o MARCADOR, não a release
+# que estava em produção num dia específico.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -40,13 +43,21 @@ images:
   # Tag mutável NÃO serve em produção: `:prod` apontando para conteúdo
   # diferente ao longo do tempo impede rollback determinístico e faz dois pods
   # do mesmo ReplicaSet rodarem binários diferentes. O valor abaixo é um
-  # marcador — o pipeline substitui pelo digest do artefato que passou no CI.
+  # marcador — `make imagens-do-release` o substitui pelo `digest:` da release
+  # escolhida, lendo `.release/images.json` (asset de toda release final).
   - name: brabo-api
-    newName: ghcr.io/OWNER/brabo-api
+    newName: ghcr.io/daneiel/brabo-api
     newTag: REPLACE_WITH_DIGEST
   - name: brabo-engine
-    newName: ghcr.io/OWNER/brabo-engine
+    newName: ghcr.io/daneiel/brabo-engine
     newTag: REPLACE_WITH_DIGEST
   - name: brabo-web
-    newName: ghcr.io/OWNER/brabo-web
+    newName: ghcr.io/daneiel/brabo-web
+    newTag: REPLACE_WITH_DIGEST
+  # A QUARTA imagem. Ficava de fora, e o CronJob de backup herdava
+  # `brabo-backup:prod` da base — nome que não existe em registry nenhum, então
+  # o backup do ambiente que mais precisa dele nunca subiria. O `ci.yml` não
+  # pegava isto porque só valida que o overlay MONTA.
+  - name: brabo-backup
+    newName: ghcr.io/daneiel/brabo-backup
     newTag: REPLACE_WITH_DIGEST

@@ -32,11 +32,18 @@ configMapGenerator:
 
 images:
   - name: brabo-api
-    newName: ghcr.io/OWNER/brabo-api
+    newName: ghcr.io/daneiel/brabo-api
     newTag: REPLACE_WITH_DIGEST
   - name: brabo-engine
-    newName: ghcr.io/OWNER/brabo-engine
+    newName: ghcr.io/daneiel/brabo-engine
     newTag: REPLACE_WITH_DIGEST
   - name: brabo-web
-    newName: ghcr.io/OWNER/brabo-web
+    newName: ghcr.io/daneiel/brabo-web
+    newTag: REPLACE_WITH_DIGEST
+  # A QUARTA imagem. Ficou de fora até aqui e o CronJob de backup herdava
+  # `brabo-backup:prod` da base — um nome que não existe em registry nenhum,
+  # então o backup do ambiente que mais precisa dele nunca subiria. O `ci.yml`
+  # nunca pegou isto porque só valida que o overlay MONTA.
+  - name: brabo-backup
+    newName: ghcr.io/daneiel/brabo-backup
     newTag: REPLACE_WITH_DIGEST

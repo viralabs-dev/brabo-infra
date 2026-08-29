@@ -43,6 +43,25 @@ variable "TAG_EXTRA" {
 variable "VERSION" {
   default = "dev"
 }
+# Prefixo de registry, COM a barra final quando presente:
+# `ghcr.io/daneiel/`. Vazio por padrão de propósito — o `ci.yml` constrói para
+# o daemon local e compara nomes curtos (`brabo-api:prod`) no scan e no smoke;
+# quem publica é só o `release.yml` (ADR 0119).
+#
+# A barra vem NO VALOR e não numa interpolação condicional porque HCL não tem
+# ternário aninhado legível para isso, e um prefixo vazio precisa produzir
+# exatamente o nome antigo — qualquer separador fixo aqui quebraria o `ci.yml`.
+variable "REGISTRY" {
+  default = ""
+}
+
+# Destino do build. `type=docker` carrega no daemon local (o que o `ci.yml`
+# precisa para escanear e rodar o smoke); o `release.yml` troca para
+# `type=registry`, que EMPURRA e é o único modo em que o bake devolve
+# `containerimage.digest` no metadata — o digest não existe antes do push.
+variable "OUTPUT" {
+  default = "type=docker"
+}
 
 # `docker buildx bake` sem alvo constrói este grupo.
 group "default" {
@@ -53,13 +72,13 @@ group "default" {
 # builds disputarem a mesma chave e se invalidarem entre si.
 target "_comum" {
   context = "."
-  output  = ["type=docker"]
+  output  = [OUTPUT]
 }
 
 target "api" {
   inherits   = ["_comum"]
   dockerfile = "docker/api/Dockerfile.prod"
-  tags       = TAG_EXTRA == "" ? ["brabo-api:${TAG}"] : ["brabo-api:${TAG}", "brabo-api:${TAG_EXTRA}"]
+  tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-api:${TAG}"] : ["${REGISTRY}brabo-api:${TAG}", "${REGISTRY}brabo-api:${TAG_EXTRA}"]
   args       = { BRABO_VERSION = VERSION }
   cache-from = ["type=gha,scope=api"]
   cache-to   = ["type=gha,scope=api,mode=max"]
@@ -68,7 +87,7 @@ target "api" {
 target "engine" {
   inherits   = ["_comum"]
   dockerfile = "docker/engine/Dockerfile.prod"
-  tags       = TAG_EXTRA == "" ? ["brabo-engine:${TAG}"] : ["brabo-engine:${TAG}", "brabo-engine:${TAG_EXTRA}"]
+  tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-engine:${TAG}"] : ["${REGISTRY}brabo-engine:${TAG}", "${REGISTRY}brabo-engine:${TAG_EXTRA}"]
   cache-from = ["type=gha,scope=engine"]
   cache-to   = ["type=gha,scope=engine,mode=max"]
 }
@@ -76,7 +95,7 @@ target "engine" {
 target "web" {
   inherits   = ["_comum"]
   dockerfile = "docker/web/Dockerfile.prod"
-  tags       = TAG_EXTRA == "" ? ["brabo-web:${TAG}"] : ["brabo-web:${TAG}", "brabo-web:${TAG_EXTRA}"]
+  tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-web:${TAG}"] : ["${REGISTRY}brabo-web:${TAG}", "${REGISTRY}brabo-web:${TAG_EXTRA}"]
   args       = { VITE_BRABO_VERSION = VERSION }
   cache-from = ["type=gha,scope=web"]
   cache-to   = ["type=gha,scope=web,mode=max"]
@@ -88,7 +107,7 @@ target "web" {
 target "backup" {
   inherits   = ["_comum"]
   dockerfile = "docker/backup/Dockerfile.prod"
-  tags       = TAG_EXTRA == "" ? ["brabo-backup:${TAG}"] : ["brabo-backup:${TAG}", "brabo-backup:${TAG_EXTRA}"]
+  tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-backup:${TAG}"] : ["${REGISTRY}brabo-backup:${TAG}", "${REGISTRY}brabo-backup:${TAG_EXTRA}"]
   cache-from = ["type=gha,scope=backup"]
   cache-to   = ["type=gha,scope=backup,mode=max"]
 }
