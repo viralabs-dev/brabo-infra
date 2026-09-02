@@ -60,6 +60,22 @@ vulnerabilities:
       escuta rede nem processa entrada de terceiros. Sai desta lista quando
       houver release novo do gitleaks.
     expired_at: 2026-10-31
+  - id: CVE-2026-56854
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      golang.org/x/crypto v0.35.0 embutido no BINÁRIO OFICIAL do gitleaks
+      8.30.1, que segue sendo o último release publicado (checado em
+      2026-09-02 na API do GitHub: v8.30.1, de 2026-03-21, a mesma das outras
+      três entradas deste binário) — baixamos o artefato com checksum
+      verificado, não o compilamos, então não há como recompilar contra um
+      x/crypto mais novo sem um release do upstream. O bypass é de
+      autenticação em SERVIDOR SSH (restrição de source-address não aplicada
+      em `x/crypto/ssh`): o gitleaks aqui é uma CLI que lê arquivos locais nos
+      gates de SecOps — nunca sobe servidor SSH, não escuta rede nem processa
+      entrada de terceiros, então o caminho vulnerável não é alcançável neste
+      uso. Sai desta lista quando houver release novo do gitleaks.
+    expired_at: 2026-10-31
   - id: CVE-2025-68121
     paths:
       - "usr/local/bin/gitleaks"
