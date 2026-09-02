@@ -210,8 +210,18 @@ services:
       # dois Dockerfile.prod.
       GIT_LOCAL_REPOS_ROOT: /data/git-repos
       PROJECT_WORKSPACES_ROOT: /data/project-workspaces
+      # Broker de container (ADR 0130). Vazia é o default e é estado NORMAL:
+      # sem o profile `container-broker` o serviço nem sobe, e quem lê o estado
+      # observado declara "não observado" em vez de herdar o registrado.
+      BROKER_URL: ${BROKER_URL:-}
     ports:
       - "${API_PORT:-3000}:3000"
+    networks:
+      # A api participa de DUAS redes. Declarar `networks` num serviço tira
+      # dele a default implícita — omitir `default` aqui a desligaria do
+      # postgres, do neo4j e do engine.
+      - default
+      - broker
     volumes:
       - git_local_repos:/data/git-repos
       - project_workspaces:/data/project-workspaces
@@ -276,6 +286,59 @@ services:
         condition: service_healthy
       migrate-engine:
         condition: service_completed_successfully
+
+  # Broker de container (ADR 0130) — o ÚNICO serviço com `/var/run/docker.sock`
+  # montado, aqui como no compose de desenvolvimento. Não monte esse socket em
+  # nenhum outro.
+  #
+  # Sob `profiles`, pelo mesmo motivo do `llm` abaixo e um a mais: nada o chama
+  # para ESCREVER ainda (quem propõe subir container é o Infra Lead, por
+  # `proposed_action`, e isso é outro PR), então tê-lo de pé por padrão daria
+  # acesso ao Docker do host em troca de nada. `docker/smoke.sh` roda sem
+  # profile e portanto não o levanta — o smoke continua provando as MESMAS
+  # três imagens.
+  #
+  #   docker compose -f docker/docker-compose.prod.yml \
+  #     --profile container-broker up -d broker
+  broker:
+    image: brabo-broker:prod
+    build:
+      context: ..
+      dockerfile: docker/broker/Dockerfile.prod
+    profiles: ["container-broker"]
+    <<: *app-hardening
+    # O CLI do docker escreve arquivo temporário; o resto do rootfs é
+    # read-only, como nos outros três.
+    tmpfs:
+      - /tmp
+    environment:
+      NODE_ENV: production
+      BROKER_PORT: 8090
+      # Sem default de desenvolvimento, mesma regra dos segredos da api
+      # (ADR 0059/RN-114): com NODE_ENV=production o broker RECUSA subir com a
+      # variável vazia, com o literal público do repositório ou com menos de 16
+      # caracteres. A linha fica aqui, vazia, porque omiti-la esconderia que a
+      # variável existe.
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
+      API_URL: ${API_URL:-http://api:3000}
+      # A raiz das pastas de projeto NO HOST. Não tem como derivar do volume
+      # nomeado `project_workspaces` — o caminho que o daemon resolve é o do
+      # host, e um caminho de dentro de um container faria ele montar uma pasta
+      # VAZIA. Sem esta variável, `start` recusa dizendo isso; as outras quatro
+      # operações continuam.
+      PROJECT_WORKSPACES_HOST_ROOT: ${PROJECT_WORKSPACES_HOST_ROOT:-}
+    # SEM `ports:` — a primeira camada da contenção. Só a api o alcança, pela
+    # rede `broker` (`internal: true`), e nada no host precisa dele.
+    networks:
+      - broker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # O gid do grupo `docker` do HOST (`getent group docker | cut -d: -f3`). O
+    # default 999 é o mais comum e está errado em várias distribuições — errar
+    # aqui dá "permission denied" no socket, que `DockerIndisponivelError`
+    # nomeia com a dica do grupo.
+    group_add:
+      - "${DOCKER_GID:-999}"
 
   web:
     image: brabo-web:prod
@@ -363,6 +426,13 @@ services:
     volumes:
       - ./ollama/pull-models.sh:/pull-models.sh:ro
     restart: "no"
+
+networks:
+  # Rede PRÓPRIA do broker, `internal: true` (ADR 0130): o engine e o web não a
+  # alcançam (não estão nela), e o broker não alcança a internet. Só a api está
+  # dos dois lados. Camada de baixo do token de serviço, nunca substituta dele.
+  broker:
+    internal: true
 
 volumes:
   pgdata:
