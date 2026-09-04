@@ -240,6 +240,12 @@ services:
       NEO4J_URI: ${NEO4J_URI:-}
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-dev-neo4j-password-change-me}
+      # A BASE dos projetos no modo "Pasta montada" (ADR 0141, RN-500) — a
+      # ÚNICA pasta do SEU computador que os containers do Brabo enxergam.
+      # Vazia é estado NORMAL: sem ela, a api reporta `projectsBase: null` e a
+      # criação de projeto não oferece o modo "Pasta montada" — nunca oferecer
+      # um modo que a instalação não honra.
+      BRABO_PROJECTS_BASE: ${BRABO_PROJECTS_BASE:-}
       # Broker de container (ADR 0130) — o único processo com acesso ao daemon
       # Docker. A api é a ÚNICA que o alcança (rede `broker`, `internal: true`,
       # sem porta publicada). Vazia é estado NORMAL: sem o profile
@@ -268,20 +274,28 @@ services:
       # bind mount na hora — mesma linha serve os dois casos.
       - ${GIT_LOCAL_REPOS_HOST_DIR:-git_local_repos}:/data/git-repos
       - ${PROJECT_WORKSPACES_HOST_DIR:-project_workspaces}:/data/project-workspaces
-      # PROJETO NO MODO **LOCAL** (ADR 0072): o código mora numa pasta SUA, de
-      # caminho livre, e as duas linhas acima não participam disso. Para cada
-      # pasta que você for usar, acrescente aqui E no serviço `engine` a MESMA
-      # linha, com o mesmo caminho absoluto dos dois lados do `:` — é o caminho
-      # gravado em `projects.workspace_path`, lido pelos DOIS processos, e
-      # montar em lugares diferentes faria o engine escrever onde a api não lê:
+      # PROJETO NO MODO **PASTA MONTADA** (ADR 0072/0141): o código mora numa
+      # pasta SUA, e as duas linhas acima não participam disso. Antes, cada
+      # projeto exigia uma linha ESCRITA À MÃO aqui e no `engine`, mais um
+      # restart dos dois — o que mata todo turno de agente, socket de terminal
+      # e chamada de LLM da instalação para onboardar UM projeto. A linha
+      # abaixo troca isso por uma BASE ÚNICA, configurada uma vez pelo
+      # operador: os projetos montados moram DENTRO dela, e nada é editado
+      # aqui por projeto, nunca.
       #
-      #   - /home/voce/projetos/loja:/home/voce/projetos/loja
+      # MESMO TRUQUE das duas linhas acima (`${VAR:-nome_de_volume}`): sem
+      # `BRABO_PROJECTS_BASE` definida, o lado esquerdo é o NOME de um volume
+      # declarado no fim deste arquivo, e a linha é Compose válido que não
+      # monta pasta nenhuma do host. O default à DIREITA é absoluto e inerte
+      # de propósito — ele só existe para o `:` ter um destino quando não há
+      # variável, e nada escreve lá.
       #
-      # Sem a montagem, a CRIAÇÃO do projeto é recusada com 400 e a mensagem
-      # traz esta linha (RN-170) — o projeto não nasce para travar depois, na
-      # primeira ferramenta do primeiro agente. Ver docs/runbook.md, seção
-      # "Projeto no modo Local". Não é variável de ambiente de propósito: o
-      # caminho é dado do PROJETO, não da instalação.
+      # IDENTIDADE (`$X:$X`), e não um ponto de montagem fixo: a string de
+      # `projects.workspace_path` é DIGITADA pelo usuário e MOSTRADA de volta
+      # a ele. Host == container mantém as duas honestas e faz
+      # `projectScopeRoot` (api) e `Engine.Actions.Workspace.workspace_dir/2`
+      # (engine) continuarem valendo sem uma linha de código nova.
+      - ${BRABO_PROJECTS_BASE:-brabo_projects_base}:${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}
     # SEM depends_on de `ollama` aqui, de propósito: desde que ele entrou em
     # `profiles: ["local-llm"]` (ver o comentário no serviço, acima), um
     # `docker compose up`/`config`/`ps` SEM `--profile` recusa o arquivo
@@ -328,6 +342,12 @@ services:
       # workspaces que a api usa — Engine.Actions.Workspace faz o
       # checkout do bare repo (montado abaixo, read-only) ali dentro.
       PROJECT_WORKSPACES_ROOT: /data/project-workspaces
+      # A base dos projetos montados (ADR 0141, RN-500). O engine não a LÊ hoje
+      # — quem decide o que cabe na base é a api —, mas a linha fica aqui pelo
+      # mesmo motivo que `PROJECT_WORKSPACES_ROOT` está nos dois serviços: o
+      # valor tem que ser o MESMO dos dois lados, e uma variável presente num
+      # só é como os dois passam a enxergar árvores diferentes.
+      BRABO_PROJECTS_BASE: ${BRABO_PROJECTS_BASE:-}
       TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
       # Teto de BYTES da saída de um comando (RN-074). A saída fica no
       # histórico do laço e viaja em TODO turno seguinte — sem teto, um `find`
@@ -394,15 +414,14 @@ services:
       # volume/pasta), senão api e engine enxergam árvores diferentes.
       - ${GIT_LOCAL_REPOS_HOST_DIR:-git_local_repos}:/data/git-repos
       - ${PROJECT_WORKSPACES_HOST_DIR:-project_workspaces}:/data/project-workspaces
-      # PROJETO NO MODO **LOCAL** (ADR 0072): a MESMA linha que você
-      # acrescentar no serviço `api` precisa vir aqui também, com o mesmo
-      # caminho absoluto — o engine é quem monta o worktree e escreve o código:
-      #
-      #   - /home/voce/projetos/loja:/home/voce/projetos/loja
-      #
-      # Montar só na api produz um projeto que a api ACEITA (ela valida o que
-      # ela vê) e o engine não enxerga. Ver docs/runbook.md, "Projeto no modo
-      # Local".
+      # PROJETO NO MODO **PASTA MONTADA** (ADR 0072/0141): a MESMA linha do
+      # serviço `api`, com o MESMO valor. Montar a base só na api produz um
+      # projeto que a api ACEITA (ela valida o que ela vê) e que o engine — quem
+      # monta o worktree e escreve o código — não enxerga. Por isso a linha é
+      # literalmente idêntica lá em cima, incluindo o volume nomeado de default:
+      # se `BRABO_PROJECTS_BASE` estiver vazia, os dois caem no MESMO volume
+      # inerte. Ver docs/runbook.md, "Project in Mounted mode".
+      - ${BRABO_PROJECTS_BASE:-brabo_projects_base}:${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}
     depends_on:
       postgres:
         condition: service_healthy
@@ -454,6 +473,16 @@ services:
       # gerenciado não há caminho de host que sirva, e o broker prefere recusar
       # a adivinhar.
       PROJECT_WORKSPACES_HOST_ROOT: ${PROJECT_WORKSPACES_HOST_ROOT:-${PROJECT_WORKSPACES_HOST_DIR:-}}
+      # A SEGUNDA raiz do broker: a base dos projetos MONTADOS, também no HOST
+      # (ADR 0141). Mesmo motivo da de cima, e mesma derivação — o valor
+      # explícito ganha, senão vale `BRABO_PROJECTS_BASE`, que já é um caminho
+      # de host por definição (é montado por identidade em `api`/`engine`).
+      #
+      # Nada a consome ainda: quem resolve `mounted` contra esta raiz é o PR do
+      # container de projeto montado. A linha nasce aqui porque a base nasce
+      # aqui, e uma variável de host que aparece meia release depois é uma
+      # variável que ninguém liga ao arquivo que a explica.
+      BRABO_PROJECTS_HOST_BASE: ${BRABO_PROJECTS_HOST_BASE:-${BRABO_PROJECTS_BASE:-}}
     # SEM `ports:`. É a primeira camada da contenção: quem alcança este processo
     # alcança o Docker do host por procuração, e nada no host precisa alcançá-lo.
     networks:
@@ -526,6 +555,11 @@ volumes:
   engine_mix:
   engine_hex:
   project_workspaces:
+  # O default INERTE de `BRABO_PROJECTS_BASE` (ADR 0141). Ele existe para a
+  # linha de volume de `api`/`engine` ser Compose válido quando a variável não
+  # está definida — nada escreve dentro dele, e uma instalação sem base
+  # configurada simplesmente não oferece o modo Pasta montada.
+  brabo_projects_base:
   broker_root_node_modules:
   broker_app_node_modules:
   broker_port_node_modules:

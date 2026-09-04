@@ -210,6 +210,12 @@ services:
       # dois Dockerfile.prod.
       GIT_LOCAL_REPOS_ROOT: /data/git-repos
       PROJECT_WORKSPACES_ROOT: /data/project-workspaces
+      # A base dos projetos no modo "Pasta montada" (ADR 0141, RN-500) — a
+      # ÚNICA pasta do host que os containers do Brabo enxergam. Vazia é estado
+      # NORMAL, e neste compose é o caso comum: ele existe para validar as
+      # imagens, e uma validação não monta pasta de ninguém. Sem ela, a api
+      # reporta `projectsBase: null` e o modo não é oferecido.
+      BRABO_PROJECTS_BASE: ${BRABO_PROJECTS_BASE:-}
       # Broker de container (ADR 0130). Vazia é o default e é estado NORMAL:
       # sem o profile `container-broker` o serviço nem sobe, e quem lê o estado
       # observado declara "não observado" em vez de herdar o registrado.
@@ -225,6 +231,16 @@ services:
     volumes:
       - git_local_repos:/data/git-repos
       - project_workspaces:/data/project-workspaces
+      # A base dos projetos montados (ADR 0141), montada por IDENTIDADE
+      # (`$X:$X`) — o mesmo caminho no host e dentro do container, porque a
+      # string de `projects.workspace_path` é digitada pelo usuário e mostrada
+      # de volta a ele. MESMA linha no `engine`, abaixo: montar só aqui produz
+      # um projeto que a api aceita e que o engine não enxerga.
+      #
+      # `${VAR:-nome_de_volume}` à esquerda com um default absoluto e inerte à
+      # direita: sem a variável, a linha vira um volume nomeado que ninguém
+      # escreve, e continua sendo Compose válido.
+      - ${BRABO_PROJECTS_BASE:-brabo_projects_base}:${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}
     depends_on:
       postgres:
         condition: service_healthy
@@ -268,6 +284,11 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-8088}}
       API_URL: ${API_URL:-http://api:3000}
       PROJECT_WORKSPACES_ROOT: /data/project-workspaces
+      # A base dos projetos montados (ADR 0141). O engine não a lê hoje, mas o
+      # valor tem que ser o MESMO da api pelo mesmo motivo de
+      # `PROJECT_WORKSPACES_ROOT`: definida num só, os dois passam a enxergar
+      # árvores diferentes.
+      BRABO_PROJECTS_BASE: ${BRABO_PROJECTS_BASE:-}
       SESSION_HEARTBEAT_TIMEOUT_MS: ${SESSION_HEARTBEAT_TIMEOUT_MS:-30000}
       TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
       SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
@@ -281,6 +302,9 @@ services:
     volumes:
       - git_local_repos:/data/git-repos
       - project_workspaces:/data/project-workspaces
+      # A MESMA linha do serviço `api`, com o MESMO valor (ADR 0141) — o engine
+      # é quem monta o worktree e escreve o código.
+      - ${BRABO_PROJECTS_BASE:-brabo_projects_base}:${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}
     depends_on:
       postgres:
         condition: service_healthy
@@ -327,6 +351,12 @@ services:
       # VAZIA. Sem esta variável, `start` recusa dizendo isso; as outras quatro
       # operações continuam.
       PROJECT_WORKSPACES_HOST_ROOT: ${PROJECT_WORKSPACES_HOST_ROOT:-}
+      # A SEGUNDA raiz do broker: a base dos projetos MONTADOS, também no HOST
+      # (ADR 0141). Deriva de `BRABO_PROJECTS_BASE`, que já é um caminho de
+      # host por definição — é ela que `api`/`engine` montam por identidade.
+      # Nada a consome ainda; a linha nasce junto com a base para não aparecer
+      # meia release depois, longe do arquivo que a explica.
+      BRABO_PROJECTS_HOST_BASE: ${BRABO_PROJECTS_HOST_BASE:-${BRABO_PROJECTS_BASE:-}}
     # SEM `ports:` — a primeira camada da contenção. Só a api o alcança, pela
     # rede `broker` (`internal: true`), e nada no host precisa dele.
     networks:
@@ -443,3 +473,7 @@ volumes:
   # absoluto nos dois containers (ver ADR 0024, item "mount points graváveis").
   git_local_repos:
   project_workspaces:
+  # O default INERTE de `BRABO_PROJECTS_BASE` (ADR 0141): existe só para a
+  # linha de volume de `api`/`engine` continuar válida quando a variável não
+  # está definida. Nada escreve dentro dele.
+  brabo_projects_base:
