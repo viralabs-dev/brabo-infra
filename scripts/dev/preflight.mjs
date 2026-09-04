@@ -15,6 +15,12 @@
  * NUNCA abre. O erro do Docker é `port is already allocated` — não diz quem
  * está segurando nem o que fazer. Este script diz.
  *
+ * TAMBÉM RECUSA subir quando `BRABO_PROJECTS_BASE` (ADR 0141) se sobrepõe ao
+ * checkout do Brabo, nos dois sentidos. Esta é a única checagem do produto que
+ * consegue ver isso: a api compara o caminho de um projeto contra o checkout
+ * que ELA enxerga, que dentro do container dela é `/workspace` — nunca o
+ * caminho real no disco de quem desenvolve. Ver `base-de-projetos.mjs`.
+ *
  * TAMBÉM detecta um caso mais específico na porta do `ollama` (OLLAMA_PORT,
  * default 11434, o MESMO default de uma instalação nativa de Ollama na
  * máquina do desenvolvedor): em vez de reportar "porta ocupada" genérico,
@@ -27,6 +33,10 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import readline from 'node:readline/promises';
+import {
+  baseSobrepoeOCheckout,
+  mensagemDeBaseSobreposta,
+} from './base-de-projetos.mjs';
 
 const COMPOSE = ['-f', 'docker/docker-compose.yml', '--env-file', '.env'];
 const ENV_PATH = path.resolve('.env');
@@ -264,9 +274,47 @@ async function detectarOllamaNativo({ containers, host }) {
   return { porta, servico: 'ollama', dono };
 }
 
+// ------------------------------------------------- base dos projetos montados
+
+/**
+ * O checkout do Brabo no HOST, ou `null` quando não dá para afirmar.
+ *
+ * `null` (fora de um repositório git, `git` indisponível) NÃO bloqueia: o
+ * preflight avisa e sai da frente quando não sabe, nunca impede o trabalho por
+ * um defeito que não é do trabalho — a mesma regra do `catch` de
+ * `portasDoCompose`, abaixo.
+ */
+function checkoutDoBrabo() {
+  try {
+    return rodar('git', ['rev-parse', '--show-toplevel']).trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Recusa a subida quando `BRABO_PROJECTS_BASE` se sobrepõe ao checkout
+ * (ADR 0141, RN-500). Devolve `true` quando é para PARAR.
+ *
+ * O ambiente do processo tem precedência sobre o `.env`, na mesma ordem que o
+ * Compose aplica — checar o `.env` quando alguém exportou outro valor na shell
+ * aprovaria uma base que não é a que vai subir.
+ */
+function baseDeProjetosProibida() {
+  const base = process.env.BRABO_PROJECTS_BASE ?? lerEnv().get('BRABO_PROJECTS_BASE');
+  const checkout = checkoutDoBrabo();
+  if (!baseSobrepoeOCheckout(base, checkout)) return false;
+  console.error(mensagemDeBaseSobreposta(base, checkout));
+  return true;
+}
+
 // ------------------------------------------------------------------- main
 
 async function main() {
+  // ANTES de qualquer coisa: não depende de Docker, e é a única checagem aqui
+  // que impede um dano em vez de um inconveniente.
+  if (baseDeProjetosProibida()) process.exit(1);
+
   let compose;
   try {
     compose = portasDoCompose();
