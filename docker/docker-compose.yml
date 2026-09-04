@@ -221,6 +221,25 @@ services:
       # o engine (mesmo path, mesmo volume) onde mora o permissions.json
       # de cada projeto.
       PROJECT_WORKSPACES_ROOT: /data/project-workspaces
+      # Grafo de conhecimento (ADR 0099) — memória DERIVADA do event log, nunca
+      # fonte de verdade. `.env.example` documenta as TRÊS desde que o grafo
+      # nasceu, mas elas nunca chegavam ao processo: este bloco não as
+      # repassava e o serviço não tem `env_file`, então descomentar as linhas
+      # do `.env` não ligava nada — o Neo4j subia saudável e a api dizia
+      # "NEO4J_* ausentes, grafo desligado" ao lado dele, para sempre.
+      #
+      # `NEO4J_URI` vazia é o INTERRUPTOR, e vazia é o default: ausente = grafo
+      # desligado, com as rotas dependentes degradando para 503 (só em produção
+      # as três são obrigatórias e derrubam o boot). Ligar em dev é definir a
+      # URI no `.env` — `bolt://neo4j:7687`, hostname da rede do Compose.
+      #
+      # Usuário e senha herdam os MESMOS defaults do `NEO4J_AUTH` do serviço
+      # `neo4j` acima, de propósito: quem trocar a senha no `.env` troca a dos
+      # dois lados de uma vez. Dois defaults independentes deixariam a api
+      # tentando autenticar com uma senha que o servidor não tem mais.
+      NEO4J_URI: ${NEO4J_URI:-}
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-dev-neo4j-password-change-me}
       # Broker de container (ADR 0130) — o único processo com acesso ao daemon
       # Docker. A api é a ÚNICA que o alcança (rede `broker`, `internal: true`,
       # sem porta publicada). Vazia é estado NORMAL: sem o profile
