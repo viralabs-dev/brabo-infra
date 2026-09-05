@@ -9,6 +9,20 @@
 # Paralelizar por matriz de jobs faria o contrário — cada job teria seu daemon,
 # e o custo de upload/download das imagens comeria o ganho.
 #
+# ISSO FOI MEDIDO DE VERDADE DUAS VEZES, com DOIS mecanismos de transporte
+# diferentes, e as duas rejeitaram o split. A primeira vez foi raciocínio
+# sobre artifact genérico (`actions/upload-artifact`, ~1,7 GB). A segunda
+# (PR #497, revertido) testou GHCR — que usa as variáveis `REGISTRY`/`OUTPUT`
+# deste arquivo, `type=registry` empurrando direto do builder — e mediu
+# push 44–51s / pull 21–25s (round-trip 65–76s) num job de build separado dos
+# de scan/smoke. Não foi o transporte que reprovou desta vez (GHCR é rápido);
+# foi a ESTRUTURA: o job de smoke+e2e precisa das QUATRO imagens de qualquer
+# jeito, então o split nunca evita pagar o pull inteiro, e o único trabalho
+# que sairia do caminho crítico (o Trivy, ~15–21s) vale menos que o
+# round-trip que passaria a custar. Ver o comentário do job `images` em
+# `ci.yml` para o achado de segurança encontrado no caminho (pacote novo no
+# GHCR nasce público por padrão neste repositório).
+#
 # O ganho não é linear: o runner tem 2 vCPUs e `pnpm install`, `mix deps.get`,
 # `pip install` e `apk add` competem por CPU. O que se ganha de verdade é a
 # sobreposição das esperas de rede, que são boa parte de cada build.
