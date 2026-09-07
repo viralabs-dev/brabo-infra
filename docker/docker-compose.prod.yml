@@ -315,12 +315,17 @@ services:
   # montado, aqui como no compose de desenvolvimento. Não monte esse socket em
   # nenhum outro.
   #
-  # Sob `profiles`, pelo mesmo motivo do `llm` abaixo e um a mais: nada o chama
-  # para ESCREVER ainda (quem propõe subir container é o Infra Lead, por
-  # `proposed_action`, e isso é outro PR), então tê-lo de pé por padrão daria
-  # acesso ao Docker do host em troca de nada. `docker/smoke.sh` roda sem
-  # profile e portanto não o levanta — o smoke continua provando as MESMAS
-  # três imagens.
+  # Sob `profiles`, e AQUI SÓ — o compose de desenvolvimento deixou de usá-lo
+  # no ADR 0146 (ponto 3). NÃO "uniformize" os dois arquivos: a diferença é a
+  # decisão.
+  #
+  # O que separa os dois lados é o que o socket significa em cada um. Numa
+  # máquina de desenvolvimento, quem sobe a stack já tem o socket (está rodando
+  # `docker compose`), então o broker recebê-lo não concede nada que o operador
+  # já não possua. Aqui é o oposto: o socket é fronteira de privilégio de
+  # verdade, o operador não é o desenvolvedor, e nada na FASE 28 muda o modo
+  # padrão de uma instalação de produção. `docker/smoke.sh` roda sem profile e
+  # portanto não o levanta — o smoke continua provando as MESMAS três imagens.
   #
   #   docker compose -f docker/docker-compose.prod.yml \
   #     --profile container-broker up -d broker

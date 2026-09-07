@@ -429,22 +429,41 @@ services:
   # Broker de container (ADR 0130) — o ÚNICO serviço com `/var/run/docker.sock`
   # montado, e o único que precisa dele. Não monte esse socket em nenhum outro.
   #
-  # `profiles: ["container-broker"]`, mesmo mecanismo do `local-llm` acima: um
-  # `docker compose up` sem `--profile` NÃO sobe este serviço. A escolha é
-  # deliberada — dar acesso ao Docker do host a um processo que nada chama
-  # ainda seria uma mudança de postura para toda máquina de desenvolvimento, em
-  # troca de nada. Para ligar:
+  # SEM `profiles` aqui, e COM `profiles: ["container-broker"]` no compose de
+  # PRODUÇÃO. A assimetria é o ponto, e ela é do ADR 0146 (ponto 3).
   #
-  #   docker compose -f docker/docker-compose.yml --env-file .env \
-  #     --profile container-broker up -d broker
+  # Este serviço nasceu sob profile com esta justificativa (ADR 0130): "dar
+  # acesso ao Docker do host a um processo que nada chama ainda seria uma
+  # mudança de postura para toda máquina de desenvolvimento, em troca de nada".
+  # As duas metades morreram. "Nada o chama" é falso desde os ADRs 0133/0134/
+  # 0136 — o broker tem quatro chamadores reais. E "em troca de nada" deixou de
+  # descrever a troca quando o ADR 0144 fez `mounted` subir container PELO
+  # BROKER e o ADR 0146 tornou `mounted` o padrão local: com o profile
+  # desligado, o modo padrão termina em `BrokerIndisponivelError`.
   #
-  # e, no `.env`, `BROKER_URL=http://broker:8090` mais
-  # `PROJECT_WORKSPACES_HOST_DIR` (ver .env.example).
+  # O que sustenta subir aqui e não lá é o que o socket SIGNIFICA de cada lado.
+  # Quem roda `pnpm dev` já tem o socket do Docker — está rodando `docker
+  # compose`, contra o daemon do próprio host —, então o broker recebê-lo não
+  # concede nada que o operador já não possua. A superfície marginal é o HTTP
+  # deste serviço, que não publica porta (abaixo), vive numa rede
+  # `internal: true` que só a api alcança, e compara `BRABO_SERVICE_TOKEN` em
+  # tempo constante. Em produção o cálculo é o oposto: o socket é fronteira de
+  # privilégio de verdade e o operador não é o desenvolvedor.
   #
-  # NENHUM serviço tem `depends_on` dele, e isso é obrigatório: um serviço FORA
-  # do profile dependendo de um DENTRO faz o Compose recusar o arquivo inteiro
-  # com "depends on undefined service" — o mesmo achado registrado no serviço
-  # `ollama`, acima.
+  # As cinco camadas de contenção (ADR 0130) não mudam. Isto muda QUANDO o
+  # broker roda, nunca O QUE ele aceita: ele continua recebendo `projectId` e
+  # uma das cinco operações, continua indo à api ler a decisão do Arquiteto, e
+  # continua sem parâmetro nenhum onde se escreva `privileged`, `cap_add`,
+  # `network: host` ou um `-v` livre. A contenção nunca foi o profile.
+  #
+  # `DOCKER_GID` passa a importar para TODA máquina de desenvolvimento, e não
+  # só para quem ligava o profile de propósito — ver o `group_add` no fim deste
+  # serviço. `scripts/dev/preflight.mjs` relata o estado dele a cada `pnpm dev`.
+  #
+  # NENHUM serviço tem `depends_on` dele, e isso segue obrigatório enquanto o
+  # de PRODUÇÃO estiver sob profile: um serviço FORA do profile dependendo de
+  # um DENTRO faz o Compose recusar o arquivo inteiro com "depends on undefined
+  # service" — o mesmo achado registrado no serviço `ollama`, acima.
   broker:
     build:
       context: ..
@@ -452,7 +471,6 @@ services:
       args:
         DEV_UID: ${DEV_UID:-1000}
         DEV_GID: ${DEV_GID:-1000}
-    profiles: ["container-broker"]
     working_dir: /workspace
     environment:
       BROKER_PORT: 8090
@@ -502,6 +520,12 @@ services:
     # (`getent group docker | cut -d: -f3`) — o default 999 é o mais comum e
     # está errado em várias distribuições. Errar aqui dá "permission denied" no
     # socket, que o `DockerIndisponivelError` nomeia com a dica do grupo.
+    #
+    # Desde o ADR 0146 (este serviço sem profile) isso vale para TODA máquina de
+    # desenvolvimento, e não só para quem ligava o profile de propósito — por
+    # isso `scripts/dev/preflight.mjs` passa a RELATAR o estado dele a cada
+    # `pnpm dev`, em vez de a divergência aparecer só quando alguém propõe
+    # `container_start` e o socket recusa.
     group_add:
       - "${DOCKER_GID:-999}"
 

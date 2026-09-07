@@ -37,6 +37,7 @@ import {
   mensagemDeBaseSobreposta,
   normalizarBase,
 } from './base-de-projetos.mjs';
+import { GID, avaliarDockerGid, mensagemDoDockerGid } from './docker-gid.mjs';
 
 const COMPOSE = ['-f', 'docker/docker-compose.yml', '--env-file', '.env'];
 
@@ -303,12 +304,49 @@ function relatarBaseDeProjetos() {
   console.log(`[preflight] base de projetos montados: ${base}`);
 }
 
+/**
+ * O gid do grupo `docker` da máquina, lido do sistema. `null` quando não há
+ * grupo `docker` — macOS/Windows e Docker rootless, onde a pergunta não se
+ * aplica.
+ *
+ * `getent` não existe em toda plataforma, e o `catch` cobre isso junto com o
+ * grupo ausente: os dois querem o mesmo desfecho, que é não afirmar nada.
+ */
+function gidDoGrupoDocker() {
+  try {
+    const linha = rodar('getent', ['group', 'docker']).trim();
+    return linha.split(':')[2] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Relata o `DOCKER_GID` (ADR 0146, ponto 3).
+ *
+ * Existe porque o broker deixou de subir sob profile no compose local: o gid
+ * errado passou de problema de quem ligava o profile a problema de qualquer
+ * pessoa que rode `pnpm dev`. RELATA e não bloqueia — o stack sobe igual, e o
+ * broker também; o que se evita é a descoberta tardia, quando o socket recusa
+ * e o erro chega três telas adiante da causa.
+ */
+function relatarDockerGid() {
+  const veredito = avaliarDockerGid({
+    gidDoGrupo: gidDoGrupoDocker(),
+    valorConfigurado: process.env.DOCKER_GID ?? lerEnv().get('DOCKER_GID'),
+  });
+  const mensagem = mensagemDoDockerGid(veredito);
+  if (veredito.estado === GID.DIVERGENTE) console.warn(mensagem);
+  else console.log(mensagem);
+}
+
 async function main() {
   // ANTES de qualquer coisa: não depende de Docker, e é a única checagem aqui
   // que impede um dano em vez de um inconveniente.
   if (baseDeProjetosProibida()) process.exit(1);
 
   relatarBaseDeProjetos();
+  relatarDockerGid();
 
   let compose;
   try {
