@@ -161,7 +161,7 @@ COMPOSE="docker compose -f docker/docker-compose.yml --env-file .env"
 
 ROTULO["."]="Brabo";     FILHOS["."]="1 2 3 4"
 
-ROTULO["1"]="Docker";    FILHOS["1"]="1.1 1.2 1.3 1.4 1.5"
+ROTULO["1"]="Docker";    FILHOS["1"]="1.1 1.2 1.3 1.4 1.5 1.6"
 ROTULO["2"]="K8s";       FILHOS["2"]="2.1 2.2 2.3"
 ROTULO["3"]="Database";  FILHOS["3"]="3.1 3.2 3.3 3.4"
 ROTULO["4"]="Test";      FILHOS["4"]="4.1 4.2 4.3 4.4 4.5 4.6"
@@ -211,6 +211,14 @@ NOTA["1.4"]="rebuild + apaga o banco + sobe até saudável + migra + semeia (cre
 # tela de confirmação: essa régua é só para o que apaga banco.
 ROTULO["1.5"]="Reconfigurar Ollama"; CMD["1.5"]="bash scripts/dev/reconfigurar-ollama.sh"
 NOTA["1.5"]="remove OLLAMA_MODE/OLLAMA_HOST de .env — a próxima subida pergunta de novo"
+
+# Base de projetos: o consentimento do ADR 0146 — qual pasta do SEU disco os
+# containers enxergam, e portanto onde um projeto "Pasta montada" pode morar.
+# Daqui o script só RELATA: item de menu roda com stdin em /dev/null (ver o
+# comentário do `exec bash -c` mais abaixo), então perguntar é impossível — e a
+# saída diz o comando que pergunta. Mesmo motivo pelo qual 1.5 não pergunta.
+ROTULO["1.6"]="Base de projetos"; CMD["1.6"]="node scripts/dev/consentir-base.mjs"
+NOTA["1.6"]="relata BRABO_PROJECTS_BASE; para escolher, rode o script no seu terminal"
 
 # -- 2. K8s -----------------------------------------------------------------
 # Só `All` existe: o bootstrap do cluster instala api, engine e web juntos, e

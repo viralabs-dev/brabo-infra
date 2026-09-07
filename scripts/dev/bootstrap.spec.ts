@@ -43,11 +43,11 @@ describe('bootstrap.sh — árvore de comandos', () => {
     expect([...areas].sort()).toEqual(['1', '2', '3', '4']);
   });
 
-  it('tem 24 folhas — 8 Docker, 6 K8s, 4 Database, 6 Test', () => {
+  it('tem 25 folhas — 9 Docker, 6 K8s, 4 Database, 6 Test', () => {
     const conta = (area: string) =>
       folhas.filter((f) => f.caminho.startsWith(`${area}.`)).length;
-    expect(folhas).toHaveLength(24);
-    expect(conta('1')).toBe(8);
+    expect(folhas).toHaveLength(25);
+    expect(conta('1')).toBe(9);
     expect(conta('2')).toBe(6);
     expect(conta('3')).toBe(4);
     expect(conta('4')).toBe(6);
