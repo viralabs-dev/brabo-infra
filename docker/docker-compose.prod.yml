@@ -359,8 +359,10 @@ services:
       # A SEGUNDA raiz do broker: a base dos projetos MONTADOS, também no HOST
       # (ADR 0141). Deriva de `BRABO_PROJECTS_BASE`, que já é um caminho de
       # host por definição — é ela que `api`/`engine` montam por identidade.
-      # Nada a consome ainda; a linha nasce junto com a base para não aparecer
-      # meia release depois, longe do arquivo que a explica.
+      # Consumida desde o ADR 0144 (RN-503): projeto `mounted` sobe container
+      # PELO broker, contra ESTA raiz — a api manda um localizador
+      # DISCRIMINADO, e faltando a raiz o `start` recusa nomeando-a em vez de
+      # cair na outra.
       BRABO_PROJECTS_HOST_BASE: ${BRABO_PROJECTS_HOST_BASE:-${BRABO_PROJECTS_BASE:-}}
     # SEM `ports:` — a primeira camada da contenção. Só a api o alcança, pela
     # rede `broker` (`internal: true`), e nada no host precisa dele.

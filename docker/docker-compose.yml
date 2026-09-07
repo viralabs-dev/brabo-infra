@@ -248,9 +248,12 @@ services:
       BRABO_PROJECTS_BASE: ${BRABO_PROJECTS_BASE:-}
       # Broker de container (ADR 0130) — o único processo com acesso ao daemon
       # Docker. A api é a ÚNICA que o alcança (rede `broker`, `internal: true`,
-      # sem porta publicada). Vazia é estado NORMAL: sem o profile
-      # `container-broker`, o serviço nem sobe, e quem lê o estado observado
-      # DIZ "não observado" em vez de herdar o registrado (RN-468).
+      # sem porta publicada). Vazia é estado NORMAL — quem lê o estado
+      # observado DIZ "não observado" em vez de herdar o registrado (RN-468) —,
+      # mas aqui ela é o que RESTA configurar: desde o ADR 0146 (RN-512) o
+      # serviço sobe por padrão neste compose, e é esta variável que liga a api
+      # a ele. No compose de PRODUÇÃO o serviço segue sob profile, e lá vazia é
+      # também o caso comum.
       BROKER_URL: ${BROKER_URL:-}
     ports:
       - "${API_PORT:-3000}:3000"
@@ -496,10 +499,11 @@ services:
       # explícito ganha, senão vale `BRABO_PROJECTS_BASE`, que já é um caminho
       # de host por definição (é montado por identidade em `api`/`engine`).
       #
-      # Nada a consome ainda: quem resolve `mounted` contra esta raiz é o PR do
-      # container de projeto montado. A linha nasce aqui porque a base nasce
-      # aqui, e uma variável de host que aparece meia release depois é uma
-      # variável que ninguém liga ao arquivo que a explica.
+      # Consumida desde o ADR 0144 (RN-503): projeto `mounted` sobe container
+      # PELO broker, e a api manda um localizador DISCRIMINADO dizendo contra
+      # QUAL das duas raízes o segmento relativo vale. Faltando esta, `start` de
+      # um projeto montado recusa NOMEANDO-A, e nunca cai na de cima — o mesmo
+      # nome de pasta aponta para projetos diferentes em cada raiz.
       BRABO_PROJECTS_HOST_BASE: ${BRABO_PROJECTS_HOST_BASE:-${BRABO_PROJECTS_BASE:-}}
     # SEM `ports:`. É a primeira camada da contenção: quem alcança este processo
     # alcança o Docker do host por procuração, e nada no host precisa alcançá-lo.
@@ -528,6 +532,29 @@ services:
     # `container_start` e o socket recusa.
     group_add:
       - "${DOCKER_GID:-999}"
+    # Healthcheck, e ele é METADE da correção — não um enfeite. Sem healthcheck,
+    # `up --wait` (que é como `scripts/dev/reset-total.sh` sobe a stack) dá
+    # `brabo-broker-1 Healthy` assim que o container INICIA, e o reset anuncia
+    # "reset completo" com o processo morto cinco segundos depois. Foi assim que
+    # a queda por corepack/registry passou despercebida: verde falso.
+    #
+    # `wget` do busybox porque `node:24-alpine` não traz `curl`, e contra
+    # `127.0.0.1` porque este serviço não publica porta nenhuma — o teste roda
+    # DENTRO do container, que é a única forma que sobra e a que a contenção
+    # quer. Mesmo teste do `HEALTHCHECK` do `Dockerfile.prod`, deliberadamente.
+    #
+    # `/health` fala do PROCESSO, nunca do daemon: reiniciar o broker não
+    # conserta um Docker fora do ar, e reprovar por isso produziria um laço de
+    # reinício que não resolve nada.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      # A primeira subida depois de um `--build` copia os três `node_modules`
+      # da imagem para os volumes (ver `docker/broker/entrypoint.sh`); as
+      # seguintes não copiam nada e o processo escuta em menos de um segundo.
+      start_period: 60s
+      retries: 5
 
   web:
     build:
