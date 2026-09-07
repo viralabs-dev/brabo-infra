@@ -29,17 +29,16 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
-import path from 'node:path';
 import readline from 'node:readline/promises';
+import { lerEnv, escreverEnv } from './env-file.mjs';
 import {
   baseSobrepoeOCheckout,
   mensagemDeBaseSobreposta,
+  normalizarBase,
 } from './base-de-projetos.mjs';
 
 const COMPOSE = ['-f', 'docker/docker-compose.yml', '--env-file', '.env'];
-const ENV_PATH = path.resolve('.env');
 
 function rodar(cmd, args) {
   return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
@@ -108,44 +107,11 @@ function escutandoNoHost() {
 
 // ------------------------------------------------------------------- .env
 //
-// Leitura/escrita simples de `.env`, no mesmo espírito de
-// `scripts/dev/reset-total.sh` lendo as chaves `*_TEST_KEY` linha a linha
-// (grep, não um parser de biblioteca) — só que aqui também na direção
-// contrária (escrita), e por isso in-place: comentários e o resto das
-// chaves saem intocados; quem já existe é ATUALIZADO na própria linha, quem
-// não existe é ANEXADO ao final.
-
-function lerEnv() {
-  const mapa = new Map();
-  if (!existsSync(ENV_PATH)) return mapa;
-  for (const linha of readFileSync(ENV_PATH, 'utf8').split('\n')) {
-    const m = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(linha);
-    if (m) mapa.set(m[1], m[2]);
-  }
-  return mapa;
-}
-
-function escreverEnv(chaves) {
-  const original = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, 'utf8') : '';
-  const linhas = original.length > 0 ? original.split('\n') : [];
-  const pendentes = new Map(Object.entries(chaves));
-
-  const atualizadas = linhas.map((linha) => {
-    const m = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(linha);
-    if (m && pendentes.has(m[1])) {
-      const valor = pendentes.get(m[1]);
-      pendentes.delete(m[1]);
-      return `${m[1]}=${valor}`;
-    }
-    return linha;
-  });
-
-  // Uma última linha vazia (arquivo terminado em `\n`) some antes de anexar,
-  // senão cada escrita deixaria uma linha em branco a mais no meio do arquivo.
-  if (atualizadas.length > 0 && atualizadas.at(-1) === '') atualizadas.pop();
-  for (const [chave, valor] of pendentes) atualizadas.push(`${chave}=${valor}`);
-  writeFileSync(ENV_PATH, `${atualizadas.join('\n')}\n`);
-}
+// `lerEnv`/`escreverEnv` moraram aqui até o passo de consentimento da base
+// (`consentir-base.mjs`, ADR 0146) virar um SEGUNDO escritor do `.env`.
+// Importá-las deste arquivo é impossível — ele roda `await main()` no topo —,
+// então elas foram para `scripts/dev/env-file.mjs`, pelo mesmo argumento que
+// já havia criado `base-de-projetos.mjs`.
 
 // ------------------------------------------------------------- Ollama nativo
 //
@@ -310,10 +276,39 @@ function baseDeProjetosProibida() {
 
 // ------------------------------------------------------------------- main
 
+/**
+ * Relata o estado da base de projetos montados (ADR 0146).
+ *
+ * RELATA, nunca pergunta — quem pergunta é `consentir-base.mjs`, rodado pelo
+ * usuário no terminal dele. Diferente do Ollama, cuja pergunta mora aqui: lá a
+ * decisão é entre dois caminhos que o preflight já sabe distinguir sozinho, e
+ * a não-resposta tem um default seguro. Aqui a resposta é um CAMINHO no disco
+ * de alguém, e não existe default que se possa aplicar em silêncio.
+ *
+ * Ausente é estado NORMAL (RN-500), não erro: quem só usa o modo Container
+ * nunca precisa de base. Por isso é uma linha informativa e nunca um aviso.
+ */
+function relatarBaseDeProjetos() {
+  const base = normalizarBase(
+    process.env.BRABO_PROJECTS_BASE ?? lerEnv().get('BRABO_PROJECTS_BASE'),
+  );
+  if (base === null) {
+    console.log(
+      '[preflight] BRABO_PROJECTS_BASE não configurada — o modo "Pasta montada"\n' +
+        '            não será oferecido na criação de projeto. Para configurar:\n' +
+        '            node scripts/dev/consentir-base.mjs',
+    );
+    return;
+  }
+  console.log(`[preflight] base de projetos montados: ${base}`);
+}
+
 async function main() {
   // ANTES de qualquer coisa: não depende de Docker, e é a única checagem aqui
   // que impede um dano em vez de um inconveniente.
   if (baseDeProjetosProibida()) process.exit(1);
+
+  relatarBaseDeProjetos();
 
   let compose;
   try {

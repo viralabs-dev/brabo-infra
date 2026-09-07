@@ -49,7 +49,7 @@ export function normalizarBase(valor) {
  * comparação de prefixo diria que o primeiro está dentro do segundo, que é a
  * armadilha clássica. Mesma semântica de `dentroDoEscopo`, na api.
  */
-function dentroDe(caminho, raiz) {
+export function dentroDe(caminho, raiz) {
   // A raiz `/` vira string VAZIA na comparação, e é assim que `startsWith('/')`
   // volta a valer para todo caminho absoluto — sem isto, `${'/'}/` seria `//` e
   // `BRABO_PROJECTS_BASE=/` (a base que contém o checkout inteiro, e tudo o
@@ -105,9 +105,106 @@ export function mensagemDeBaseSobreposta(base, checkout) {
     'contra o checkout que ELA enxerga, que dentro do container dela é\n' +
     '/workspace — nunca o caminho real no seu disco. Só o preflight, que roda\n' +
     'no host, tem como saber.\n\n' +
-    'Aponte a base para uma pasta DEDICADA, fora do checkout e sem contê-lo:\n\n' +
-    `  BRABO_PROJECTS_BASE=$HOME/brabo-projetos-montados\n\n` +
+    'Aponte a base para uma pasta DEDICADA, fora do checkout e sem contê-lo —\n' +
+    'o passo `Docker › Base de projetos` do `pnpm bootstrap` propõe uma e a\n' +
+    'valida (ADR 0146):\n\n' +
+    `  BRABO_PROJECTS_BASE=$HOME/projetos-brabo\n\n` +
     'Ver .env.example (bloco "A base dos projetos no modo Pasta montada") e\n' +
     'docs/adr/0141-base-unica-dos-projetos-montados.md.\n'
   );
+}
+
+// --------------------------------------------- O consentimento (ADR 0146)
+//
+// O que segue é a decisão do passo de consentimento do `pnpm bootstrap`, e
+// mora aqui pelo mesmo motivo que o resto do módulo: é lógica PURA, e o
+// script que a usa (`consentir-base.mjs`) faz I/O — pergunta, cria pasta,
+// chama `docker`, escreve no `.env`. Separar é o que a torna testável sem
+// nada disso.
+
+/**
+ * A base padrão que o passo de consentimento PROPÕE (ADR 0146, ponto 1).
+ *
+ * `$HOME/projetos-brabo`, e não `$HOME/brabo-projetos`, apesar de o segundo
+ * ser o nome mais natural: `.env.example:202` já usa exatamente aquele
+ * caminho como exemplo comentado de `PROJECT_WORKSPACES_HOST_DIR` — a raiz
+ * dos workspaces que o PRODUTO gerencia. São variáveis de donos opostos, e o
+ * ADR 0141 recusou conflá-las porque a colisão quebra de um jeito difícil de
+ * enxergar: `<base>/loja` cairia na mesma pasta física de um projeto
+ * `container` cujo `workspace_dir_name` também fosse `loja`, e o bootstrap
+ * daria `git init` dentro do projeto do outro.
+ *
+ * Sob `$HOME` porque é o que o Docker Desktop compartilha por padrão —
+ * `/Users` no macOS, o perfil do usuário no Windows. Um default que exige
+ * abrir as configurações do Docker antes de funcionar não é um default.
+ *
+ * O nome é só a esquiva; a proteção é `validarBase`, abaixo.
+ */
+export function basePadrao(home) {
+  const h = normalizarBase(home);
+  return h === null ? null : `${h === '/' ? '' : h}/projetos-brabo`;
+}
+
+/**
+ * Os motivos de recusa, como constantes — o script traduz cada um em
+ * mensagem. Ficam aqui, e não como strings soltas, para que o teste afirme
+ * QUAL recusa aconteceu em vez de casar com um texto que vai mudar.
+ */
+export const RECUSA = {
+  VAZIA: 'vazia',
+  RELATIVA: 'relativa',
+  TIL: 'til',
+  RAIZ: 'raiz',
+  SOBREPOE_CHECKOUT: 'sobrepoe-checkout',
+  SOBREPOE_GERENCIADA: 'sobrepoe-gerenciada',
+};
+
+/**
+ * O veredito LÉXICO e de sobreposição sobre um caminho candidato a base.
+ *
+ * Devolve `{ ok: true, base }` ou `{ ok: false, motivo, ... }`. Não toca
+ * disco e não chama Docker: a existência da pasta e a prova de
+ * compartilhamento são do script, e nesta ordem — recusar o léxico antes de
+ * criar pasta é o que impede um `mkdir -p` num caminho que nunca deveria ter
+ * sido aceito.
+ *
+ * A sobreposição com a raiz GERENCIADA (`PROJECT_WORKSPACES_HOST_DIR`) é a
+ * regra nova do ADR 0146, e é o mecanismo que a escolha do nome só evita
+ * encostar: vale para o caminho DIGITADO, não só para o default. Raiz
+ * gerenciada ausente (o normal — a variável vem comentada) simplesmente não
+ * produz essa recusa; não há sobreposição possível com o que não existe.
+ */
+export function validarBase(candidato, { checkout, raizGerenciada } = {}) {
+  const base = normalizarBase(candidato);
+  if (base === null) return { ok: false, motivo: RECUSA.VAZIA };
+  if (base.startsWith('~')) return { ok: false, motivo: RECUSA.TIL, base };
+  if (!base.startsWith('/')) return { ok: false, motivo: RECUSA.RELATIVA, base };
+  if (base === '/') return { ok: false, motivo: RECUSA.RAIZ, base };
+
+  if (baseSobrepoeOCheckout(base, checkout)) {
+    return { ok: false, motivo: RECUSA.SOBREPOE_CHECKOUT, base, outro: normalizarBase(checkout) };
+  }
+
+  const gerenciada = normalizarBase(raizGerenciada);
+  if (gerenciada !== null && gerenciada.startsWith('/')) {
+    if (dentroDe(base, gerenciada) || dentroDe(gerenciada, base)) {
+      return { ok: false, motivo: RECUSA.SOBREPOE_GERENCIADA, base, outro: gerenciada };
+    }
+  }
+
+  return { ok: true, base };
+}
+
+/**
+ * A plataforma exige provar o compartilhamento de arquivos do Docker Desktop?
+ *
+ * Só macOS e Windows têm lista de compartilhamento; no Linux o bind mount
+ * alcança qualquer caminho que o usuário alcance. Esta é a SEGUNDA guarda de
+ * plataforma do produto — a primeira é `validarDirDentroDoHomeNoLinux`
+ * (`apps/runner/src/guard.ts`), que restringe `--dir` ao `$HOME` só no Linux.
+ * As duas são simétricas no princípio: cada uma restringe apenas onde a
+ * restrição significa alguma coisa.
+ */
+export function exigeProvaDeCompartilhamento(plataforma) {
+  return plataforma === 'darwin' || plataforma === 'win32';
 }
