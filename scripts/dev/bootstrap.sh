@@ -194,14 +194,19 @@ ROTULO["1.1.2"]="Api";    CMD["1.1.2"]="${COMPOSE} up -d --build api"
 ROTULO["1.1.3"]="Engine"; CMD["1.1.3"]="${COMPOSE} up -d --build engine"
 ROTULO["1.1.4"]="Web";    CMD["1.1.4"]="${COMPOSE} up -d --build web"
 
-# Reset total: rebuild + apaga o banco + sobe até saudável + migra + semeia,
-# numa tacada só — ver scripts/dev/reset-total.sh. É a única folha de Docker
-# que também mexe no banco, e por isso pede confirmação PRÓPRIA
+# Reset total: rebuild + para api e engine + apaga o banco + migra + sobe até
+# saudável + semeia, numa tacada só — ver scripts/dev/reset-total.sh. É a única
+# folha de Docker que também mexe no banco, e por isso pede confirmação PRÓPRIA
 # (`confirmar_reset`, não `confirmar` — essa é só do Database › Delete) e não
 # exige o Postgres já de pé: o próprio comando sobe o compose do zero.
+#
+# A ORDEM importa e está na tela de confirmação: apagar o banco embaixo de api e
+# engine VIVOS matava os dois (o Rehydrator do engine consulta uma tabela que
+# acabou de sumir), e nada os reerguia — o script terminava anunciando sucesso
+# com o ambiente quebrado.
 ROTULO["1.4"]="Reset total"; CMD["1.4"]="bash scripts/dev/reset-total.sh"
 ESTADO["1.4"]="confirmar_reset"
-NOTA["1.4"]="rebuild + apaga o banco + sobe até saudável + migra + semeia (credenciais de .env inclusas)"
+NOTA["1.4"]="para api/engine, apaga o banco, migra, sobe até saudável e semeia (credenciais de .env inclusas)"
 
 # Reconfigurar Ollama: esquece a decisão host/container gravada em `.env` por
 # scripts/dev/preflight.mjs (RN de detecção de Ollama nativo), forçando a
@@ -578,8 +583,9 @@ confirmar_reset_total() {
   local linha=$(( ALTURA_BANNER + 2 )) resposta
   limpar_corpo
   mover "${linha}" 1;       printf '  %s%sIsto reconstrói as imagens, apaga TODAS as tabelas e semeia de novo.%s' "${C_BOLD}" "${C_WARNING}" "${C_RESET}"
-  mover $(( linha + 2 )) 1; printf '  %sOrdem: preflight, build + up --wait, DROP SCHEMA (api e engine), migrate, seed.%s' "${C_MUTED}" "${C_RESET}"
-  mover $(( linha + 3 )) 1; printf '  %sCredenciais de provider em .env (*_TEST_KEY) entram já ativas no owner.%s' "${C_MUTED}" "${C_RESET}"
+  mover $(( linha + 2 )) 1; printf '  %sOrdem: preflight, build, PARA api e engine, DROP SCHEMA, migrate, up --wait, seed.%s' "${C_MUTED}" "${C_RESET}"
+  mover $(( linha + 3 )) 1; printf '  %sA api e o engine ficam fora do ar durante o apagamento — e voltam antes do seed.%s' "${C_MUTED}" "${C_RESET}"
+  mover $(( linha + 4 )) 1; printf '  %sCredenciais de provider em .env (*_TEST_KEY) entram já ativas no owner.%s' "${C_MUTED}" "${C_RESET}"
   rodape "$(( LINHAS - 4 ))" "digite ${C_TEXT}RESET${C_MUTED} e Enter para confirmar — qualquer outra coisa cancela"
 
   mover "$(( LINHAS - 1 ))" 1; printf '\033[2K  '

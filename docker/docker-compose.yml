@@ -310,6 +310,28 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Sem isto, `docker compose up --wait` NÃO prova nada sobre este serviço:
+    # ele espera "running" e segue em frente, que foi como o broker morreu em
+    # silêncio antes de ganhar o healthcheck abaixo. A imagem de PRODUÇÃO já
+    # tinha o `HEALTHCHECK` (docker/api/Dockerfile.prod:131) — é ele,
+    # deliberadamente o MESMO teste, que atravessa para o desenvolvimento aqui.
+    #
+    # `/health` (não `/live`) porque a pergunta é readiness: o processo fala
+    # com o Postgres. É essa a pergunta que `scripts/dev/reset-total.sh` faz
+    # depois de apagar e recriar os schemas — "esta api está de pé CONTRA o
+    # banco migrado?" —, e `/live` responderia "ok" com o banco vazio.
+    #
+    # `wget` do busybox (o `node:24-alpine` não traz `curl`) e contra
+    # `127.0.0.1`, como no broker. `start_period` alto porque o CMD de dev roda
+    # `pnpm install` e `pnpm db:migrate` ANTES de o Nest escutar — numa primeira
+    # subida com os volumes de node_modules vazios isso passa de dois minutos,
+    # e um teto curto reprovaria um boot que só estava começando.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 300s
+      retries: 5
 
   engine:
     build:
@@ -428,6 +450,21 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Mesmo motivo e mesmo teste do serviço `api`, acima — e o mesmo
+    # `HEALTHCHECK` que a imagem de produção já tem
+    # (docker/engine/Dockerfile.prod:172). `/health` toca o banco; `/live` não,
+    # e é justamente o banco que o reset acabou de derrubar embaixo deste
+    # processo.
+    #
+    # `start_period` ainda mais alto que o da api: o CMD de dev roda
+    # `mix deps.get` e compila o projeto inteiro antes de o Phoenix escutar, e
+    # numa primeira subida (volumes `_build`/`deps` vazios) isso leva minutos.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 420s
+      retries: 5
 
   # Broker de container (ADR 0130) — o ÚNICO serviço com `/var/run/docker.sock`
   # montado, e o único que precisa dele. Não monte esse socket em nenhum outro.
@@ -578,6 +615,20 @@ services:
     depends_on:
       - api
       - engine
+    # O terceiro e último serviço de dev que `--wait` não sabia avaliar. Aqui
+    # não há `/health` para bater: quem responde é o servidor do Vite, e a
+    # pergunta honesta é a que a imagem de produção também faz — "este processo
+    # entrega a página?". `/` serve o `index.html`; um 404 ou um socket fechado
+    # reprovam.
+    #
+    # `start_period` como o da api, pelo mesmo motivo: `pnpm install` roda antes
+    # do `vite`.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 300s
+      retries: 5
 
 networks:
   # Rede PRÓPRIA do broker, `internal: true` (ADR 0130). Duas consequências, e
