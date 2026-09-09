@@ -1,0 +1,412 @@
+# Compose de INSTALAÇÃO — o que roda na máquina de quem instalou o Brabo.
+#
+# Ele é gerado a partir de `docker-compose.prod.yml` e difere dele em três
+# pontos, cada um com um motivo:
+#
+#   1. as quatro imagens vêm de VARIÁVEL, sem default. O `install.sh` grava
+#      `BRABO_*_IMAGE` no `.env` — por DIGEST quando a fonte é o GHCR
+#      (`.release/images.json`, verificado pelo ADR 0149), ou pelo nome local
+#      quando é `--source=local`. Sem a variável o compose falha na hora, e
+#      não sobe metade da stack com uma imagem que ninguém escolheu;
+#   2. não há bloco `build:` em lugar nenhum. Este arquivo não constrói: é o
+#      ponto dele. Quem constrói é o `buildx bake`, quando o operador pede;
+#   3. o serviço `broker` NÃO EXISTE aqui, porque a imagem dele não é
+#      publicada — `docker-bake.hcl` tem quatro alvos. Ver o comentário da
+#      `BROKER_URL` na api, e a decisão 7 do ADR 0150.
+#
+# POR QUE UM ARQUIVO PRÓPRIO, e não um override sobre o de produção: aquele
+# arquivo se declara, no próprio cabeçalho, "compose de VALIDAÇÃO das imagens"
+# e "o que este arquivo NÃO é: um manifesto de produção endurecido". Ele é o
+# que `docker/smoke.sh` usa, construindo local de propósito. Promovê-lo a
+# manifesto de instalação quebraria esse uso e contrariaria o que ele diz de
+# si mesmo (ADR 0150, decisão 6).
+#
+# O custo dos dois arquivos é DECLARADO: a mesma topologia em dois lugares. O
+# teto contra a divergência é mecânico, não boa vontade —
+# `scripts/ci/composes-em-conformidade.spec.ts` reprova se este compose ganhar
+# serviço, volume ou porta que o de validação não tenha.
+#
+# Uso (normalmente pelo `install.sh`, nunca à mão):
+#   docker compose -f docker/docker-compose.install.yml --env-file .env up -d --wait
+#
+# `name` diferente do compose de dev de propósito: os dois podem coexistir na
+# mesma máquina sem disputar containers, redes nem volumes.
+name: brabo
+
+# Endurecimento comum a TODOS os nossos serviços de app. Cada um ainda declara
+# o `tmpfs` que precisa, porque o conjunto de caminhos graváveis é diferente.
+x-app-hardening: &app-hardening
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-brabo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brabo}
+      POSTGRES_DB: ${POSTGRES_DB:-brabo}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Mesmo init do dev: é ele que cria a extensão pgvector.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-brabo} -d ${POSTGRES_DB:-brabo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Neo4j — grafo de conhecimento (templates de prompt + memória relacional).
+  # Ao contrário do `ollama` abaixo, este serviço NÃO é opcional: a
+  # capacidade de grafo não depende de qual provider de LLM de chat está
+  # configurado, então não entra sob `profiles: ["llm"]`.
+  #
+  # NEO4J_PASSWORD SEM default público de propósito (mesmo padrão do
+  # SECRET_KEY_BASE/AUTH_JWT_SECRET acima, ADR 0059/RN-093): vazio, o
+  # NEO4J_AUTH vira "neo4j/" e o PRÓPRIO entrypoint da imagem recusa subir
+  # (senha precisa ter >= 8 caracteres) — a validação não é nossa, mas o
+  # efeito é o mesmo, "sem fallback silencioso para um valor público".
+  neo4j:
+    image: neo4j:5.26-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-}
+      # NÃO defina NEO4J_USERNAME/NEO4J_PASSWORD aqui — ver o comentário
+      # equivalente no docker-compose.yml de dev: o entrypoint da imagem tenta
+      # converter QUALQUER variável NEO4J_* numa chave de config, e essas duas
+      # não existem como config — o container morre no boot com
+      # "Unrecognized setting" (achado testando de verdade). O healthcheck
+      # abaixo passa a credencial como argumento, não via env.
+      #
+      # Mesmo teto de heap do compose de dev — ver o comentário lá para a
+      # razão do nome da variável ter mudado entre Neo4j 4.x e 5.x.
+      NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_MAX:-512m}
+      NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_MAX:-512m}
+      NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE:-256m}
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    ports:
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"
+      - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD:-} 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  # -------------------------------------------------------------------------
+  # Migrações: serviços ONE-SHOT, não passo de boot dos apps.
+  #
+  # Se cada réplica migrasse no start, duas subindo juntas competiriam pela
+  # mesma migration. Aqui elas rodam uma vez, terminam, e os apps só sobem
+  # depois (`service_completed_successfully`).
+  #
+  # São dois serviços porque são dois donos de schema em imagens diferentes:
+  # o Drizzle da api e o Ecto do engine. Não há referência cruzada entre as
+  # migrations dos dois (verificado), então rodam em paralelo.
+  # -------------------------------------------------------------------------
+  migrate-api:
+    image: ${BRABO_API_IMAGE:?defina BRABO_API_IMAGE — o install.sh grava as quatro no .env}
+    <<: *app-hardening
+    restart: "no"
+    tmpfs:
+      - /tmp
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      # Na imagem os .sql ficam em /app/db/migrations (o tsc não copia .sql),
+      # não no ./src/db/migrations que é o default do script.
+      MIGRATIONS_FOLDER: ./db/migrations
+    command: ["node", "db/migrate.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  migrate-engine:
+    image: ${BRABO_ENGINE_IMAGE:?defina BRABO_ENGINE_IMAGE — o install.sh grava as quatro no .env}
+    <<: *app-hardening
+    restart: "no"
+    tmpfs:
+      - /tmp
+      - /home/engine
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      # SEM default: o `runtime.exs` já derruba o boot sem ela (bloco :prod,
+      # boilerplate padrão do Phoenix) — o defeito real era este compose
+      # suprir o literal público como fallback e mascarar esse `raise`
+      # (RN-114, mesmo padrão do ADR 0059/RN-093).
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-}
+      # Sem PHX_SERVER aqui: migração não sobe endpoint HTTP.
+    command: ["/app/bin/engine", "eval", "Engine.Release.migrate()"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: ${BRABO_API_IMAGE:?defina BRABO_API_IMAGE — o install.sh grava as quatro no .env}
+    <<: *app-hardening
+    # /tmp é o único caminho gravável fora dos volumes (uploads temporários,
+    # arquivos intermediários). O resto do rootfs é read-only.
+    tmpfs:
+      - /tmp
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      # Origem do web NESTE compose (nginx publicado abaixo), não a de dev.
+      # DERIVA de WEB_PORT: dois defaults independentes deixavam trocar a porta
+      # publicada e quebrar o CORS em silêncio (ADR 0037 — a porta é contrato).
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-8088}}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      OLLAMA_REQUEST_TIMEOUT_MS: ${OLLAMA_REQUEST_TIMEOUT_MS:-300000}
+      # Os quatro segredos abaixo (mais o GIT_OAUTH_STATE_SECRET, logo em
+      # seguida) NÃO têm default de desenvolvimento aqui, de propósito. Este
+      # compose roda com NODE_ENV=production, e cada resolutor
+      # (auth-key-material.ts, service-token.ts,
+      # envelope-encryption.service.ts) recusa subir com o valor ausente, com
+      # o literal de exemplo do repositório (que é PÚBLICO — está no
+      # `.env.example`), ou curto demais. Repetir o literal aqui era o
+      # caminho REAL pelo qual uma produção subia com uma chave publicada
+      # neste repo — a variável ficava definida, então "exigir que não seja
+      # vazia" não pegaria nada. Vazia, o boot falha dizendo o que gerar
+      # (ADR 0059, RN-093/RN-114). A linha continua aqui, com valor vazio,
+      # porque omiti-la esconderia que a variável existe.
+      CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-}
+      # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
+      # assina o access token; BRABO_SERVICE_TOKEN autentica o tráfego interno
+      # engine <-> api nos dois sentidos — MESMO valor nos dois serviços deste
+      # compose (ver a env do serviço `engine`, abaixo).
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
+      GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
+      ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      GITLAB_OAUTH_CLIENT_ID: ${GITLAB_OAUTH_CLIENT_ID:-}
+      GITLAB_OAUTH_CLIENT_SECRET: ${GITLAB_OAUTH_CLIENT_SECRET:-}
+      # SMTP real (backlog "SMTP real no MailSender" — ADR 0096). Sem
+      # MAIL_TRANSPORT, o comportamento continua log-only mesmo aqui, em
+      # produção — enviar e-mail de verdade é OPT-IN do operador. Nenhuma
+      # das cinco variáveis abaixo tem default de desenvolvimento: ausentes
+      # (string vazia) com MAIL_TRANSPORT=smtp, o boot recusa subir
+      # (RN-114).
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-log}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      # Grafo de conhecimento (ADR 0099). URI e usuário têm o mesmo default
+      # de dev do serviço `neo4j` abaixo (não são segredo); a senha segue o
+      # padrão RN-114 dos outros segredos desta lista — sem default público,
+      # e o boot da api recusa subir em produção sem ela (neo4j-config.ts).
+      NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-}
+      # MESMOS caminhos absolutos do engine — obrigatório, ver comentário nos
+      # dois Dockerfile.prod.
+      GIT_LOCAL_REPOS_ROOT: /data/git-repos
+      PROJECT_WORKSPACES_ROOT: /data/project-workspaces
+      # A base dos projetos no modo "Pasta montada" (ADR 0141, RN-500) — a
+      # ÚNICA pasta do host que os containers do Brabo enxergam. Vazia é estado
+      # NORMAL, e neste compose é o caso comum: ele existe para validar as
+      # imagens, e uma validação não monta pasta de ninguém. Sem ela, a api
+      # reporta `projectsBase: null` e o modo não é oferecido.
+      BRABO_PROJECTS_BASE: ${BRABO_PROJECTS_BASE:-}
+      # Broker de container (ADR 0130). Vazia, e aqui não é só o default: o
+      # serviço `broker` NÃO EXISTE neste compose, porque a imagem dele não é
+      # publicada — `docker-bake.hcl` tem quatro alvos e `images-manifest.ts`
+      # aceita quatro. Consequência declarada no ADR 0150 (decisão 7): numa
+      # instalação por GHCR, projeto `mounted` não sobe container, porque quem
+      # o sobe é o broker (ADR 0144). Quem lê o estado observado declara "não
+      # observado" em vez de herdar o registrado — que é o comportamento certo
+      # para um broker ausente.
+      BROKER_URL: ${BROKER_URL:-}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    networks:
+      # A api participa de DUAS redes. Declarar `networks` num serviço tira
+      # dele a default implícita — omitir `default` aqui a desligaria do
+      # postgres, do neo4j e do engine.
+      - default
+    volumes:
+      - git_local_repos:/data/git-repos
+      - project_workspaces:/data/project-workspaces
+      # A base dos projetos montados (ADR 0141), montada por IDENTIDADE
+      # (`$X:$X`) — o mesmo caminho no host e dentro do container, porque a
+      # string de `projects.workspace_path` é digitada pelo usuário e mostrada
+      # de volta a ele. MESMA linha no `engine`, abaixo: montar só aqui produz
+      # um projeto que a api aceita e que o engine não enxerga.
+      #
+      # `${VAR:-nome_de_volume}` à esquerda com um default absoluto e inerte à
+      # direita: sem a variável, a linha vira um volume nomeado que ninguém
+      # escreve, e continua sendo Compose válido.
+      - ${BRABO_PROJECTS_BASE:-brabo_projects_base}:${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      migrate-api:
+        condition: service_completed_successfully
+
+  engine:
+    image: ${BRABO_ENGINE_IMAGE:?defina BRABO_ENGINE_IMAGE — o install.sh grava as quatro no .env}
+    <<: *app-hardening
+    tmpfs:
+      # /tmp: 4 detectors e a árvore temporária do InfraGateRunner escrevem lá.
+      # /home/engine: o semgrep baixa e cacheia as regras do registry no $HOME
+      #   na primeira execução — sem isto os scans do gate de SecOps falham.
+      - /tmp
+      - /home/engine
+    environment:
+      # MESMA variável do lado da api, sem default (ver o comentário grande no
+      # serviço `api`, acima) — se as duas pontas divergissem, o engine
+      # levaria 401 em toda chamada interna e o sintoma apareceria só no
+      # primeiro handoff.
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      # Obrigatórios no release (runtime.exs, bloco :prod):
+      # PHX_SERVER liga o endpoint HTTP — sem ele o container sobe e não escuta.
+      PHX_SERVER: "true"
+      # SEM default (ver o comentário no serviço `migrate-engine`, acima): o
+      # `raise` já existe no `runtime.exs`, e era este fallback que o
+      # mascarava (RN-114).
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-}
+      PHX_HOST: ${PHX_HOST:-localhost}
+      # Libera a origem do web no handshake do websocket dos canais. Sem isto o
+      # painel do time ao vivo fica mudo em :prod (check_origin estrito).
+      # Mesma derivação de WEB_PORT da api acima — as duas leem a MESMA
+      # variável, e é isso que impede o engine e a api de divergirem (ADR 0037).
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-8088}}
+      API_URL: ${API_URL:-http://api:3000}
+      PROJECT_WORKSPACES_ROOT: /data/project-workspaces
+      # A base dos projetos montados (ADR 0141). O engine não a lê hoje, mas o
+      # valor tem que ser o MESMO da api pelo mesmo motivo de
+      # `PROJECT_WORKSPACES_ROOT`: definida num só, os dois passam a enxergar
+      # árvores diferentes.
+      BRABO_PROJECTS_BASE: ${BRABO_PROJECTS_BASE:-}
+      SESSION_HEARTBEAT_TIMEOUT_MS: ${SESSION_HEARTBEAT_TIMEOUT_MS:-30000}
+      TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
+      SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
+      # Agentes de fundo desligados por default AQUI (não em dev): este compose
+      # existe pra validar as imagens, e Psicólogo/Anamnese começariam a
+      # consumir LLM sem provider configurado. Suba com `true` pra exercitar.
+      START_OUTBOX_DRAIN: ${START_OUTBOX_DRAIN:-false}
+      START_ANAMNESE: ${START_ANAMNESE:-false}
+    ports:
+      - "${ENGINE_PORT:-4000}:4000"
+    volumes:
+      - git_local_repos:/data/git-repos
+      - project_workspaces:/data/project-workspaces
+      # A MESMA linha do serviço `api`, com o MESMO valor (ADR 0141) — o engine
+      # é quem monta o worktree e escreve o código.
+      - ${BRABO_PROJECTS_BASE:-brabo_projects_base}:${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate-engine:
+        condition: service_completed_successfully
+
+  # Broker de container (ADR 0130) — o ÚNICO serviço com `/var/run/docker.sock`
+  # montado, aqui como no compose de desenvolvimento. Não monte esse socket em
+  # nenhum outro.
+  #
+  web:
+    image: ${BRABO_WEB_IMAGE:?defina BRABO_WEB_IMAGE — o install.sh grava as quatro no .env}
+    <<: *app-hardening
+    tmpfs:
+      # O entrypoint renderiza o nginx.conf aqui (o /etc/nginx é read-only) e o
+      # nginx guarda pid e arquivos temporários no mesmo lugar.
+      - /tmp
+      - /var/cache/nginx
+    environment:
+      # Hosts liberados no connect-src do CSP.
+      CSP_CONNECT_SRC: >-
+        ${VITE_API_URL:-http://localhost:3000}
+        ${VITE_ENGINE_URL:-http://localhost:4000}
+        ${ENGINE_WS_URL:-ws://localhost:4000}
+      # Configuração de runtime da SPA (vira /config.js). Estes são os valores
+      # que o browser realmente usa; as VITE_* do build só respondem se o
+      # /config.js faltar.
+      API_URL: ${VITE_API_URL:-http://localhost:3000}
+      ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:4000}
+    # 8088 no host por convenção herdada; 8080 dentro do container porque
+    # nginx roda non-root e não pode fazer bind em porta privilegiada.
+    ports:
+      - "${WEB_PORT:-8088}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+      engine:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  # LLM local. Sob profile: em produção o provider é externo, e baixar ~2GB de
+  # imagem + modelo tornaria o smoke test do CI inviável. Nenhum serviço
+  # `depends_on` ele — a api só o procura quando um agente pede um turno.
+  #
+  #   docker compose -f docker/docker-compose.prod.yml --profile llm up -d
+  # -------------------------------------------------------------------------
+  ollama:
+    # Pin deliberado (mesma tag do docker-compose.yml de dev, de propósito —
+    # dev e prod não podem divergir de versão aqui): `latest` muda sob o pé
+    # sem aviso, e um upgrade silencioso de Ollama já quebrou build antes
+    # (mudança de rota da API). Atualizar é decisão manual — subir o número
+    # aqui, não seguir `latest`.
+    image: ollama/ollama:0.33.1
+    profiles: ["llm"]
+    entrypoint: ["sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2:1b; wait"]
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-1h}
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-16384}
+    restart: unless-stopped
+
+  # Loader ONE-SHOT dos modelos exigidos — MESMO profile do `ollama` acima,
+  # de propósito: sem o daemon subindo (perfil `llm` não ativado), não há o
+  # que puxar. Ver docker/ollama/pull-models.sh e o comentário equivalente no
+  # docker-compose.yml de dev para o desenho completo.
+  ollama-model-loader:
+    # MESMA tag do serviço `ollama` acima, de propósito: os dois falam o
+    # mesmo protocolo HTTP, e divergir a versão entre daemon e CLI é o tipo
+    # de coisa que só aparece em produção.
+    image: ollama/ollama:0.33.1
+    profiles: ["llm"]
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_REQUIRED_MODELS: ${OLLAMA_REQUIRED_MODELS:-gemma3:1b,yi-coder:1.5b,nomic-embed-text}
+    entrypoint: ["sh", "/pull-models.sh"]
+    volumes:
+      - ./ollama/pull-models.sh:/pull-models.sh:ro
+    restart: "no"
+
+volumes:
+  pgdata:
+  neo4j_data:
+  neo4j_logs:
+  ollama_data:
+  # Os dois volumes compartilhados entre api e engine, no MESMO caminho
+  # absoluto nos dois containers (ver ADR 0024, item "mount points graváveis").
+  git_local_repos:
+  project_workspaces:
+  # O default INERTE de `BRABO_PROJECTS_BASE` (ADR 0141): existe só para a
+  # linha de volume de `api`/`engine` continuar válida quando a variável não
+  # está definida. Nada escreve dentro dele.
+  brabo_projects_base:
