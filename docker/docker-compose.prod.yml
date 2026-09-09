@@ -377,6 +377,64 @@ services:
     group_add:
       - "${DOCKER_GID:-999}"
 
+  # Backup e restore contra compose (ADR 0152). A QUINTA imagem do bake nunca
+  # tinha serviço aqui — ela era construída e usada só no k8s, e era por isso
+  # que migrar uma instalação por compose não tinha caminho provado.
+  #
+  # É um JOB, não um daemon: `restart: "no"` (sobrepondo o `unless-stopped` do
+  # bloco comum) e sob `profiles`, então `up -d` e `docker/smoke.sh` continuam
+  # subindo exatamente os mesmos serviços de antes. `docker compose run` liga o
+  # profile do alvo sozinho, então nada precisa ser passado na linha:
+  #
+  #   docker compose -f docker/docker-compose.prod.yml run --rm backup brabo-backup
+  #   docker compose -f docker/docker-compose.prod.yml run --rm backup brabo-restore
+  #   bash docker/backup/test-restore-compose.sh   # os dois acima, com veredito
+  backup:
+    image: brabo-backup:prod
+    build:
+      context: ..
+      dockerfile: docker/backup/Dockerfile.prod
+    profiles: ["backup"]
+    <<: *app-hardening
+    restart: "no"
+    tmpfs:
+      # HOME e TMPDIR da imagem: o aws-cli escreve `~/.aws` e o pg_restore usa
+      # temporários. É o que permite o rootfs subir read-only.
+      - /tmp
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
+      # Destino em DISCO por padrão — a decisão 2 do ADR 0152. Numa instalação
+      # de máquina única, exigir um bucket para poder migrar é exigir
+      # infraestrutura que o instalador não pede. Para usar S3 em vez de disco,
+      # esvazie esta variável (`BACKUP_DIR=` no .env) e preencha as cinco
+      # `BACKUP_S3_*`; elas só são exigidas quando o destino É o S3.
+      BACKUP_DIR: ${BACKUP_DIR-/backups}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:-}
+      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-7}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-4}
+      GIT_REPOS_DIR: /data/git-repos
+    volumes:
+      # O volume que o ADR 0152 descobriu estar sem backup nenhum. MESMO
+      # caminho de `api` e `engine` — é isso que faz `brabo-restore-git`
+      # escrever onde os dois já leem, sem passo de reconciliação.
+      #
+      # Montado RW e não `:ro` porque o mesmo serviço restaura: dois serviços
+      # idênticos, um por sentido, divergiriam na primeira variável nova.
+      # `backup.sh` só LÊ daqui.
+      - git_local_repos:/data/git-repos
+      # Onde os backups caem. O default é um volume nomeado, que serve para
+      # VERIFICAR o backup (`test-restore-compose.sh`) e é o destino ERRADO
+      # para migrar: `docker compose down -v` o apaga junto com o que ele
+      # deveria salvar. Aponte `BRABO_BACKUP_HOST_DIR` para uma pasta do host
+      # antes de qualquer migração — é o que o runbook manda fazer.
+      - ${BRABO_BACKUP_HOST_DIR:-backup_local}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   web:
     image: brabo-web:prod
     build:
@@ -484,3 +542,9 @@ volumes:
   # linha de volume de `api`/`engine` continuar válida quando a variável não
   # está definida. Nada escreve dentro dele.
   brabo_projects_base:
+  # Destino dos backups quando `BRABO_BACKUP_HOST_DIR` não aponta para uma pasta
+  # do host (ADR 0152). NÃO entra na classificação dos sete acima: ele não é
+  # dado a proteger, ele É a proteção — e um backup que mora num volume do mesmo
+  # daemon morre com a máquina que deveria salvar. Serve para VERIFICAR
+  # (`test-restore-compose.sh`), nunca para migrar.
+  backup_local:

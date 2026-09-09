@@ -1,32 +1,35 @@
 #!/bin/sh
 # Restaura o último backup numa database NOVA e valida (Fase 5, item 6).
 #
-# É o motor do `make test-restore` e o mesmo caminho que o
-# docs/runbook.md (seção "Restore") manda seguir num incidente de verdade — o runbook não
-# descreve um procedimento paralelo que ninguém nunca rodou.
+# É o motor do `make test-restore` (Kubernetes) E do `make test-restore-compose`
+# (ADR 0152), e o mesmo caminho que o docs/runbook.md (seção "Restore") manda
+# seguir num incidente de verdade — o runbook não descreve um procedimento
+# paralelo que ninguém nunca rodou.
+#
+# Os DOIS ambientes usam este script sem uma linha de diferença: o que muda é o
+# invólucro (Job com `kubectl` × `docker compose run`), nunca o julgamento. As
+# três validações abaixo são as mesmas nos dois, e é por isso que
+# `deploy/k8s/test-restore.sh` ficou intacto — unificar os invólucros faria o de
+# compose depender de `kubectl`.
 #
 # Não toca na database de origem em nenhum momento: cria `brabo_restore_test`,
 # restaura ali, valida e derruba.
 set -eu
 
 : "${DATABASE_URL:?DATABASE_URL é obrigatória}"
-: "${BACKUP_S3_ENDPOINT:?BACKUP_S3_ENDPOINT é obrigatória}"
-: "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET é obrigatória}"
-: "${BACKUP_S3_ACCESS_KEY:?BACKUP_S3_ACCESS_KEY é obrigatória}"
-: "${BACKUP_S3_SECRET_KEY:?BACKUP_S3_SECRET_KEY é obrigatória}"
+
+# shellcheck source=docker/backup/lib.sh
+. "${BRABO_BACKUP_LIB:-/usr/local/lib/brabo-backup-lib.sh}"
+
+# O destino (disco ou S3) é o MESMO do `backup.sh`, pela mesma função — um
+# backup escrito num destino que o restore não sabe ler é backup nenhum
+# (ADR 0152, decisão 2). As cinco variáveis de S3 seguem obrigatórias quando o
+# destino É o S3; com `BACKUP_DIR` definida, nenhuma delas é lida.
+destino_preparar
 
 RESTORE_DB="${RESTORE_DB:-brabo_restore_test}"
 PREFIXO="${RESTORE_PREFIX:-daily/}"
 DUMP=/tmp/restore.dump
-
-# Credencial e endpoint pelo ambiente: nada escrito em disco, nada em linha de
-# comando (que `ps` mostraria).
-export AWS_ACCESS_KEY_ID="${BACKUP_S3_ACCESS_KEY}"
-export AWS_SECRET_ACCESS_KEY="${BACKUP_S3_SECRET_KEY}"
-export AWS_ENDPOINT_URL="${BACKUP_S3_ENDPOINT}"
-export AWS_DEFAULT_REGION="${BACKUP_S3_REGION:-us-east-1}"
-
-BUCKET="s3://${BACKUP_S3_BUCKET}"
 
 # Tabelas cujo conteúdo é conferido linha a linha. Todas têm `created_at`, que é
 # o que permite a comparação exata descrita mais abaixo.
@@ -65,33 +68,19 @@ limpar() {
 trap limpar EXIT
 
 # --- baixar o último objeto ------------------------------------------------
-# Saída do aws preservada na mensagem, e espera pelo destino — mesma razão do
-# backup.sh: o k3s programa a NetworkPolicy depois de o pod ganhar IP, e um Job
-# que fala na primeira instrução recebe `connection refused` de uma regra que
-# vai existir daqui a um segundo.
-tentativa=1
-while :; do
-  if saida="$(aws s3 ls "${BUCKET}/" 2>&1)"; then
-    break
-  fi
-  if [ "${tentativa}" -ge "${BACKUP_S3_RETRIES:-10}" ]; then
-    log "erro: destino S3 inacessível (${BACKUP_S3_ENDPOINT}): ${saida}"
-    exit 1
-  fi
-  log "destino indisponível (tentativa ${tentativa}): ${saida}"
-  tentativa=$((tentativa + 1))
-  sleep 3
-done
+# Saída do destino preservada na mensagem, e espera pelo destino — mesma razão
+# do backup.sh: o k3s programa a NetworkPolicy depois de o pod ganhar IP, e um
+# Job que fala na primeira instrução recebe `connection refused` de uma regra
+# que vai existir daqui a um segundo.
+destino_esperar \
+  || { log "erro: destino inacessível ($(destino_descricao)): ${destino_saida}"; exit 1; }
 
 # O nome carrega o timestamp ISO, então ordem lexicográfica é ordem cronológica.
-OBJETO="$(aws s3api list-objects-v2 \
-  --bucket "${BACKUP_S3_BUCKET}" --prefix "${PREFIXO}" \
-  --query 'Contents[].Key' --output text 2>/dev/null \
-  | tr '\t' '\n' | grep -v '^None$' | sort -r | head -n 1)"
-[ -n "${OBJETO}" ] || { log "erro: nenhum backup em ${BUCKET}/${PREFIXO}"; exit 1; }
+OBJETO="$(destino_listar "${PREFIXO}" | sort -r | head -n 1)"
+[ -n "${OBJETO}" ] || { log "erro: nenhum backup em $(destino_descricao)/${PREFIXO}"; exit 1; }
 
 log "último backup: ${OBJETO}"
-aws s3 cp "${BUCKET}/${OBJETO}" "${DUMP}" --quiet \
+destino_baixar "${OBJETO}" "${DUMP}" \
   || { log "erro: falha ao baixar ${OBJETO}"; exit 1; }
 
 # Um dump truncado no meio do upload tem tamanho > 0 e só se revela no
