@@ -38,6 +38,12 @@ const instalacao = ler('docker-compose.install.yml');
 // aqui, com motivo — em vez de passar despercebida.
 const SO_NA_VALIDACAO = new Set(['broker']);
 
+// Nota da integração da FASE 29: `backup` esteve nesta lista por alguns
+// minutos, e foi o teste que forçou a decisão — a sessão 5 acrescentou o
+// serviço ao compose de validação e o de instalação não o tinha. A resposta
+// certa não era abrir exceção: a imagem `brabo-backup` É publicada (quarto
+// alvo do bake), ao contrário da do broker. Ele entrou nos dois.
+
 describe('os dois composes não divergem em silêncio', () => {
   it('o de instalação não ganha serviço que o de validação não tenha', () => {
     const extras = Object.keys(instalacao.services).filter((s) => !(s in validacao.services));
@@ -70,7 +76,7 @@ describe('os dois composes não divergem em silêncio', () => {
   // subiria metade da stack com uma imagem que ninguém escolheu, e o erro
   // apareceria como comportamento estranho em vez de recusa.
   it('as quatro imagens próprias vêm de variável obrigatória', () => {
-    for (const servico of ['migrate-api', 'migrate-engine', 'api', 'engine', 'web']) {
+    for (const servico of ['migrate-api', 'migrate-engine', 'api', 'engine', 'web', 'backup']) {
       const imagem = instalacao.services[servico]?.image ?? '';
       expect(imagem, `${servico}`).toMatch(/^\$\{BRABO_[A-Z]+_IMAGE:\?/);
     }
