@@ -294,9 +294,31 @@ services:
       SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
       # Agentes de fundo desligados por default AQUI (não em dev): este compose
       # existe pra validar as imagens, e Psicólogo/Anamnese começariam a
-      # consumir LLM sem provider configurado. Suba com `true` pra exercitar.
+      # consumir LLM sem provider configurado.
+      #
+      # As quatro `START_*` são CHAVES DE BOOT (`start_*?`, decidem se o
+      # `kickoff/0` do tick é agendado); as `*_ENABLED` são as flags de
+      # PRODUTO (RN-115/RN-117), que decidem se uma rodada NOVA pode
+      # acontecer. São coisas diferentes, e exercitar a Anamnese exige as
+      # DUAS em `true` — o comentário anterior dizia "suba com `true` pra
+      # exercitar" e era falso, porque `ANAMNESE_ENABLED` não estava mapeada
+      # e nunca chegava ao processo (RN-523).
+      #
+      # Só o Psicólogo e a Anamnese são desligados aqui: `START_MODEL_SYNC` e
+      # `START_GATE_RESCUE` repetem o `true` do código porque não gastam LLM
+      # (um sincroniza catálogo, o outro roda uma consulta quase sempre
+      # vazia) — a linha existe para EXISTIR o caminho de desligar, e não
+      # para mudar o que já valia. Os tetos de custo continuam
+      # deliberadamente FORA daqui: têm default bom no `runtime.exs` e este
+      # compose não os aperta.
       START_OUTBOX_DRAIN: ${START_OUTBOX_DRAIN:-false}
       START_ANAMNESE: ${START_ANAMNESE:-false}
+      START_MODEL_SYNC: ${START_MODEL_SYNC:-true}
+      START_GATE_RESCUE: ${START_GATE_RESCUE:-true}
+      ANAMNESE_ENABLED: ${ANAMNESE_ENABLED:-false}
+      PSYCHOLOGIST_ENABLED: ${PSYCHOLOGIST_ENABLED:-false}
+      GRAPH_TEMPLATES_ENABLED: ${GRAPH_TEMPLATES_ENABLED:-false}
+      GRAPH_INSTRUCTION_TEMPLATES_ENABLED: ${GRAPH_INSTRUCTION_TEMPLATES_ENABLED:-false}
     ports:
       - "${ENGINE_PORT:-4000}:4000"
     volumes:
