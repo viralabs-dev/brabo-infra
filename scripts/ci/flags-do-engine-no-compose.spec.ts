@@ -25,7 +25,7 @@ import { ler } from '../docs/fontes.mjs';
  * de `AnamneseSchedulerWorker.enabled?/0` ("Ligar de volta é
  * `ANAMNESE_ENABLED=true` e reiniciar o engine"), o de
  * `PsychologistWorker.enabled?/0`, e `docs/reference/configuration.md`. A
- * promessa era falsa em ambiente nenhum. Ver RN-523.
+ * promessa era falsa em ambiente nenhum. Ver RN-540.
  *
  * Por que a lista é DERIVADA e não travada à mão: das 58 variáveis que o
  * `runtime.exs` lê, a maioria são tetos numéricos com default bom (e
@@ -146,7 +146,7 @@ describe('flags booleanas do engine × `environment:` do compose', () => {
       ]),
     );
     expect(flags.size).toBeGreaterThanOrEqual(6);
-    // O default do código é o que a RN-523 obriga o compose a repetir — se
+    // O default do código é o que a RN-540 obriga o compose a repetir — se
     // ele deixasse de ser lido, a checagem de default viraria decorativa.
     expect(flags.get('ANAMNESE_ENABLED')).toBe('false');
     expect(flags.get('PSYCHOLOGIST_ENABLED')).toBe('false');
@@ -168,7 +168,7 @@ describe('flags booleanas do engine × `environment:` do compose', () => {
               'O Compose não repassa o ambiente do host: variável não mapeada ' +
               'NUNCA chega ao processo, o engine cai no default do código e ' +
               'ninguém recebe erro — foi assim que `ANAMNESE_ENABLED=true` ficou ' +
-              'inerte com três lugares prometendo que ligava (RN-523). ' +
+              'inerte com três lugares prometendo que ligava (RN-540). ' +
               'Acrescente `NOME: ${NOME:-<default do runtime.exs>}` junto do ' +
               'bloco do agente a que a flag pertence, ou declare o motivo em ' +
               '`FLAGS_FORA_DO_COMPOSE`.',
@@ -197,7 +197,7 @@ describe('flags booleanas do engine × `environment:` do compose', () => {
         ? ''
         : `${divergentes.join('; ')} — o compose de dev decide produto por ` +
             'baixo do `runtime.exs`. Mapear a flag existe para criar o caminho ' +
-            'de LIGAR, nunca para mudar o que vale sem ninguém pedir (RN-523). ' +
+            'de LIGAR, nunca para mudar o que vale sem ninguém pedir (RN-540). ' +
             'Se a mudança de default é intencional, ela é decisão de produto e ' +
             'muda o `runtime.exs` primeiro.',
     ).toEqual([]);

@@ -412,7 +412,7 @@ services:
       # esta linha não muda decisão de produto nenhuma, ela só faz existir o
       # caminho de LIGAR.
       #
-      # Por que estão aqui (RN-523): variável que o `runtime.exs` lê e que o
+      # Por que estão aqui (RN-540): variável que o `runtime.exs` lê e que o
       # `environment:` não mapeia NUNCA chega ao processo — o Compose não
       # repassa o ambiente do host —, então `ANAMNESE_ENABLED=true` no `.env`
       # era inerte e o engine caía no default `"false"` em silêncio, com três

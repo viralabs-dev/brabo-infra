@@ -302,7 +302,7 @@ services:
       # acontecer. São coisas diferentes, e exercitar a Anamnese exige as
       # DUAS em `true` — o comentário anterior dizia "suba com `true` pra
       # exercitar" e era falso, porque `ANAMNESE_ENABLED` não estava mapeada
-      # e nunca chegava ao processo (RN-523).
+      # e nunca chegava ao processo (RN-540).
       #
       # Só o Psicólogo e a Anamnese são desligados aqui: `START_MODEL_SYNC` e
       # `START_GATE_RESCUE` repetem o `true` do código porque não gastam LLM
