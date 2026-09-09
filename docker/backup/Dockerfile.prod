@@ -45,8 +45,25 @@ FROM alpine:3.20 AS runtime
 RUN apk upgrade --no-cache \
  && apk add --no-cache postgresql16-client aws-cli jq
 
-COPY --chmod=0755 docker/backup/backup.sh    /usr/local/bin/brabo-backup
-COPY --chmod=0755 docker/backup/restore.sh   /usr/local/bin/brabo-restore
+# A biblioteca é SOURCE, não executável: ela carrega o adaptador de destino
+# (disco × S3) que as três ferramentas compartilham, e o arquivamento dos bare
+# repos (ADR 0152). Um backup que escreve num destino que o restore não sabe ler
+# é backup nenhum — a garantia de que as duas pontas concordam é elas serem a
+# MESMA função, não duas cópias.
+#
+# `BRABO_BACKUP_LIB` sobrescreve este caminho, e é isso que torna as funções
+# exercitáveis fora de container por `scripts/ci/backup-lib.spec.ts`.
+COPY --chmod=0644 docker/backup/lib.sh        /usr/local/lib/brabo-backup-lib.sh
+COPY --chmod=0755 docker/backup/backup.sh     /usr/local/bin/brabo-backup
+COPY --chmod=0755 docker/backup/restore.sh    /usr/local/bin/brabo-restore
+# Terceiro comando, e não um modo do `brabo-restore`: são dois artefatos com
+# dois julgamentos, e juntá-los faria uma falha de git reprovar a validação do
+# event log. Nada aqui roda `git` — a imagem NÃO tem git, e não ganha: o
+# arquivo dos bare repos é produzido e lido com `tar`, então o que se prova é
+# integridade do continente, nunca conectividade dos objetos. Instalar git aqui
+# acrescentaria superfície de scan a uma imagem que carrega credencial de
+# leitura do banco inteiro, em troca de uma checagem que o ADR 0152 não pede.
+COPY --chmod=0755 docker/backup/restore-git.sh /usr/local/bin/brabo-restore-git
 
 # HOME em /tmp porque o aws-cli escreve `~/.aws` e o `pg_restore` usa
 # temporários — os dois em /tmp, que no manifesto é um emptyDir. É o que
@@ -54,6 +71,13 @@ COPY --chmod=0755 docker/backup/restore.sh   /usr/local/bin/brabo-restore
 ENV HOME=/tmp \
     TMPDIR=/tmp \
     AWS_DEFAULT_REGION=us-east-1
+
+# O destino em DISCO (ADR 0152, decisão 2) é criado e `chown`-ado ANTES do
+# `USER`, pela convenção que o CLAUDE.md registra: volume nomeado nasce com o
+# dono do caminho que existir NA IMAGEM, e quando o caminho não existe ele nasce
+# `root` — deixando o processo non-root de fora. Esquecer isso não dá erro de
+# build, dá "não aceita escrita" em runtime, no primeiro backup.
+RUN mkdir -p /backups && chown 70:70 /backups
 
 # uid 70 é o usuário `postgres` que o pacote `postgresql16-client` já cria —
 # não criamos usuário novo. É o MESMO uid que os manifestos declaram em
