@@ -398,8 +398,31 @@ services:
       LLM_TURN_TIMEOUT_MS: ${LLM_TURN_TIMEOUT_MS:-300000}
       # Ver runtime.exs: desligar os agentes de fundo libera o provider local
       # pros agentes de execução. Default ligado.
+      #
+      # Estas quatro são CHAVES DE BOOT (`start_*?`): decidem se o `kickoff/0`
+      # do tick periódico é chamado em `Engine.Application`. NÃO confunda com
+      # as flags de PRODUTO (`*_ENABLED`, mais abaixo) — `START_ANAMNESE=true`
+      # com `ANAMNESE_ENABLED=false` agenda o tick e cada rodada no-opa.
       START_OUTBOX_DRAIN: ${START_OUTBOX_DRAIN:-true}
       START_ANAMNESE: ${START_ANAMNESE:-true}
+      START_MODEL_SYNC: ${START_MODEL_SYNC:-true}
+      START_GATE_RESCUE: ${START_GATE_RESCUE:-true}
+      # As flags de PRODUTO dos dois agentes de fundo (RN-115/RN-117), e as
+      # duas de rollout do grafo. Todas com o MESMO default do `runtime.exs` —
+      # esta linha não muda decisão de produto nenhuma, ela só faz existir o
+      # caminho de LIGAR.
+      #
+      # Por que estão aqui (RN-540): variável que o `runtime.exs` lê e que o
+      # `environment:` não mapeia NUNCA chega ao processo — o Compose não
+      # repassa o ambiente do host —, então `ANAMNESE_ENABLED=true` no `.env`
+      # era inerte e o engine caía no default `"false"` em silêncio, com três
+      # lugares no código prometendo que "ligar de volta é `X=true` e
+      # reiniciar". `scripts/ci/flags-do-engine-no-compose.spec.ts` reprova a
+      # próxima que faltar.
+      ANAMNESE_ENABLED: ${ANAMNESE_ENABLED:-false}
+      PSYCHOLOGIST_ENABLED: ${PSYCHOLOGIST_ENABLED:-false}
+      GRAPH_TEMPLATES_ENABLED: ${GRAPH_TEMPLATES_ENABLED:-false}
+      GRAPH_INSTRUCTION_TEMPLATES_ENABLED: ${GRAPH_INSTRUCTION_TEMPLATES_ENABLED:-false}
       # Triagem do Psicólogo (Fase 4b). Os defaults foram calibrados pensando
       # em modelo forte; num 7B local o modelo gasta tentativas hallucinando
       # event id (e sendo corretamente rejeitado) antes de acertar, então subir
