@@ -1,32 +1,44 @@
 #!/bin/sh
-# Backup do Postgres para destino S3-compatível (Fase 5, item 6).
+# Backup do Postgres e dos bare repos locais (Fase 5 item 6; ADR 0152).
 #
-# Roda como CronJob (deploy/k8s/base/backup/cronjob.yaml). O resultado — sucesso
-# ou falha — é sempre gravado em `backup_runs`, e é dessa tabela que saem as
-# métricas `brabo_backup_*` que o DomainGaugesCollector publica. Um backup que
-# falha em silêncio é pior do que backup nenhum: este script existe para que a
-# falha vire série temporal e alerta.
+# Roda como CronJob no k8s (deploy/k8s/base/backup/cronjob.yaml) e como
+# `docker compose run --rm backup brabo-backup` numa instalação por compose. O
+# resultado — sucesso ou falha — é sempre gravado em `backup_runs`, e é dessa
+# tabela que saem as métricas `brabo_backup_*` que o DomainGaugesCollector
+# publica. Um backup que falha em silêncio é pior do que backup nenhum: este
+# script existe para que a falha vire série temporal e alerta.
+#
+# ## O que entra, e por que não é "todos os volumes" (ADR 0152, decisão 1)
+#
+# Dos sete volumes nomeados, DOIS são fonte de verdade: `pgdata` (aqui, como
+# dump lógico) e `git_local_repos` (aqui, como tar). `neo4j_data` e
+# `project_workspaces` são DERIVADOS — a resposta para memória derivada é
+# reprojetar da fonte, não restaurar uma projeção de outro instante;
+# `ollama_data` é re-obtenível; `brabo_projects_base` é do usuário. Copiar os
+# sete daria impressão de cobertura sem acrescentar recuperação.
 set -eu
 
 : "${DATABASE_URL:?DATABASE_URL é obrigatória}"
-: "${BACKUP_S3_ENDPOINT:?BACKUP_S3_ENDPOINT é obrigatória}"
-: "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET é obrigatória}"
-: "${BACKUP_S3_ACCESS_KEY:?BACKUP_S3_ACCESS_KEY é obrigatória}"
-: "${BACKUP_S3_SECRET_KEY:?BACKUP_S3_SECRET_KEY é obrigatória}"
+
+# shellcheck source=docker/backup/lib.sh
+. "${BRABO_BACKUP_LIB:-/usr/local/lib/brabo-backup-lib.sh}"
+
+# As cinco variáveis de S3 deixaram de ser obrigatórias (ADR 0152, decisão 2):
+# elas passaram a ser a configuração de UM dos destinos. Numa instalação de
+# máquina única, exigir um bucket para poder migrar é exigir infraestrutura que
+# o instalador acabou de dizer que não precisa. `destino_preparar` ainda as
+# exige quando o destino É o S3 — o que muda é quando a exigência vale.
+destino_preparar
 
 KEEP_DAILY="${BACKUP_KEEP_DAILY:-7}"
 KEEP_WEEKLY="${BACKUP_KEEP_WEEKLY:-4}"
 # Dia da semana que também vira cópia semanal (1=segunda … 7=domingo).
 WEEKLY_DOW="${BACKUP_WEEKLY_DOW:-7}"
 
-# O aws-cli lê credencial e endpoint do ambiente — nada é escrito em disco e
-# nada aparece em linha de comando (que `ps` mostraria).
-export AWS_ACCESS_KEY_ID="${BACKUP_S3_ACCESS_KEY}"
-export AWS_SECRET_ACCESS_KEY="${BACKUP_S3_SECRET_KEY}"
-export AWS_ENDPOINT_URL="${BACKUP_S3_ENDPOINT}"
-export AWS_DEFAULT_REGION="${BACKUP_S3_REGION:-us-east-1}"
-
-BUCKET="s3://${BACKUP_S3_BUCKET}"
+# Raiz dos bare repos do LocalGitProvider. É o MESMO caminho que api e engine
+# montam (`git_local_repos:/data/git-repos`). Ausente = volume não montado, que
+# é o caso do CronJob do k8s e é tratado como PULO explícito, nunca como falha.
+GIT_REPOS_DIR="${GIT_REPOS_DIR:-/data/git-repos}"
 
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 kind=daily
@@ -86,39 +98,19 @@ falhar() {
 }
 
 # --- destino ---------------------------------------------------------------
-# A saída do aws é PRESERVADA e entra na mensagem de erro. Engolir stderr aqui
-# custou caro na primeira execução real: "não foi possível autenticar" escondia
-# um `connection refused`, e o diagnóstico começou procurando credencial errada
-# quando o problema era o endpoint ainda não estar alcançável.
+# A saída do destino é PRESERVADA e entra na mensagem de erro. Engolir stderr
+# aqui custou caro na primeira execução real: "não foi possível autenticar"
+# escondia um `connection refused`, e o diagnóstico começou procurando
+# credencial errada quando o problema era o endpoint ainda não estar alcançável.
 #
-# E daí a espera. Duas razões, uma de cada ambiente:
-#
-#   * no cluster, o k3s programa as regras de NetworkPolicy DEPOIS de o pod
-#     ganhar IP. Um Job que fala na primeira instrução pega a janela em que o
-#     default-deny já vale e o allow ainda não — e o sintoma é `connection
-#     refused`, não timeout, porque a implementação usa REJECT;
-#   * em produção, object storage tem indisponibilidade transitória, e um
-#     backup diário que desiste no primeiro erro de rede vira um dia sem
-#     backup por causa de um segundo de instabilidade.
-#
-# O `backoffLimit` do Job cobriria o caso, mas ao preço de um pod novo e de uma
-# linha `failed` em `backup_runs` que dispararia alerta sem haver problema.
-esperar_destino() {
-  tentativa=1
-  while [ "${tentativa}" -le "${BACKUP_S3_RETRIES:-10}" ]; do
-    if saida="$(aws s3 ls "${BUCKET}/" 2>&1)"; then
-      [ "${tentativa}" -gt 1 ] && log "destino disponível na tentativa ${tentativa}"
-      return 0
-    fi
-    log "destino indisponível (tentativa ${tentativa}): ${saida}"
-    tentativa=$((tentativa + 1))
-    sleep 3
-  done
-  return 1
-}
-
-esperar_destino \
-  || falhar "destino S3 inacessível ou bucket inexistente (${BACKUP_S3_ENDPOINT}/${BACKUP_S3_BUCKET}): ${saida}"
+# A espera com retentativa continua existindo no caminho S3, pelas duas razões
+# que já estavam documentadas (NetworkPolicy do k3s programada depois de o pod
+# ganhar IP; indisponibilidade transitória de object storage). No destino em
+# DISCO ela não faz sentido — disco não fica alcançável sozinho —, e lá a
+# checagem é outra: que o diretório aceite ESCRITA, não que exista.
+log "destino: $(destino_descricao)"
+destino_esperar \
+  || falhar "destino inacessível ($(destino_descricao)): ${destino_saida}"
 
 # --- dump ------------------------------------------------------------------
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -128,7 +120,7 @@ object_key="daily/brabo-${timestamp}.dump"
 # pg_restore lê seletivamente — restaurar uma tabela só de um dump plano
 # significa editar SQL à mão no meio de um incidente.
 #
-# Vai direto para o `aws s3 cp -`, sem tocar disco: um dump intermediário
+# Vai direto para o destino, sem tocar disco intermediário: um dump temporário
 # exigiria um PVC dimensionado pelo tamanho do banco, que cresce sem ninguém
 # revisar.
 #
@@ -136,20 +128,71 @@ object_key="daily/brabo-${timestamp}.dump"
 # passo seguinte é o que pega um pg_dump que morreu no meio do cano.
 log "gerando dump para ${object_key}"
 pg_dump --format=custom --compress=9 --no-owner --no-privileges "${DATABASE_URL}" \
-  | aws s3 cp - "${BUCKET}/${object_key}" --quiet \
+  | destino_enviar "${object_key}" \
   || falhar "pg_dump ou upload falhou"
 
-size_bytes="$(aws s3api head-object \
-  --bucket "${BACKUP_S3_BUCKET}" --key "${object_key}" \
-  --query ContentLength --output text 2>/dev/null || echo 0)"
+size_bytes="$(destino_tamanho "${object_key}")"
 [ "${size_bytes}" -gt 0 ] 2>/dev/null \
   || falhar "objeto ${object_key} ficou vazio — o dump não chegou ao destino"
+
+# --- bare repos do LocalGitProvider ----------------------------------------
+# O achado do ADR 0152. A garantia exata que este passo dá (consistência por
+# REFERÊNCIA, não por instante) e a que ele NÃO dá (sem quiesce, sem instante
+# global) estão escritas em `lib.sh`, junto do código que as produz.
+#
+# Prefixos PRÓPRIOS (`git-daily/`, `git-weekly/`) e não `daily/`: a retenção é
+# por CONTAGEM, e dois tipos de arquivo no mesmo prefixo fariam "manter 7"
+# significar três backups e meio. Também mantém `RESTORE_PREFIX=daily/` e a
+# consulta de janela do `restore.sh` valendo byte a byte.
+git_object_key="git-daily/brabo-git-${timestamp}.tar.gz"
+
+if ! repos="$(git_repos_presentes "${GIT_REPOS_DIR}")"; then
+  # Volume não montado. É o CronJob do k8s, que esta sessão não toca — e o
+  # pulo é DITO, porque pular calado é como um backup passa anos parecendo
+  # cobrir o que nunca cobriu.
+  log "PULANDO os bare repos: ${GIT_REPOS_DIR} não existe neste container"
+  git_object_key=""
+elif [ -z "${repos}" ]; then
+  # Diretório montado e vazio é estado NORMAL (instalação sem projeto de
+  # provider `local`), e é diferente de "não montado". Não colapsar os dois.
+  log "nenhum bare repo em ${GIT_REPOS_DIR} — nada a arquivar"
+  git_object_key=""
+else
+  log "arquivando $(echo "${repos}" | wc -l) bare repo(s) para ${git_object_key}"
+  status_tar="$(mktemp)"
+  git_arquivar "${GIT_REPOS_DIR}" "${status_tar}" | destino_enviar "${git_object_key}" \
+    || { rm -f "${status_tar}"; falhar "falha ao enviar ${git_object_key}"; }
+
+  # O status do `tar` NÃO é o `$?` do cano (que é o do último comando). Sem esta
+  # conferência, um `git gc` concorrente apagando um packfile no meio da leitura
+  # produziria um arquivo incompleto que se anuncia como bom — e um backup que
+  # mente é pior do que um que falha, porque só o segundo vira alerta.
+  rc_tar="$(cat "${status_tar}" 2>/dev/null || echo 1)"
+  rm -f "${status_tar}"
+  [ "${rc_tar}" = "0" ] \
+    || falhar "tar dos bare repos saiu com ${rc_tar} — arquivo possivelmente parcial (gc concorrente?). Rode de novo."
+
+  git_size="$(destino_tamanho "${git_object_key}")"
+  [ "${git_size}" -gt 0 ] 2>/dev/null \
+    || falhar "objeto ${git_object_key} ficou vazio"
+  log "bare repos arquivados: ${git_object_key} (${git_size} bytes)"
+fi
+
+# `backup_runs.object_key` continua sendo o DUMP, deliberadamente: é a chave que
+# `restore.sh` procura para achar a janela do snapshot, e é do dump que o
+# runbook fala quando diz que uma queda de `size_bytes` denuncia truncamento. O
+# arquivo dos repos é encontrado pelo MESMO timestamp, no prefixo irmão — o
+# vínculo é o nome, não uma coluna nova.
 
 # --- cópia semanal ---------------------------------------------------------
 if [ "$(date -u +%u)" = "${WEEKLY_DOW}" ]; then
   kind=weekly
-  aws s3 cp "${BUCKET}/${object_key}" "${BUCKET}/weekly/brabo-${timestamp}.dump" --quiet \
+  destino_copiar "${object_key}" "weekly/brabo-${timestamp}.dump" \
     || falhar "falha ao copiar para a retenção semanal"
+  if [ -n "${git_object_key}" ]; then
+    destino_copiar "${git_object_key}" "git-weekly/brabo-git-${timestamp}.tar.gz" \
+      || falhar "falha ao copiar os bare repos para a retenção semanal"
+  fi
   log "cópia semanal criada"
 fi
 
@@ -163,20 +206,18 @@ podar() {
 
   # Ordena decrescente: o nome carrega o timestamp ISO, então ordem
   # lexicográfica é ordem cronológica. Apaga tudo depois dos `manter` primeiros.
-  aws s3api list-objects-v2 \
-    --bucket "${BACKUP_S3_BUCKET}" --prefix "${prefixo}" \
-    --query 'Contents[].Key' --output text 2>/dev/null \
-    | tr '\t' '\n' \
-    | grep -v '^None$' \
+  destino_listar "${prefixo}" \
     | sort -r \
     | tail -n "+$((manter + 1))" \
     | while IFS= read -r chave; do
         [ -n "${chave}" ] || continue
         log "retenção: apagando ${chave}"
-        aws s3 rm "${BUCKET}/${chave}" --quiet \
+        destino_remover "${chave}" \
           || log "AVISO: não foi possível apagar ${chave}"
       done
 }
 
-podar daily/  "${KEEP_DAILY}"
-podar weekly/ "${KEEP_WEEKLY}"
+podar daily/      "${KEEP_DAILY}"
+podar weekly/     "${KEEP_WEEKLY}"
+podar git-daily/  "${KEEP_DAILY}"
+podar git-weekly/ "${KEEP_WEEKLY}"

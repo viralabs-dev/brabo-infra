@@ -4,7 +4,7 @@
 # Makefile exists for what isn't JavaScript nor Elixir — bringing up the
 # cluster, applying manifests, validating. Doesn't duplicate package.json
 # on purpose.
-.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore k8s-validate k8s-logs k8s-down imagens-do-release
+.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-compose k8s-validate k8s-logs k8s-down imagens-do-release
 
 SHELL := /usr/bin/env bash
 K8S := deploy/k8s
@@ -46,6 +46,13 @@ rollout-test: ## Opens active sessions, does a rollout restart and proves none i
 
 test-restore: ## Triggers a real backup, restores it into a new database and validates it
 	@bash $(K8S)/test-restore.sh
+
+# The same proof for an installation that has no cluster (ADR 0152). Kept as a
+# SEPARATE target on purpose: unifying it with the one above would make the
+# compose path depend on `kubectl`. The judgement is not duplicated — both run
+# the same `brabo-restore` with the same three validations.
+test-restore-compose: ## Same proof as test-restore, against docker compose (no cluster)
+	@bash docker/backup/test-restore-compose.sh
 
 k8s-validate: ## Renders the overlays and validates them against the Kubernetes schema
 	@bash $(K8S)/validate.sh
