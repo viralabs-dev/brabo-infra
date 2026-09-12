@@ -39,6 +39,11 @@ describe('verificarImagens — compose, manifest e workflow', () => {
     expect(violacoes[0]?.motivo).toBe('digest sem a tag em comentário');
   });
 
+  it('reprova comentário com PROSA — tag é um token só, senão qualquer frase serve', () => {
+    const violacoes = verificarImagens(compose(`    image: neo4j@${DIGEST}  # a versão community`));
+    expect(violacoes[0]?.motivo).toBe('digest sem a tag em comentário');
+  });
+
   it('reprova digest de 63 hex — quase-digest não é digest', () => {
     const quase = DIGEST.slice(0, -1);
     expect(verificarImagens(compose(`    image: neo4j@${quase}  # 5.26`))[0]?.motivo).toBe('referência mutável');
@@ -83,7 +88,7 @@ describe('verificarImagens — o que NÃO é imagem de terceiro', () => {
   });
 
   it('não cobra estágio de build multi-stage nem `FROM scratch`', () => {
-    const conteudo = [`FROM node@${DIGEST} AS deps  # 24-alpine`, 'FROM deps AS build', 'FROM scratch'].join('\n');
+    const conteudo = ['# 24-alpine', `FROM node@${DIGEST} AS deps`, 'FROM deps AS build', 'FROM scratch'].join('\n');
     expect(verificarImagens(dockerfile(conteudo))).toEqual([]);
   });
 
@@ -92,9 +97,35 @@ describe('verificarImagens — o que NÃO é imagem de terceiro', () => {
     expect(violacoes).toHaveLength(1);
     expect(violacoes[0]?.imagem).toBe('node:24-alpine');
   });
+});
 
-  it('aceita `FROM` por digest com o `AS` antes do comentário', () => {
-    expect(verificarImagens(dockerfile(`FROM node@${DIGEST} AS runtime  # 24.11.1-alpine3.21`))).toEqual([]);
+describe('verificarImagens — em Dockerfile a tag fica na linha DE CIMA', () => {
+  // O parser do Docker só reconhece `#` no INÍCIO da linha. `FROM x@sha # tag`
+  // não é um FROM comentado, é um FROM com três argumentos, e o build morre
+  // em "FROM requires either one or three arguments". O `hadolint` passava.
+  it('aceita a tag num comentário imediatamente acima, com o `AS` na linha do FROM', () => {
+    const conteudo = ['# 24.11.1-alpine3.21', `FROM node@${DIGEST} AS runtime`].join('\n');
+    expect(verificarImagens(dockerfile(conteudo))).toEqual([]);
+  });
+
+  it('REPROVA a tag no fim da linha do FROM — a forma que quebra o build', () => {
+    const violacoes = verificarImagens(dockerfile(`FROM node@${DIGEST} AS runtime  # 24.11.1-alpine3.21`));
+    expect(violacoes).toHaveLength(1);
+    expect(violacoes[0]?.motivo).toBe('digest sem a tag em comentário');
+  });
+
+  it('a mensagem ENSINA a posição certa e diz por que a outra não serve', () => {
+    const [violacao] = verificarImagens(dockerfile(`FROM node@${DIGEST}`));
+    const mensagem = mensagemDeViolacao(violacao!);
+    expect(mensagem).toContain('LOGO ACIMA');
+    expect(mensagem).toContain('FROM requires either one or three arguments');
+  });
+
+  it('prosa acima do FROM não conta como tag — é o que já mora em quase todos', () => {
+    const conteudo = ['# Estágio 1: dependências, separado para a camada não invalidar', `FROM node@${DIGEST}`].join(
+      '\n',
+    );
+    expect(verificarImagens(dockerfile(conteudo))[0]?.motivo).toBe('digest sem a tag em comentário');
   });
 });
 
@@ -115,8 +146,8 @@ describe('verificarImagens — a mesma tag tem de ser o mesmo digest', () => {
 
   it('aceita a mesma imagem em TAGS diferentes com digests diferentes (alpine 3.20 e 3.20.3)', () => {
     const arquivos: Arquivo[] = [
-      { nome: 'docker/backup/Dockerfile.prod', conteudo: `FROM alpine@${DIGEST}  # 3.20` },
-      { nome: 'docker/engine/Dockerfile.prod', conteudo: `FROM alpine@${OUTRO_DIGEST}  # 3.20.3` },
+      { nome: 'docker/backup/Dockerfile.prod', conteudo: `# 3.20\nFROM alpine@${DIGEST}` },
+      { nome: 'docker/engine/Dockerfile.prod', conteudo: `# 3.20.3\nFROM alpine@${OUTRO_DIGEST}` },
     ];
     expect(verificarImagens(arquivos)).toEqual([]);
   });
@@ -131,7 +162,7 @@ describe('mensagemDeViolacao', () => {
       motivo: 'referência mutável',
     });
     expect(mensagem).toContain('docker/docker-compose.yml:29');
-    expect(mensagem).toContain('docker manifest inspect');
+    expect(mensagem).toContain('docker buildx imagetools inspect');
     // Digest de ÍNDICE, senão o pin perde o multi-arch e o `linux-arm64` quebra.
     expect(mensagem).toContain('ÍNDICE');
   });

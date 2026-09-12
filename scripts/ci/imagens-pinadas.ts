@@ -27,6 +27,18 @@
  * `sha256:22ec5cd0…` não diz a ninguém que aquilo é o Neo4j 5.26. Digest sem a
  * tag ao lado é pin que ninguém audita e ninguém sabe atualizar.
  *
+ * **Em Dockerfile ele fica na linha DE CIMA, e isso não é gosto.** O parser do
+ * Docker só reconhece `#` no INÍCIO da linha: `FROM alpine@sha256:… # 3.20`
+ * não é um `FROM` com comentário, é um `FROM` com três argumentos, e o build
+ * morre em `FROM requires either one or three arguments`. Descoberto do jeito
+ * certo — o `bake` do job `images` reprovou; o `hadolint`, que tem parser
+ * próprio, tinha passado.
+ *
+ * O comentário é UM TOKEN, sem espaço, nos dois formatos. É o que separa a tag
+ * da PROSA que já mora acima de quase todo `FROM` deste repositório — sem
+ * isso, "tem um comentário em cima" seria satisfeito por qualquer parágrafo, e
+ * a chave de "mesma tag, mesmo digest" deixaria de valer alguma coisa.
+ *
  * ## O que este check NÃO cobra, e por quê
  *
  * - **As quatro imagens do PRÓPRIO produto** (`brabo-api`, `brabo-engine`,
@@ -69,7 +81,10 @@ export interface Violacao {
   arquivo: string;
   linha: number;
   imagem: string;
-  motivo: 'referência mutável' | 'digest sem a tag em comentário' | 'digest divergente para a mesma tag';
+  motivo:
+    | 'referência mutável'
+    | 'digest sem a tag em comentário'
+    | 'digest divergente para a mesma tag';
   /** Só em `digest divergente`: onde o primeiro digest daquela tag foi visto. */
   primeiraOcorrencia?: string;
 }
@@ -79,11 +94,29 @@ export interface Arquivo {
   conteudo: string;
 }
 
-/** `image: <ref>` / `imageName: <ref>` de compose e de manifest do kustomize. */
-const CHAVE_YAML = /^\s*(?:-\s+)?(?:image|imageName):\s*(\S+)\s*(?:#\s*(\S.*?))?\s*$/;
+/**
+ * `image: <ref>` / `imageName: <ref>` de compose e de manifest do kustomize.
+ * O comentário é capturado INTEIRO, e não já validado como tag: um padrão que
+ * exigisse a forma certa deixaria de casar com a linha errada, e a referência
+ * sumiria do check em vez de ser reprovada — silêncio no lugar de vermelho.
+ */
+const CHAVE_YAML = /^\s*(?:-\s+)?(?:image|imageName):\s*(\S+)(?:\s+(#.*?))?\s*$/;
 
-/** `FROM [--platform=…] <ref> [AS <estágio>]`, com o comentário opcional ao fim. */
-const FROM = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?\s*(?:#\s*(\S.*?))?\s*$/i;
+/**
+ * `FROM [--platform=…] <ref> [AS <estágio>]`, com um comentário de fim de linha
+ * OPCIONAL — que é reconhecido só para poder ser REPROVADO. O parser do Docker
+ * não o aceita, e casar com essa linha é o que permite dizer isso.
+ */
+const FROM = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?(?:\s+#.*?)?\s*$/i;
+
+/** Um comentário que é UMA tag: `#` mais um token, e nada mais. */
+const COMENTARIO_DE_TAG = /^#\s*(\S+)$/;
+
+/** A tag de um comentário bruto (`'# 5.26'` -> `'5.26'`); prosa devolve `undefined`. */
+function tagDoComentario(bruto: string | undefined): string | undefined {
+  if (bruto === undefined) return undefined;
+  return COMENTARIO_DE_TAG.exec(bruto.trim())?.[1];
+}
 
 const DIGEST = /@sha256:[0-9a-f]{64}$/;
 
@@ -129,7 +162,9 @@ function referenciasDe(arquivo: Arquivo): Referencia[] {
   const estagios = new Set<string>();
   const achadas: Referencia[] = [];
 
-  arquivo.conteudo.split('\n').forEach((linha, indice) => {
+  const linhas = arquivo.conteudo.split('\n');
+
+  linhas.forEach((linha, indice) => {
     // Linha inteiramente comentada é prosa SOBRE uma imagem, não uma imagem.
     if (/^\s*#/.test(linha)) return;
 
@@ -152,11 +187,13 @@ function referenciasDe(arquivo: Arquivo): Referencia[] {
     // Imagem construída por este repositório — ver o docblock.
     if (IMAGEM_DO_PRODUTO.test(referencia)) return;
 
-    achadas.push({
-      linha: indice + 1,
-      referencia,
-      comentario: dockerfile ? achado[3] : achado[2],
-    });
+    // Em YAML o comentário é de fim de linha; em Dockerfile ele é a linha de
+    // CIMA, porque o parser do Docker não conhece comentário inline — um
+    // comentário no fim do `FROM` é ignorado aqui de propósito, e a referência
+    // cai como "digest sem a tag", que é o que ela é.
+    const comentario = tagDoComentario(dockerfile ? linhas[indice - 1] : achado[2]);
+
+    achadas.push({ linha: indice + 1, referencia, comentario });
   });
 
   return achadas;
@@ -218,21 +255,28 @@ export function verificarImagens(arquivos: readonly Arquivo[]): Violacao[] {
 export function mensagemDeViolacao(violacao: Violacao): string {
   const onde = `${violacao.arquivo}:${violacao.linha}`;
 
+  // Dockerfile não tem comentário de fim de linha — ver o docblock.
+  const ondePorOComentario = ehDockerfile(violacao.arquivo)
+    ? 'numa linha de comentário LOGO ACIMA do `FROM` (`# <tag>`, um token só) — ' +
+      'o parser do Docker não conhece comentário de fim de linha, e `FROM x # y` ' +
+      'morre em "FROM requires either one or three arguments"'
+    : 'num comentário ao lado (`# <tag>`, um token só)';
+
   if (violacao.motivo === 'referência mutável') {
     return (
       `${onde}: \`${violacao.imagem}\` está preso a uma tag, que o dono da ` +
       'imagem pode reapontar para outro conteúdo sem aviso. Resolva a tag com ' +
-      '`docker manifest inspect <imagem>:<tag>` (ou `docker buildx imagetools ' +
-      'inspect`) e escreva `<imagem>@sha256:<digest>  # <tag>`, usando o digest ' +
-      'do ÍNDICE para não perder o multi-arch.'
+      '`docker buildx imagetools inspect <imagem>:<tag> --format ' +
+      "'{{.Manifest.Digest}}'\", use o digest do ÍNDICE para não perder o " +
+      `multi-arch, e escreva a tag ${ondePorOComentario}.`
     );
   }
 
   if (violacao.motivo === 'digest sem a tag em comentário') {
     return (
-      `${onde}: \`${violacao.imagem}\` está preso por digest, mas sem o ` +
-      'comentário `# <tag>` ao lado. Sem ele ninguém sabe que versão é esse ' +
-      'hash, nem como atualizá-lo.'
+      `${onde}: \`${violacao.imagem}\` está preso por digest, mas sem a tag ` +
+      `${ondePorOComentario}. Sem ela ninguém sabe que versão é esse hash, nem ` +
+      'como atualizá-lo.'
     );
   }
 
