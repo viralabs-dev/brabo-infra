@@ -43,11 +43,11 @@ describe('bootstrap.sh — árvore de comandos', () => {
     expect([...areas].sort()).toEqual(['1', '2', '3', '4']);
   });
 
-  it('tem 25 folhas — 9 Docker, 6 K8s, 4 Database, 6 Test', () => {
+  it('tem 26 folhas — 10 Docker, 6 K8s, 4 Database, 6 Test', () => {
     const conta = (area: string) =>
       folhas.filter((f) => f.caminho.startsWith(`${area}.`)).length;
-    expect(folhas).toHaveLength(25);
-    expect(conta('1')).toBe(9);
+    expect(folhas).toHaveLength(26);
+    expect(conta('1')).toBe(10);
     expect(conta('2')).toBe(6);
     expect(conta('3')).toBe(4);
     expect(conta('4')).toBe(6);
@@ -94,6 +94,20 @@ describe('bootstrap.sh — árvore de comandos', () => {
     const reconfigurar = porCaminho(folhas, '1.5');
     expect(reconfigurar.comando).toBe('bash scripts/dev/reconfigurar-ollama.sh');
     expect(reconfigurar.estado).toBe('ok');
+  });
+
+  it('Docker › Instalar RELATA o plano, e nunca instala de dentro do menu', () => {
+    // O item chama `--print-plan` de propósito, e não o instalador de verdade.
+    // A razão é MECÂNICA e não preferência: item de menu roda com stdin em
+    // `/dev/null` (para o menu seguir lendo teclas do mesmo terminal), e este
+    // instalador existe para PERGUNTAR — é o mesmo motivo pelo qual o ADR 0150
+    // recusa `curl | sh`. Um item que chamasse `bash install.sh` cru acharia
+    // EOF em cada `read` e decidiria sozinho onde criar pasta no disco de
+    // alguém. Mesmo desenho do item Base de projetos (RN-511).
+    const instalar = porCaminho(folhas, '1.7');
+    expect(instalar.comando).toBe('bash install.sh --print-plan');
+    expect(instalar.comando).not.toMatch(/curl/);
+    expect(instalar.estado).toBe('ok');
   });
 
   it('Docker › Destroy preserva os volumes', () => {

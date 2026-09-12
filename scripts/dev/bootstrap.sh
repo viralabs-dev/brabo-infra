@@ -161,7 +161,7 @@ COMPOSE="docker compose -f docker/docker-compose.yml --env-file .env"
 
 ROTULO["."]="Brabo";     FILHOS["."]="1 2 3 4"
 
-ROTULO["1"]="Docker";    FILHOS["1"]="1.1 1.2 1.3 1.4 1.5 1.6"
+ROTULO["1"]="Docker";    FILHOS["1"]="1.1 1.2 1.3 1.4 1.5 1.6 1.7"
 ROTULO["2"]="K8s";       FILHOS["2"]="2.1 2.2 2.3"
 ROTULO["3"]="Database";  FILHOS["3"]="3.1 3.2 3.3 3.4"
 ROTULO["4"]="Test";      FILHOS["4"]="4.1 4.2 4.3 4.4 4.5 4.6"
@@ -224,6 +224,26 @@ NOTA["1.5"]="remove OLLAMA_MODE/OLLAMA_HOST de .env — a próxima subida pergun
 # saída diz o comando que pergunta. Mesmo motivo pelo qual 1.5 não pergunta.
 ROTULO["1.6"]="Base de projetos"; CMD["1.6"]="node scripts/dev/consentir-base.mjs"
 NOTA["1.6"]="relata BRABO_PROJECTS_BASE; para escolher, rode o script no seu terminal"
+
+# Instalar: o caminho de instalação do produto é o `install.sh` da raiz, e não
+# os itens de Deploy/Create acima — eles operam o compose de DESENVOLVIMENTO
+# (build local, bind mounts, seed de demonstração), enquanto o instalador baixa
+# as imagens publicadas por DIGEST, gera os segredos, sobe o compose de
+# instalação e instala o agente local. Públicos diferentes: quem desenvolve o
+# Brabo e quem usa o Brabo.
+#
+# Daqui ele só RELATA — e a razão é a mesma do 1.6, mecânica e não preferência:
+# item de menu roda com stdin em /dev/null (ver `exec bash -c` mais abaixo), e o
+# instalador é desenhado para PERGUNTAR (é por isso que o ADR 0150 recusa
+# `curl | sh`: com o pipe o stdin É o download e nenhum `read` funciona). Um
+# instalador que não pode perguntar escolheria sozinho onde criar pasta na
+# máquina de alguém, e a régua deste produto é a oposta.
+#
+# `--print-plan` é exatamente o que cabe num item de menu: diz o que ele FARIA,
+# incluindo a comparação de versão e os três desfechos dela, sem tocar em nada e
+# sem precisar de TTY. A NOTA carrega o comando que instala de verdade.
+ROTULO["1.7"]="Instalar (install.sh)"; CMD["1.7"]="bash install.sh --print-plan"
+NOTA["1.7"]="relata o plano; para instalar, rode no seu terminal: sh -c \"\$(curl -fsSL https://github.com/daneiel/brabo/releases/latest/download/install.sh)\""
 
 # -- 2. K8s -----------------------------------------------------------------
 # Só `All` existe: o bootstrap do cluster instala api, engine e web juntos, e
