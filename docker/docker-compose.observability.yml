@@ -19,7 +19,7 @@ name: brabo
 
 services:
   loki:
-    image: grafana/loki:3.3.2
+    image: grafana/loki@sha256:8af2de1abbdd7aa92b27c9bcc96f0f4140c9096b507c77921ffddf1c6ad6c48f  # 3.3.2
     command: -config.file=/etc/loki/loki.yml
     ports:
       - "${LOKI_PORT:-3100}:3100"
@@ -34,7 +34,7 @@ services:
       start_period: 30s
 
   alloy:
-    image: grafana/alloy:v1.11.0
+    image: grafana/alloy@sha256:e849f170152aff2015427908463a08c48416abade66302cd880379609058042b  # v1.11.0
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
@@ -52,7 +52,7 @@ services:
         condition: service_healthy
 
   prometheus:
-    image: prom/prometheus:v3.1.0
+    image: prom/prometheus@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218  # v3.1.0
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       # 2h, igual ao cluster: isto é ferramenta de investigação do dia, não
@@ -66,7 +66,7 @@ services:
       - prometheus_data:/prometheus
 
   grafana:
-    image: grafana/grafana:11.4.0
+    image: grafana/grafana@sha256:d8ea37798ccc41061a62ab080f2676dda6bf7815558499f901bdb0f533a456fb  # 11.4.0
     ports:
       - "${GRAFANA_PORT:-3001}:3000"
     environment:

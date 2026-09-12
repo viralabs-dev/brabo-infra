@@ -40,7 +40,7 @@ spec:
   #
   # O pin é de major+minor de propósito: deixar a minor flutuar reintroduz o
   # mesmo problema em silêncio no dia em que o operador mudar de default.
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.10
+  imageName: ghcr.io/cloudnative-pg/postgresql@sha256:6287f6497c8c7495305900b79b7aa8d0c9515fa9d3614eff81650068f4d9bacf  # 16.10
   # É este rótulo que a NetworkPolicy `allow-db-egress` da base procura. Sem
   # `inheritedMetadata`, os pods do CNPG nasceriam só com os rótulos do
   # operador e o egress da api/engine para o banco seria negado — com o
