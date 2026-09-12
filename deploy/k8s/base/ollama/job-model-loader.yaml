@@ -42,7 +42,7 @@ spec:
           # .prod.yml). `latest` aqui mudaria o comportamento do provider
           # local entre dois `apply` iguais, sem nada no repositório dizendo
           # o que mudou.
-          image: ollama/ollama:0.33.1
+          image: ollama/ollama@sha256:075246f72d4109385b4a01c3ac8e9cbd26a0bcb21cd7aa30edbccd24e1b3180c  # 0.33.1
           env:
             - name: OLLAMA_HOST
               value: http://ollama:11434
