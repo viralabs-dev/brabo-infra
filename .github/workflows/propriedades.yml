@@ -40,11 +40,6 @@ on:
     # `docs/runbook.md`, seção "Scheduled property proofs".
     - cron: '0 4 * * 0'
   workflow_dispatch:
-  # TEMPORÁRIO — só para medir este workflow antes de ele chegar em `main`
-  # (`workflow_dispatch` e `schedule` leem o arquivo da branch default). Sai no
-  # commit final.
-  push:
-    branches: [test/provas-de-propriedade]
 
 # Duas rodadas nunca disputam o mesmo runner... mas disputariam as MESMAS
 # issues: a segunda veria a issue que a primeira ainda está abrindo.
@@ -227,9 +222,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           URL_DO_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          # TEMPORÁRIO, junto com o gatilho de `push`: medindo pela branch, o
-          # alarme só DIZ o que faria, sem abrir issue de verdade.
-          SIMULAR: ${{ github.event_name == 'push' }}
           BOOTSTRAP: ${{ steps.bootstrap.outcome }}
           SMOKE: ${{ steps.smoke.outcome }}
           HPA: ${{ steps.hpa.outcome }}
@@ -256,10 +248,6 @@ jobs:
             existente="$(TITULO="${titulo}" gh issue list --state open --limit 200 --json number,title \
               --jq '.[] | select(.title == $ENV.TITULO) | .number' | head -1)"
 
-            if [ "${SIMULAR}" = "true" ]; then
-              echo "::notice::[simulação] ${alvo}: ${existente:+comentaria na issue #${existente}}${existente:-abriria issue nova '${titulo}'}"
-              return 0
-            fi
             if [ -n "${existente}" ]; then
               gh issue comment "${existente}" --body-file "${corpo}"
               echo "::notice::comentei na issue #${existente} (${alvo})"
