@@ -4,7 +4,7 @@
 # Makefile exists for what isn't JavaScript nor Elixir — bringing up the
 # cluster, applying manifests, validating. Doesn't duplicate package.json
 # on purpose.
-.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-compose k8s-validate k8s-logs k8s-down imagens-do-release
+.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-compose test-reprojecao k8s-validate k8s-logs k8s-down imagens-do-release
 
 SHELL := /usr/bin/env bash
 K8S := deploy/k8s
@@ -53,6 +53,13 @@ test-restore: ## Triggers a real backup, restores it into a new database and val
 # the same `brabo-restore` with the same three validations.
 test-restore-compose: ## Same proof as test-restore, against docker compose (no cluster)
 	@bash docker/backup/test-restore-compose.sh
+
+# The graph is not backed up (ADR 0152, decision 4): it is REPROJECTED from the
+# event log. This proves the command against a real Neo4j — wipe the scenario's
+# subgraph, reproject, compare node and edge counts, reproject again. It does NOT
+# depend on a backup having happened, on purpose (RN-569).
+test-reprojecao: ## Wipes a graph scenario, reprojects it from the event log and compares counts (needs Neo4j up)
+	@pnpm --filter api test -- test/scripts/reprojetar-grafo.spec.ts
 
 k8s-validate: ## Renders the overlays and validates them against the Kubernetes schema
 	@bash $(K8S)/validate.sh
