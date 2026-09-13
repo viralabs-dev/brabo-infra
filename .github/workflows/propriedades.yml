@@ -194,6 +194,18 @@ jobs:
         run: |
           kubectl get pods -A -o wide || true
           kubectl -n brabo get events --sort-by=.lastTimestamp | tail -40 || true
+          # O log de quem NÃO está de pé é a mensagem que o evento não tem
+          # (CrashLoopBackOff diz que caiu, nunca por quê). `--previous` pega a
+          # execução que morreu; sem ela, a atual.
+          for ns in brabo brabo-db; do
+            kubectl -n "${ns}" get pods --no-headers 2>/dev/null \
+              | awk '$3 != "Running" && $3 != "Completed" || $2 ~ /^0\// { print $1 }' \
+              | while read -r pod; do
+                  echo "=== ${ns}/${pod} ==="
+                  kubectl -n "${ns}" logs "${pod}" --all-containers --previous --tail=60 2>/dev/null \
+                    || kubectl -n "${ns}" logs "${pod}" --all-containers --tail=60 2>&1 || true
+                done
+          done
           kubectl describe nodes | sed -n '/Allocated resources/,/Events/p' || true
           df -h / || true
           free -h || true
