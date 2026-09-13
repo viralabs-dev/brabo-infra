@@ -77,6 +77,18 @@ spec:
       # docs/runbook.md (seção "Restore") documenta.
       postInitSQL:
         - ALTER ROLE brabo CREATEDB
+      # pgvector criado pelo SUPERUSUÁRIO, dentro da database da aplicação.
+      #
+      # A migração da api que faz `CREATE EXTENSION IF NOT EXISTS vector` diz
+      # no próprio comentário que, sem privilégio, criar a extensão é "ação do
+      # operador antes do deploy" — e o operador, neste cluster, é este
+      # manifest. Sem isto o `migrate-api` morria com "permission denied to
+      # create extension vector" (o papel `brabo` não é superusuário), a api
+      # subia sem tabela nenhuma e caía em CrashLoopBackOff. Medido pela 4ª
+      # rodada de `.github/workflows/propriedades.yml`. A imagem do CNPG já
+      # traz o pgvector; faltava só quem pudesse criá-lo.
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector
   storage:
     size: 5Gi
   resources:

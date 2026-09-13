@@ -89,17 +89,6 @@ jobs:
               || { echo "::error::${nome}=${valor} aqui, outro valor em deploy/k8s/bootstrap.sh"; exit 1; }
           done
 
-      # O runner hospedado tem ~14 GB livres, e este job constrói quatro imagens
-      # e as IMPORTA no k3d (a mesma camada ocupa disco duas vezes). Os SDKs
-      # removidos não são usados por nada aqui.
-      - name: Liberar disco
-        run: |
-          set -euo pipefail
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          docker image prune -af >/dev/null
-          df -h /
-
       - name: Instalar k3d, helm e kubectl (checksum pinado)
         run: |
           set -euxo pipefail
@@ -122,7 +111,11 @@ jobs:
           k3d version
           helm version --short
           kubectl version --client
-          nproc; free -h
+          # O que o runner oferece, medido e não presumido: nas rodadas de
+          # medição foram 4 vCPUs, 15 GiB de RAM e 87 GB livres em disco — por
+          # isso NÃO há passo de "liberar disco" (as quatro imagens e a cópia
+          # delas no k3d cabem com folga).
+          nproc; free -h; df -h /
 
       # Cada passo abaixo cronometra a si mesmo e escreve uma linha no resumo:
       # a duração é o que decide a cadência, e ela sai MEDIDA de cada rodada.
@@ -199,7 +192,7 @@ jobs:
           # execução que morreu; sem ela, a atual.
           for ns in brabo brabo-db; do
             kubectl -n "${ns}" get pods --no-headers 2>/dev/null \
-              | awk '$3 != "Running" && $3 != "Completed" || $2 ~ /^0\// { print $1 }' \
+              | awk '$3 != "Completed" && ($3 != "Running" || $2 ~ /^0\//) { print $1 }' \
               | while read -r pod; do
                   echo "=== ${ns}/${pod} ==="
                   kubectl -n "${ns}" logs "${pod}" --all-containers --previous --tail=60 2>/dev/null \

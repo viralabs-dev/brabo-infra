@@ -56,25 +56,16 @@ spec:
             # um env var anterior do MESMO container — recurso padrão do
             # Kubernetes), pra guardar só a senha como segredo em vez de
             # duplicar "neo4j/<senha>" pronto no provider de segredo.
-            - name: NEO4J_USER
-              value: neo4j
-            - name: NEO4J_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: brabo-secrets
-                  key: NEO4J_PASSWORD
-            - name: NEO4J_AUTH
-              value: "$(NEO4J_USER)/$(NEO4J_PASSWORD)"
-            # Heap/pagecache com teto EXPLÍCITO — mesmo motivo e mesmos
-            # valores do docker-compose.yml de dev (ver o comentário lá): sem
-            # isto, o default do Neo4j dimensiona o heap como fração da RAM
-            # do NÓ inteiro, não do `resources.limits` do container.
-            - name: NEO4J_server_memory_heap_max__size
-              value: "512m"
-            - name: NEO4J_server_memory_heap_initial__size
-              value: "512m"
-            - name: NEO4J_server_memory_pagecache_size
-              value: "256m"
+            #
+            # A variável referenciada é PASSWORD_ARG, e ela vem ANTES: o
+            # `$(...)` só resolve env declarada acima. Antes eram NEO4J_USER e
+            # NEO4J_PASSWORD, e o container morria no boot com "Unrecognized
+            # setting. No declared setting with name: PASSWORD" — o MESMO
+            # defeito que o comentário de PASSWORD_ARG descreve, cometido duas
+            # linhas acima dele. Medido pela 4ª rodada de
+            # `.github/workflows/propriedades.yml`; o README desta pasta dizia
+            # que o StatefulSet nunca tinha subido num cluster.
+            #
             # NÃO chame isto NEO4J_PASSWORD_ARG nem qualquer coisa com
             # prefixo NEO4J_ — achado testando de verdade em
             # docker-compose.yml (ver o comentário lá): o entrypoint converte
@@ -88,6 +79,18 @@ spec:
                 secretKeyRef:
                   name: brabo-secrets
                   key: NEO4J_PASSWORD
+            - name: NEO4J_AUTH
+              value: "neo4j/$(PASSWORD_ARG)"
+            # Heap/pagecache com teto EXPLÍCITO — mesmo motivo e mesmos
+            # valores do docker-compose.yml de dev (ver o comentário lá): sem
+            # isto, o default do Neo4j dimensiona o heap como fração da RAM
+            # do NÓ inteiro, não do `resources.limits` do container.
+            - name: NEO4J_server_memory_heap_max__size
+              value: "512m"
+            - name: NEO4J_server_memory_heap_initial__size
+              value: "512m"
+            - name: NEO4J_server_memory_pagecache_size
+              value: "256m"
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
