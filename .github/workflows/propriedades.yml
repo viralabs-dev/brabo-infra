@@ -172,9 +172,21 @@ jobs:
           echo "| rollout-test | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
           exit "${saida}"
 
+      # Teto do PASSO, não do script. `test-restore.sh` espera o Job de restore
+      # por até 1800s com `wait --for=condition=complete`, e um Job que FALHOU
+      # nunca fica `complete`: um restore quebrado custaria meia hora de runner
+      # para dizer o que o log do Job diz em segundos. O script não muda; o
+      # passo corta em 20 min — o restore medido aqui leva segundos — e o passo
+      # "Estado do cluster" imprime o log do Job que falhou.
       - name: make test-restore
         id: restore
         if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        timeout-minutes: 20
+        # A opção de depuração que o próprio script documenta: sem ela, o
+        # `trap` apaga os dois Jobs na saída e o log do restore que falhou some
+        # antes do passo de diagnóstico. O cluster morre com o runner.
+        env:
+          RESTORE_KEEP_JOB: '1'
         run: |
           set -uo pipefail
           inicio=$SECONDS

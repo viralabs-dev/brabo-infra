@@ -69,7 +69,12 @@ PROJ_ID="$(jq -r '.id // empty' <<<"${proj}")"
 
 SESSIONS=()
 for i in $(seq 1 "${COUNT}"); do
+  # `kind` é obrigatório desde a FASE 20 (400 sem ele), e este script nunca o
+  # recebeu. Não muda o que o teste prova: ele exige sessão `active` com dono
+  # no engine, e a ativação é a mesma para os dois tipos. `consultiva` porque
+  # nada aqui ativa EXECUÇÃO — a mesma escolha de `docker/smoke.sh`.
   sess="$(curl -sS --max-time 60 -X POST "${auth[@]}" \
+    -d '{"kind":"consultiva"}' \
     "${API}/projects/${PROJ_ID}/sessions")" || fail "POST sessions falhou"
   SID="$(jq -r '.id // empty' <<<"${sess}")"
   [[ -n "${SID}" ]] || fail "sessão ${i} sem id: ${sess}"
