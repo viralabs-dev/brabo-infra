@@ -172,12 +172,12 @@ jobs:
           echo "| rollout-test | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
           exit "${saida}"
 
-      # Teto do PASSO, não do script. `test-restore.sh` espera o Job de restore
-      # por até 1800s com `wait --for=condition=complete`, e um Job que FALHOU
-      # nunca fica `complete`: um restore quebrado custaria meia hora de runner
-      # para dizer o que o log do Job diz em segundos. O script não muda; o
-      # passo corta em 20 min — o restore medido aqui leva segundos — e o passo
-      # "Estado do cluster" imprime o log do Job que falhou.
+      # Teto do PASSO, além do do script. `test-restore.sh` esperava o Job com
+      # `wait --for=condition=complete`, que nunca vê um Job `Failed`, e o
+      # primeiro restore quebrado custou os 20 min inteiros deste teto para
+      # dizer o que o log do Job dizia em segundos. O script agora vê as duas
+      # condições (`esperar_job`); este teto fica como rede para o que ele não
+      # cobre — um Job que nunca agenda —, e o restore medido leva segundos.
       - name: make test-restore
         id: restore
         if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}

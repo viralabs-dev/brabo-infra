@@ -104,6 +104,18 @@ done
   || fail "só ${owned_before}/${#SESSIONS[@]} sessões têm dono no engine ANTES do rollout"
 ok "todas com dono no engine antes do rollout"
 
+# Evidência para quando a verificação reprovar: EM QUE réplica cada sessão
+# morava, e quantas réplicas havia. Depois do rollout os pods antigos somem com
+# os próprios logs, e sem isto uma órfã não diz se morava num pod drenado.
+kubectl -n "${NS}" get pods -l app.kubernetes.io/name=engine --no-headers \
+  -o custom-columns=POD:.metadata.name,IP:.status.podIP | sed 's/^/    engine /'
+for sid in "${SESSIONS[@]}"; do
+  no="$(kubectl -n "${NS}" exec deploy/engine -- /app/bin/engine rpc \
+    "case Engine.Sessions.SessionServer.whereis(\"${sid}\") do nil -> IO.puts(\"-\"); pid -> IO.puts(node(pid)) end" \
+    2>/dev/null | tr -d '\r' || echo '?')"
+  printf '    sessão %s em %s\n' "${sid}" "${no}"
+done
+
 # --------------------------------------------------------------------------
 info 'rollout restart do engine'
 kubectl -n "${NS}" rollout restart deployment/engine >/dev/null
@@ -111,41 +123,64 @@ kubectl -n "${NS}" rollout status deployment/engine --timeout=300s >/dev/null \
   || fail 'o rollout não completou'
 ok 'rollout completo'
 
-# Dá tempo de o adopter/handoff assentar e de a api processar os relatos.
-sleep 15
-
 # --------------------------------------------------------------------------
 info 'verificando que nenhuma sessão ficou órfã'
 
-adopted=0
-drained=0
-for sid in "${SESSIONS[@]}"; do
-  body="$(curl -sS --max-time 30 "${auth[@]}" \
-    "${API}/projects/${PROJ_ID}/sessions/${sid}")" || fail "GET da sessão ${sid} falhou"
-  status="$(jq -r '.status // empty' <<<"${body}")"
-  reason="$(jq -r '.terminationReason // ""' <<<"${body}")"
+# Convergência com TETO, e não um `sleep` fixo. Adotar e drenar são assíncronos
+# — o adopter espera o cluster sincronizar, o relato de `node_shutdown`
+# atravessa a api —, e um `sleep 15` confunde "ainda assentando" com "órfã para
+# sempre". Desfecho definitivo errado (encerrada com outra causa, estado
+# inesperado) reprova na hora; `active` sem dono só reprova quando o teto
+# esgota, e a mensagem diz quanto se esperou — é o que separa atraso de órfã.
+CONVERGENCIA="${ROLLOUT_CONVERGENCE_SECONDS:-120}"
+inicio=${SECONDS}
+while :; do
+  adopted=0
+  drained=0
+  orfas=()
+  for sid in "${SESSIONS[@]}"; do
+    body="$(curl -sS --max-time 30 "${auth[@]}" \
+      "${API}/projects/${PROJ_ID}/sessions/${sid}")" || fail "GET da sessão ${sid} falhou"
+    status="$(jq -r '.status // empty' <<<"${body}")"
+    reason="$(jq -r '.terminationReason // ""' <<<"${body}")"
 
-  owned="$(kubectl -n "${NS}" exec deploy/engine -- /app/bin/engine rpc \
-    "IO.puts(if Engine.Sessions.SessionServer.whereis(\"${sid}\"), do: \"sim\", else: \"nao\")" \
-    2>/dev/null | tr -d '\r' || echo nao)"
+    owned="$(kubectl -n "${NS}" exec deploy/engine -- /app/bin/engine rpc \
+      "IO.puts(if Engine.Sessions.SessionServer.whereis(\"${sid}\"), do: \"sim\", else: \"nao\")" \
+      2>/dev/null | tr -d '\r' || echo nao)"
 
-  case "${status}" in
-    active)
-      [[ "${owned}" == "sim" ]] \
-        || fail "SESSÃO ÓRFÃ: ${sid} está 'active' na api e sem dono em réplica nenhuma"
-      adopted=$(( adopted + 1 ))
-      ;;
-    closed_abnormally)
-      [[ "${reason}" == *node_shutdown* ]] \
-        || fail "sessão ${sid} encerrou como '${status}' com causa '${reason}' — esperava node_shutdown"
-      drained=$(( drained + 1 ))
-      ;;
-    *)
-      fail "sessão ${sid} em estado inesperado '${status}' (causa: '${reason}')"
-      ;;
-  esac
+    case "${status}" in
+      active)
+        if [[ "${owned}" == "sim" ]]; then
+          adopted=$(( adopted + 1 ))
+        else
+          orfas+=("${sid}")
+        fi
+        ;;
+      closed_abnormally)
+        [[ "${reason}" == *node_shutdown* ]] \
+          || fail "sessão ${sid} encerrou como '${status}' com causa '${reason}' — esperava node_shutdown"
+        drained=$(( drained + 1 ))
+        ;;
+      *)
+        fail "sessão ${sid} em estado inesperado '${status}' (causa: '${reason}')"
+        ;;
+    esac
+  done
+
+  [[ ${#orfas[@]} -eq 0 ]] && break
+
+  if (( SECONDS - inicio >= CONVERGENCIA )); then
+    printf '\n--- logs do engine que citam as órfãs (réplicas atuais) ---\n' >&2
+    for sid in "${orfas[@]}"; do
+      kubectl -n "${NS}" logs -l app.kubernetes.io/name=engine --tail=-1 --prefix 2>/dev/null \
+        | grep -F "${sid}" | tail -20 >&2 || true
+    done
+    fail "SESSÃO ÓRFÃ: ${orfas[*]} segue 'active' na api e sem dono em réplica nenhuma ${CONVERGENCIA}s depois do rollout (${adopted} adotada(s), ${drained} drenada(s))"
+  fi
+  sleep 5
 done
 
+ok "convergiu em $(( SECONDS - inicio ))s depois do rollout"
 ok "${adopted} adotada(s) por outra réplica, ${drained} drenada(s) com node_shutdown"
 [[ $(( adopted + drained )) -eq ${#SESSIONS[@]} ]] \
   || fail "contagem não fecha: ${adopted}+${drained} != ${#SESSIONS[@]}"
