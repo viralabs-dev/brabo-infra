@@ -89,6 +89,17 @@ spec:
       # traz o pgvector; faltava só quem pudesse criá-lo.
       postInitApplicationSQL:
         - CREATE EXTENSION IF NOT EXISTS vector
+      # E no `template1`, pelo mesmo motivo, para a database que o RESTORE cria.
+      # `brabo-restore` faz `create database brabo_restore_test` (que copia o
+      # template1) e depois `pg_restore` com o papel da aplicação; o dump traz
+      # `CREATE EXTENSION IF NOT EXISTS vector`, que só passa sem superusuário
+      # se a extensão JÁ existir. É o que a tabela "When the restore fails" do
+      # runbook diz desde a Fase 5 — "on CNPG they come from the cluster, not
+      # the dump" —, e nada no cluster a criava: medido pela 6ª rodada de
+      # `.github/workflows/propriedades.yml`, `pg_restore` morria com
+      # "permission denied to create extension vector".
+      postInitTemplateSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector
   storage:
     size: 5Gi
   resources:
