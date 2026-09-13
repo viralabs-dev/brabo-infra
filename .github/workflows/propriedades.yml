@@ -1,0 +1,258 @@
+name: Provas de propriedade (agendado)
+
+# BRB-009 — as três provas de PROPRIEDADE do deploy em Kubernetes, que até
+# aqui só rodavam quando alguém digitava `make`:
+#
+#   make hpa-test      deploy/k8s/hpa-test.sh      o HPA do engine escala com a fila do Oban
+#   make rollout-test  deploy/k8s/rollout-test.sh  rollout restart sem sessão órfã
+#   make test-restore  deploy/k8s/test-restore.sh  backup real restaurado e validado
+#
+# Elas provam propriedade, não configuração: um backup que roda todo dia e não
+# restaura passa pelos cinco alertas de `brabo-alerts.yaml` (backup ATRASADO e
+# backup FALHO, nunca restore que deixou de funcionar). Sem agenda, a última
+# prova do restore era a data escrita à mão em `docs/runbook.md`.
+#
+# SEPARADO de `ci.yml`, pelo mesmo motivo de `golden-set-rag.yml`: aquele é
+# deliberadamente só `pull_request`, e `schedule` misturado ali afetaria todo
+# job existente. E NUNCA gate: sobe um cluster inteiro e custa dezenas de
+# minutos — sinal de tendência, não trava de merge. Nenhum check required
+# espera por este workflow.
+#
+# É o PRIMEIRO workflow do repositório que sobe cluster. O ambiente é o MESMO
+# que um humano obtém com `make deploy-local`: `deploy/k8s/bootstrap.sh` num
+# k3d (k3d e não kind porque o kindnet ignora NetworkPolicy em silêncio — ver o
+# comentário em `pick_cluster_tool`), as quatro imagens de produção CONSTRUÍDAS
+# do checkout e importadas no cluster. Não GHCR por digest (ADR 0119): o que se
+# quer provar é a árvore da branch, não a última release, e construir não exige
+# segredo nenhum.
+#
+# Falha vira ISSUE, uma por alvo, e a segunda falha do mesmo alvo vira
+# COMENTÁRIO na issue aberta — senão isto seria "um workflow vermelho por dia
+# que ninguém lia" (`.github/dependabot.yml`), e enxurrada de issues idênticas
+# ensina a ignorar (`tag-release.yml`).
+#
+# FORA daqui, de propósito: `test-restore-compose` (a separação é decisão do
+# `Makefile`, que não faz o caminho do compose depender de `kubectl`) e o
+# golden-set do QA (BRB-007, travado numa decisão humana sobre segredo de LLM).
+on:
+  schedule:
+    # Semanal, domingo 04:00 UTC. A cadência é pelo CUSTO MEDIDO — ver
+    # `docs/runbook.md`, seção "Scheduled property proofs".
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+  # TEMPORÁRIO — só para medir este workflow antes de ele chegar em `main`
+  # (`workflow_dispatch` e `schedule` leem o arquivo da branch default). Sai no
+  # commit final.
+  push:
+    branches: [test/provas-de-propriedade]
+
+# Duas rodadas nunca disputam o mesmo runner... mas disputariam as MESMAS
+# issues: a segunda veria a issue que a primeira ainda está abrindo.
+concurrency:
+  group: propriedades
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Versões IGUAIS às que `deploy/k8s/bootstrap.sh` instalaria. O bootstrap
+  # baixa o k3d sem conferir checksum — instalando aqui antes, com hash pinado,
+  # o `ensure_k3d` dele encontra o binário e não baixa nada. O passo
+  # "Versões batem com o bootstrap" reprova se as duas divergirem.
+  K3D_VERSION: 'v5.8.3'
+  K3D_SHA256: 'dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e'
+  HELM_VERSION: 'v3.19.0'
+  HELM_SHA256: 'a7f81ce08007091b86d8bd696eb4d86b8d0f2e1b9f6c714be62f82f96a594496'
+  # O k3s que o k3d v5.8.3 sobe por padrão é da linha 1.31; kubectl no mesmo
+  # menor evita depender do que a imagem do runner trouxer no dia.
+  KUBECTL_VERSION: 'v1.31.5'
+  KUBECTL_SHA256: 'fbecbfd375b3686002c2e81d51c390172f5ffba3d6b47920d55342cb03f557af'
+
+jobs:
+  provas:
+    name: Provas de propriedade (k3d)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - name: Versões batem com o bootstrap
+        run: |
+          set -euo pipefail
+          for par in "K3D_VERSION:${K3D_VERSION}" "HELM_VERSION:${HELM_VERSION}"; do
+            nome="${par%%:*}"; valor="${par#*:}"
+            grep -qx "${nome}=\"${valor}\"" deploy/k8s/bootstrap.sh \
+              || { echo "::error::${nome}=${valor} aqui, outro valor em deploy/k8s/bootstrap.sh"; exit 1; }
+          done
+
+      # O runner hospedado tem ~14 GB livres, e este job constrói quatro imagens
+      # e as IMPORTA no k3d (a mesma camada ocupa disco duas vezes). Os SDKs
+      # removidos não são usados por nada aqui.
+      - name: Liberar disco
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker image prune -af >/dev/null
+          df -h /
+
+      - name: Instalar k3d, helm e kubectl (checksum pinado)
+        run: |
+          set -euxo pipefail
+          curl -fsSL -o /tmp/k3d \
+            "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-amd64"
+          echo "${K3D_SHA256}  /tmp/k3d" | sha256sum -c -
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+
+          curl -fsSL -o /tmp/helm.tar.gz \
+            "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          echo "${HELM_SHA256}  /tmp/helm.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/helm.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+
+          curl -fsSL -o /tmp/kubectl \
+            "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          echo "${KUBECTL_SHA256}  /tmp/kubectl" | sha256sum -c -
+          sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+
+          k3d version
+          helm version --short
+          kubectl version --client
+          nproc; free -h
+
+      # Cada passo abaixo cronometra a si mesmo e escreve uma linha no resumo:
+      # a duração é o que decide a cadência, e ela sai MEDIDA de cada rodada.
+      - name: Tabela de durações
+        run: |
+          {
+            echo '| passo | duração | saída |'
+            echo '|---|---|---|'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # `bootstrap.sh`, não `make deploy-local`: o alvo encadeia o smoke e o
+      # `&&` do make esconderia qual das duas metades falhou.
+      - name: Subir o cluster (bootstrap)
+        id: bootstrap
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          bash deploy/k8s/bootstrap.sh; saida=$?
+          echo "| bootstrap | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          df -h /; free -h
+          exit "${saida}"
+
+      - name: make smoke-k8s
+        id: smoke
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          make smoke-k8s; saida=$?
+          echo "| smoke-k8s | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          exit "${saida}"
+
+      # Os três rodam mesmo quando um anterior falha — `!cancelled()` em vez do
+      # `success()` implícito. Um HPA quebrado não pode esconder um restore
+      # quebrado. A ORDEM é a do Makefile, e ela importa: o `hpa-test` deixa o
+      # engine com mais réplicas, e o `rollout-test` roda contra esse estado.
+      - name: make hpa-test
+        id: hpa
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          make hpa-test; saida=$?
+          echo "| hpa-test | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          exit "${saida}"
+
+      - name: make rollout-test
+        id: rollout
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          make rollout-test; saida=$?
+          echo "| rollout-test | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          exit "${saida}"
+
+      - name: make test-restore
+        id: restore
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          make test-restore; saida=$?
+          echo "| test-restore | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          exit "${saida}"
+
+      - name: Estado do cluster (só em falha)
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl -n brabo get events --sort-by=.lastTimestamp | tail -40 || true
+          kubectl describe nodes | sed -n '/Allocated resources/,/Events/p' || true
+          df -h / || true
+          free -h || true
+
+      # Uma issue POR ALVO, reaproveitada. A busca é `--json` + comparação
+      # EXATA de título (o mesmo desenho de `tag-release.yml`): o título tem
+      # crase, e a sintaxe de busca do GitHub a trataria como operador.
+      #
+      # O bootstrap também tem título próprio: com o cluster fora, os três alvos
+      # ficam `skipped`, e skipped num run agendado é o silêncio que isto existe
+      # para quebrar.
+      - name: Abrir ou atualizar issue por alvo que falhou
+        if: ${{ !cancelled() && failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL_DO_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # TEMPORÁRIO, junto com o gatilho de `push`: medindo pela branch, o
+          # alarme só DIZ o que faria, sem abrir issue de verdade.
+          SIMULAR: ${{ github.event_name == 'push' }}
+          BOOTSTRAP: ${{ steps.bootstrap.outcome }}
+          SMOKE: ${{ steps.smoke.outcome }}
+          HPA: ${{ steps.hpa.outcome }}
+          ROLLOUT: ${{ steps.rollout.outcome }}
+          RESTORE: ${{ steps.restore.outcome }}
+        run: |
+          set -euo pipefail
+          alarmar() {
+            local alvo="$1" desfecho="$2" titulo corpo existente
+            [ "${desfecho}" = "failure" ] || return 0
+            titulo="Prova de propriedade falhou: \`${alvo}\`"
+            corpo="$(mktemp)"
+            {
+              echo "A rodada agendada de \`propriedades.yml\` reprovou em \`${alvo}\`."
+              echo
+              echo "- run: ${URL_DO_RUN}"
+              echo "- commit: \`${GITHUB_SHA}\` (${GITHUB_REF_NAME})"
+              echo "- data: $(date -u +%Y-%m-%dT%H:%MZ)"
+              echo
+              echo "O log do passo tem a mensagem do script; o passo \"Estado do cluster\" tem pods, eventos e recursos do nó."
+              echo "Uma nova falha deste alvo vira comentário AQUI. Feche a issue quando a prova voltar a passar."
+            } > "${corpo}"
+
+            existente="$(TITULO="${titulo}" gh issue list --state open --limit 200 --json number,title \
+              --jq '.[] | select(.title == $ENV.TITULO) | .number' | head -1)"
+
+            if [ "${SIMULAR}" = "true" ]; then
+              echo "::notice::[simulação] ${alvo}: ${existente:+comentaria na issue #${existente}}${existente:-abriria issue nova '${titulo}'}"
+              return 0
+            fi
+            if [ -n "${existente}" ]; then
+              gh issue comment "${existente}" --body-file "${corpo}"
+              echo "::notice::comentei na issue #${existente} (${alvo})"
+            else
+              url="$(gh issue create --title "${titulo}" --body-file "${corpo}")"
+              echo "::notice::issue aberta para ${alvo}: ${url}"
+            fi
+          }
+          alarmar 'bootstrap (o cluster não subiu)' "${BOOTSTRAP}"
+          alarmar 'make smoke-k8s' "${SMOKE}"
+          alarmar 'make hpa-test' "${HPA}"
+          alarmar 'make rollout-test' "${ROLLOUT}"
+          alarmar 'make test-restore' "${RESTORE}"
