@@ -66,6 +66,16 @@ configMapGenerator:
       # variável, então `logger.debug` era código morto em TODO ambiente
       # publicado. Um nível que ninguém consegue ligar é pior que nível nenhum.
       - WEB_LOG_LEVEL=info
+      # Grafo de conhecimento (ADR 0099). O Neo4j entrou na base com o
+      # StatefulSet e o NEO4J_PASSWORD no ExternalSecret, mas as outras duas
+      # metades nunca chegaram aqui — e a api roda com NODE_ENV=production,
+      # onde `resolverConfigNeo4j` (apps/api/src/infrastructure/graph/
+      # neo4j-config.ts) RECUSA subir sem as três. Medido pela 3ª rodada de
+      # `.github/workflows/propriedades.yml`: api em CrashLoopBackOff. Não são
+      # segredo e não variam por ambiente (Service `neo4j` da própria base,
+      # usuário fixo `neo4j` do StatefulSet).
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
 
 images:
   # As tags são substituídas por overlay. No local ficam as :prod construídas

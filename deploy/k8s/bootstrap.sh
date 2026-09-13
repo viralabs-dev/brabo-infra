@@ -335,6 +335,12 @@ kubectl -n brabo-db create secret generic brabo-pg-credentials \
   --from-literal=password="${PG_PASSWORD}" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
+# NEO4J_PASSWORD entrou no ExternalSecret da base com o grafo (ADR 0099) e
+# nunca aqui: o ESO parava em "property NEO4J_PASSWORD does not exist", o
+# `brabo-secrets` não nascia e todo pod do namespace ficava em
+# CreateContainerConfigError. Quem mediu foi a segunda rodada de
+# `.github/workflows/propriedades.yml` — a lista abaixo tem de cobrir TODA
+# `property` de base/common/externalsecrets.yaml.
 kubectl -n brabo create secret generic brabo \
   --from-literal=DATABASE_URL="${DATABASE_URL}" \
   --from-literal=SECRET_KEY_BASE="$(openssl rand -hex 32)" \
@@ -348,6 +354,7 @@ kubectl -n brabo create secret generic brabo \
   --from-literal=BACKUP_S3_BUCKET=brabo-backups \
   --from-literal=BACKUP_S3_ACCESS_KEY=brabo-backup \
   --from-literal=BACKUP_S3_SECRET_KEY="$(openssl rand -hex 20)" \
+  --from-literal=NEO4J_PASSWORD="$(openssl rand -hex 24)" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 ok "Secret-fonte criado (nunca versionado)"
 

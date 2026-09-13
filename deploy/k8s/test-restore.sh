@@ -46,6 +46,25 @@ fail() {
   exit 1
 }
 
+# Espera o Job terminar para QUALQUER lado. `kubectl wait --for=condition=complete`
+# sozinho nunca vê um Job que FALHOU — ele fica `Failed`, jamais `Complete` — e
+# espera o teto inteiro: um restore quebrado em segundos custava 30 minutos para
+# dizer o que o log do Job já dizia (medido no primeiro run agendado, BRB-009).
+# Devolve 0 (Complete), 1 (Failed) ou 2 (teto esgotado).
+esperar_job() {
+  local job="$1" teto="$2" inicio=${SECONDS} condicoes
+  while (( SECONDS - inicio < teto )); do
+    condicoes="$(kubectl -n "${NS}" get "job/${job}" \
+      -o jsonpath='{range .status.conditions[?(@.status=="True")]}{.type}{" "}{end}' 2>/dev/null || true)"
+    case " ${condicoes} " in
+      *" Complete "*) return 0 ;;
+      *" Failed "*)   return 1 ;;
+    esac
+    sleep 5
+  done
+  return 2
+}
+
 limpar() {
   [[ "${RESTORE_KEEP_JOB:-}" == "1" ]] && return 0
   kubectl -n "${NS}" delete job "${JOB_BACKUP}" "${JOB_RESTORE}" \
@@ -65,12 +84,12 @@ info "disparando o CronJob de backup"
 kubectl -n "${NS}" create job "${JOB_BACKUP}" --from=cronjob/brabo-backup >/dev/null \
   || fail "não foi possível criar o Job de backup"
 
-# `wait --for=condition=failed` em paralelo evita esperar o timeout inteiro
-# quando o job já falhou — sem isso, um backup quebrado custa 10 minutos de
-# espera antes de reportar.
-if ! kubectl -n "${NS}" wait --for=condition=complete "job/${JOB_BACKUP}" --timeout=600s >/dev/null 2>&1; then
-  fail "o Job de backup não completou em 10 minutos"
-fi
+# O comentário que estava aqui prometia um `wait --for=condition=failed` em
+# paralelo que o código nunca fez; `esperar_job` é essa promessa cumprida.
+esperar_job "${JOB_BACKUP}" 600 || case $? in
+  1) fail "o Job de backup falhou" ;;
+  *) fail "o Job de backup não completou em 10 minutos" ;;
+esac
 kubectl -n "${NS}" logs "job/${JOB_BACKUP}" --tail=20 | sed 's/^/    /'
 ok "backup concluído"
 
@@ -132,11 +151,15 @@ spec:
             sizeLimit: 4Gi
 YAML
 
-if ! kubectl -n "${NS}" wait --for=condition=complete "job/${JOB_RESTORE}" --timeout=1800s >/dev/null 2>&1; then
+if esperar_job "${JOB_RESTORE}" 1800; then :; else
+  desfecho=$?
   # O log do restore é a mensagem de erro útil (qual validação reprovou), então
   # ele é impresso antes do fail genérico.
   kubectl -n "${NS}" logs "job/${JOB_RESTORE}" --tail=100 | sed 's/^/    /' || true
-  fail "o restore não completou ou uma validação reprovou"
+  if [[ "${desfecho}" -eq 1 ]]; then
+    fail "o restore falhou ou uma validação reprovou"
+  fi
+  fail "o restore não terminou em 30 minutos"
 fi
 
 kubectl -n "${NS}" logs "job/${JOB_RESTORE}" | sed 's/^/    /'

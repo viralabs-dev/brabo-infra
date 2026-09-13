@@ -56,7 +56,7 @@ psql_destino() { psql "${RESTORE_URL}"  --quiet --no-align --tuples-only --set O
 
 limpar() {
   rc=$?
-  rm -f "${DUMP}"
+  rm -f "${DUMP}" /tmp/restore.list
   # A database de teste some SEMPRE, inclusive quando a validação falha: deixá-la
   # para trás faz a próxima execução falhar no `createdb` por um motivo que não
   # tem nada a ver com o backup.
@@ -111,9 +111,22 @@ psql "${ADMIN_URL}" --quiet --set ON_ERROR_STOP=1 \
   --command "create database ${RESTORE_DB}" >/dev/null
 log "restaurando em ${RESTORE_DB}"
 
+# O índice do dump SEM o comentário de extensão. `pg_dump` grava
+# `COMMENT ON EXTENSION vector`, e só o DONO da extensão pode comentá-la: onde o
+# papel da aplicação não é superusuário — o CNPG, e qualquer Postgres gerenciado
+# —, a extensão é criada por outro papel e o `pg_restore` morre com
+# "must be owner of extension vector" antes de restaurar uma tabela. O
+# comentário é o texto de descrição que a própria extensão instala; nenhum dado
+# e nenhuma validação abaixo dependem dele. O `CREATE EXTENSION IF NOT EXISTS`
+# FICA: com a extensão já presente na database nova ele não faz nada, e sem ela
+# é a mensagem certa ("permission denied to create extension").
+LISTA=/tmp/restore.list
+pg_restore --list "${DUMP}" | grep -v ' COMMENT - EXTENSION ' > "${LISTA}"
+
 # `--no-owner --no-privileges` porque o dump foi gerado assim; `--exit-on-error`
 # para uma falha no meio não virar database meio restaurada com saída zero.
-pg_restore --dbname="${RESTORE_URL}" --no-owner --no-privileges --exit-on-error "${DUMP}" \
+pg_restore --dbname="${RESTORE_URL}" --no-owner --no-privileges --exit-on-error \
+  --use-list="${LISTA}" "${DUMP}" \
   || { log "erro: pg_restore falhou"; exit 1; }
 ok "pg_restore concluído"
 

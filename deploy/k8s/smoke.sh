@@ -97,7 +97,13 @@ PROJ_ID="$(printf '%s' "${proj}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
 [[ -n "${PROJ_ID}" ]] || fail "projeto sem id na resposta: ${proj}"
 ok "projeto ${PROJ_ID}"
 
+# `kind` é OBRIGATÓRIO desde a FASE 20 (400 sem ele) — a mesma linha que o
+# `docker/smoke.sh` ganhou quando o campo nasceu, e que este arquivo nunca
+# recebeu: o smoke do cluster reprovava aqui sem ninguém rodá-lo, até a
+# primeira rodada de `.github/workflows/propriedades.yml`. `consultiva` pelo
+# mesmo motivo de lá: o smoke nunca ativa EXECUÇÃO.
 sess="$(curl -sS --max-time 60 -X POST "${auth[@]}" \
+  -d '{"kind":"consultiva"}' \
   "${API}/projects/${PROJ_ID}/sessions")" || fail "POST sessions não respondeu"
 SESS_ID="$(printf '%s' "${sess}" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
 printf '%s' "${sess}" | grep -q '"status":"created"' \
