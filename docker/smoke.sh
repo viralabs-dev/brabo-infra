@@ -202,6 +202,30 @@ printf '%s' "${act}" | grep -q '"status":"active"' \
 ok "sessão ativada — api -> engine ok"
 
 # --------------------------------------------------------------------------
+step=2.5
+info 'registro de gates servido pela IMAGEM (GET /gates)'
+# Por que aqui, e não numa suite: o registro é o único arquivo de `docs/` que
+# a imagem carrega, e o que quebrava não era o conteúdo dele — era o loader
+# cobrando, EM RUNTIME, que os arquivos de prova citados existissem no disco.
+# `apps/api/test/`, `scripts/ci/` e `.github/` nunca entram na imagem, então o
+# registro era inválido em TODA instalação e a rota respondia 500. Medido na
+# v6.1.0: 12 respostas 5xx em ~55min.
+#
+# Nenhuma suite pegava isso, e não por descuido: vitest e ExUnit rodam DE UM
+# CHECKOUT, onde os alvos existem. A pergunta "a árvore da imagem tem o que a
+# api lê em runtime?" é a mesma classe do `kind` obrigatório no passo 2 — só o
+# smoke a faz, como cliente externo, sem mock, contra a imagem de produção.
+gates="$(curl -sS --max-time 30 "${auth[@]}" "${API}/gates")" \
+  || fail "GET /gates não respondeu"
+printf '%s' "${gates}" | grep -q '"gates":\[' \
+  || fail "GET /gates não devolveu o registro (500 por evidência ausente na imagem?): ${gates}"
+# O registro tem gates `active`; uma lista VAZIA passaria no grep acima e
+# significaria o mesmo que a rota não funcionar.
+printf '%s' "${gates}" | grep -q '"merge-protegida"' \
+  || fail "GET /gates respondeu sem o gate merge-protegida: ${gates}"
+ok 'GET /gates serve o registro de dentro da imagem'
+
+# --------------------------------------------------------------------------
 step=3
 info '3/3 — health do engine e do web'
 engine_health="$(curl -sS --max-time 15 "${ENGINE}/health")" || fail "engine não respondeu em ${ENGINE}"
