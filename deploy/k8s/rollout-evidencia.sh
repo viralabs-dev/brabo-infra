@@ -25,6 +25,10 @@
 #                      daqui que sai o instante do scale-down do HPA
 #   donos.log          cada leitura de dono feita pela verificação:
 #                      `<epoch> <sessão> <nó dono | ->`
+#   donos-durante-rollout.log  a mesma leitura, em laço enquanto o
+#                      `rollout status` corre (escrita pelo `rollout-test.sh`)
+#   engine-estado.txt  `session_states` das sessões e os últimos jobs do
+#                      `SessionAdoptionWorker`, no fim (escrito pelo teste)
 #   anexos.log         quando cada `logs -f` foi anexado
 #   marcos.log         instantes do teste (`rollout`, `rollout-status`...)
 #

@@ -55,13 +55,35 @@ trap encerrar_evidencia EXIT
 # Erlang (`nome@host`); qualquer outra saída (exec falhou, rpc caiu) conta como
 # sem dono, igual ao `sim`/`nao` de antes.
 dono_de() {
-  local sid="$1" saida
+  local sid="$1" destino="${2:-donos.log}" saida
   saida="$(kubectl -n "${NS}" exec deploy/engine -- /app/bin/engine rpc \
     "case Engine.Sessions.SessionServer.whereis(\"${sid}\") do nil -> IO.puts(\"-\"); pid -> IO.puts(node(pid)) end" \
     2>/dev/null | tr -d '\r' | tail -n 1 || true)"
   [[ "${saida}" =~ ^[^@[:space:]]+@[^[:space:]]+$ ]] || saida='-'
-  printf '%s %s %s\n' "$(date +%s)" "${sid}" "${saida}" >> "${EVIDENCIA}/donos.log"
+  printf '%s %s %s\n' "$(date +%s)" "${sid}" "${saida}" >> "${EVIDENCIA}/${destino}"
   printf '%s' "${saida}"
+}
+
+# Leitura, só leitura, do que o engine guarda sobre cada sessão: a linha em
+# `engine.session_states` (sem ela, nem o drain nem o Adopter enxergam a sessão)
+# e os últimos jobs do `SessionAdoptionWorker` (a varredura de 30s que deveria
+# adotar uma órfã com linha). Vai para `engine-estado.txt` nos dois desfechos —
+# numa rodada verde, é o que prova que a consulta funciona.
+estado_do_engine() {
+  local ids
+  ids="$(printf '"%s",' "${SESSIONS[@]}")"
+  kubectl -n "${NS}" exec deploy/engine -- /app/bin/engine rpc "
+    import Ecto.Query
+    ids = [${ids%,}]
+    IO.puts(\"--- engine.session_states das sessões do teste ---\")
+    Engine.Repo.all(from s in Engine.Sessions.SessionState, where: s.session_id in ^ids)
+    |> Enum.each(&IO.puts(\"#{&1.session_id} #{&1.status} #{&1.closing_cause} atualizada=#{&1.updated_at}\"))
+    IO.puts(\"(#{length(ids)} sessões no teste; as ausentes acima não têm linha)\")
+    IO.puts(\"--- últimos jobs do SessionAdoptionWorker ---\")
+    {:ok, r} = Ecto.Adapters.SQL.query(Engine.Repo, \"SELECT id, state, attempted_at, scheduled_at, completed_at, attempted_by FROM engine.oban_jobs WHERE worker = 'Engine.Workers.SessionAdoptionWorker' ORDER BY id DESC LIMIT 6\", [])
+    Enum.each(r.rows, &IO.puts(inspect(&1)))
+    IO.puts(\"--- nós: #{node()} vê #{inspect(Node.list())} ---\")
+  " > "${EVIDENCIA}/engine-estado.txt" 2>&1 || true
 }
 
 info() { printf '\n\033[1m[rollout-test]\033[0m %s\n' "$*"; }
@@ -154,9 +176,20 @@ info 'rollout restart do engine'
 kubectl -n "${NS}" get pods -l "${SELETOR_ENGINE}" -o wide > "${EVIDENCIA}/pods-antes.txt" 2>&1 || true
 T0="$(date +%s)"
 marco "rollout-restart"
+# Dono de cada sessão DURANTE o rollout, em arquivo à parte: é aqui que se vê
+# para qual réplica cada handoff foi (um pod antigo que também vai morrer? um
+# novo?). Arquivo separado de `donos.log` porque uma leitura no meio do rollout
+# cai às vezes num pod saindo, e não pode entrar no diagnóstico da verificação.
+( while [[ ! -e "${EVIDENCIA}/.rollout-concluido" ]]; do
+    for sid in "${SESSIONS[@]}"; do dono_de "${sid}" donos-durante-rollout.log >/dev/null; done
+  done ) &
+AMOSTRADOR_DO_ROLLOUT=$!
+echo "${AMOSTRADOR_DO_ROLLOUT}" >> "${EVIDENCIA}/.pids"
 kubectl -n "${NS}" rollout restart deployment/engine >/dev/null
 kubectl -n "${NS}" rollout status deployment/engine --timeout=300s >/dev/null \
   || fail 'o rollout não completou'
+: > "${EVIDENCIA}/.rollout-concluido"
+wait "${AMOSTRADOR_DO_ROLLOUT}" 2>/dev/null || true
 marco "rollout-status-ok"
 ok "rollout completo em $(( $(date +%s) - T0 ))s"
 
@@ -206,6 +239,7 @@ while :; do
 
   if (( SECONDS - inicio >= CONVERGENCIA )); then
     marco "teto-esgotado"
+    estado_do_engine
     # Para os coletores antes de citar: o que foi gravado até aqui é o que há.
     evidencia_parar
     queda="$(primeiro_scale_down "${EVIDENCIA}/replicas.log" "${T0}")"
@@ -219,6 +253,8 @@ while :; do
       printf '\n--- tudo que cita a órfã %s (pods antigos inclusive) ---\n' "${sid}" >&2
       citar_orfa "${EVIDENCIA}" "${sid}" >&2
     done
+    printf '\n--- estado do engine (session_states, varredura de adoção) ---\n' >&2
+    cat "${EVIDENCIA}/engine-estado.txt" >&2 || true
     printf '\n--- diagnóstico por órfã ---\n' >&2
     printf '  %s\n' "${diagnosticos[@]}" >&2
     fail "SESSÃO ÓRFÃ: ${orfas[*]} segue 'active' na api e sem dono em réplica nenhuma ${CONVERGENCIA}s depois do rollout (${adopted} adotada(s), ${drained} drenada(s)) — ${diagnosticos[*]}"
@@ -227,6 +263,7 @@ while :; do
 done
 
 marco "convergiu"
+estado_do_engine
 ok "convergiu em $(( SECONDS - inicio ))s depois do rollout"
 mudancas_de_replicas "${EVIDENCIA}/replicas.log" "${T0}" | sed 's/^/    réplicas /' || true
 ok "${adopted} adotada(s) por outra réplica, ${drained} drenada(s) com node_shutdown"
