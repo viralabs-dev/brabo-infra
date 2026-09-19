@@ -290,6 +290,8 @@ services:
       # árvores diferentes.
       BRABO_PROJECTS_BASE: ${BRABO_PROJECTS_BASE:-}
       SESSION_HEARTBEAT_TIMEOUT_MS: ${SESSION_HEARTBEAT_TIMEOUT_MS:-30000}
+      # Teto da conversa ociosa (RN-581): mesmo default do runtime.exs (8h).
+      SESSION_CONVERSATION_IDLE_TIMEOUT_MS: ${SESSION_CONVERSATION_IDLE_TIMEOUT_MS:-28800000}
       TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
       SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
       # Agentes de fundo desligados por default AQUI (não em dev): este compose
