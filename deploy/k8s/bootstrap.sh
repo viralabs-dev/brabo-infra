@@ -450,8 +450,40 @@ kubectl -n brabo run seed-smoke --restart=Never --image="${API_IMAGE}" \
 # em `workspaces_slug_unique` — o que acontece sempre que se reaproveita um
 # cluster com BRABO_KEEP_CLUSTER=1. Nesse caso o pod termina em erro e está
 # tudo certo: o usuário já existe desde a primeira vez.
+#
+# AT-176: este wait durava SEMPRE 3m00s (9 execuções medidas) — a assinatura do
+# `--timeout=180s` estourando, não de trabalho. A hipótese (o seed não chama
+# `process.exit` e o processo fica de pé) NÃO foi confirmada: localmente o seed
+# termina sozinho, exit 0, em ~2s. Duas coisas ficam então registradas na saída,
+# para a próxima rodada dizer o que houve em vez de a fase ser só um número:
+# quanto o wait levou e, quando ele NÃO devolveu `Succeeded`, o estado do pod
+# (fase, estado do contêiner, instantes) e o fim do log. O que separa as
+# hipóteses é a linha `Seed concluído.` no log: com ela e o pod ainda `Running`,
+# o processo ficou de pé depois do seed; sem ela, o seed ainda estava
+# bloqueado numa dependência (candidata medida: o GraphStore espera ~90s por um
+# Neo4j que a NetworkPolicy não deixa o pod `migrate-api` alcançar — o ingress
+# do `neo4j` só admite `api` e `engine`).
+#
+# O `|| true` FICA, e por um motivo que não é esconder a falha: o pod pode
+# terminar em `Error` de forma legítima (cluster reaproveitado com
+# BRABO_KEEP_CLUSTER=1), e aí `kubectl wait` sai != 0 do mesmo jeito. Quem
+# decide se o seed deu certo é o login logo abaixo — que morre com `die` —, e
+# este bloco passa a DIZER o que viu em vez de calar.
+seed_wait_inicio="${SECONDS}"
+seed_wait_rc=0
 kubectl -n brabo wait --for=jsonpath='{.status.phase}'=Succeeded \
-  pod/seed-smoke --timeout=180s >/dev/null 2>&1 || true
+  pod/seed-smoke --timeout=180s >/dev/null 2>&1 || seed_wait_rc=$?
+seed_wait_dur=$((SECONDS - seed_wait_inicio))
+if [[ "${seed_wait_rc}" == "0" ]]; then
+  ok "seed-smoke: Succeeded em ${seed_wait_dur}s"
+else
+  warn "seed-smoke: o wait saiu com código ${seed_wait_rc} após ${seed_wait_dur}s às $(date -u +%H:%M:%SZ) (não foi Succeeded)"
+  kubectl -n brabo get pod/seed-smoke \
+    -o jsonpath='  fase={.status.phase} inicio={.status.startTime} contêiner={.status.containerStatuses[0].state}{"\n"}' 2>&1 || true
+  echo "  --- fim do log do seed-smoke ---"
+  kubectl -n brabo logs pod/seed-smoke --tail=15 2>&1 | sed 's/^/  /' || true
+  echo "  --- fim ---"
+fi
 
 seed_login_ok=0
 for _ in $(seq 1 10); do
