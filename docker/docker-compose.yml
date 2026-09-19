@@ -363,6 +363,8 @@ services:
       # A api chama o engine com um token client-credentials deste client
       # — o engine só precisa saber QUAL client esperar, nunca o secret.
       SESSION_HEARTBEAT_TIMEOUT_MS: ${SESSION_HEARTBEAT_TIMEOUT_MS:-30000}
+      # Teto da conversa ociosa (RN-581): mesmo default do runtime.exs (8h).
+      SESSION_CONVERSATION_IDLE_TIMEOUT_MS: ${SESSION_CONVERSATION_IDLE_TIMEOUT_MS:-28800000}
       # Pipeline de ações propostas (Fase 1 item 5): mesma raiz de
       # workspaces que a api usa — Engine.Actions.Workspace faz o
       # checkout do bare repo (montado abaixo, read-only) ali dentro.
