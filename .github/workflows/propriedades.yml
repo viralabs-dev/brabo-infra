@@ -157,15 +157,33 @@ jobs:
           echo "| hpa-test | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
           exit "${saida}"
 
+      # AT-078: a prova grava o log de TODO pod do engine (os antigos, que o
+      # rollout mata, inclusive), os eventos do namespace e as réplicas do
+      # HPA neste diretório, e o passo seguinte o sobe como artefato.
       - name: make rollout-test
         id: rollout
         if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        env:
+          ROLLOUT_EVIDENCE_DIR: ${{ runner.temp }}/rollout-evidencia
         run: |
           set -uo pipefail
           inicio=$SECONDS
           make rollout-test; saida=$?
           echo "| rollout-test | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
           exit "${saida}"
+
+      # Sobe SEMPRE que a prova rodou, verde inclusive: é numa rodada verde que
+      # se confere que a evidência existe antes de precisar dela. Numa órfã, é o
+      # único lugar onde sobrevive o log do pod antigo que a hospedava.
+      - name: Evidência do rollout-test
+        if: ${{ !cancelled() && steps.rollout.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: rollout-evidencia
+          path: ${{ runner.temp }}/rollout-evidencia/
+          include-hidden-files: false
+          retention-days: 14
+          if-no-files-found: warn
 
       # Teto do PASSO, além do do script. `test-restore.sh` esperava o Job com
       # `wait --for=condition=complete`, que nunca vê um Job `Failed`, e o
