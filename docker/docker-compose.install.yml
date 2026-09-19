@@ -537,3 +537,10 @@ volumes:
   # linha de volume de `api`/`engine` continuar válida quando a variável não
   # está definida. Nada escreve dentro dele.
   brabo_projects_base:
+  # Destino dos backups quando `BRABO_BACKUP_HOST_DIR` não aponta para uma pasta
+  # do host (ADR 0152) — o mesmo volume do compose de produção. Faltava aqui: o
+  # serviço `backup` o referencia, e com o profile ligado (`run backup`) o
+  # Compose recusava o arquivo INTEIRO ("refers to undefined volume"), então a
+  # prova da migração nunca chegava a rodar (AT-102). Serve para VERIFICAR, nunca
+  # para migrar: `down -v` o apaga junto com o que deveria salvar.
+  backup_local:
