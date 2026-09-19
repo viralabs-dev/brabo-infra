@@ -243,7 +243,7 @@ NOTA["1.6"]="relata BRABO_PROJECTS_BASE; para escolher, rode o script no seu ter
 # incluindo a comparação de versão e os três desfechos dela, sem tocar em nada e
 # sem precisar de TTY. A NOTA carrega o comando que instala de verdade.
 ROTULO["1.7"]="Instalar (install.sh)"; CMD["1.7"]="bash install.sh --print-plan"
-NOTA["1.7"]="relata o plano; para instalar, rode no seu terminal: sh -c \"\$(curl -fsSL https://github.com/daneiel/brabo/releases/latest/download/install.sh)\""
+NOTA["1.7"]="relata o plano; para instalar, rode no seu terminal: curl -fsSLO https://github.com/daneiel/brabo/releases/latest/download/install.sh && bash install.sh"
 
 # -- 2. K8s -----------------------------------------------------------------
 # Só `All` existe: o bootstrap do cluster instala api, engine e web juntos, e
