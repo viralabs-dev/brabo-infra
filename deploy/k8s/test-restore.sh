@@ -22,15 +22,32 @@
 # rodar num incidente: o runbook não descreve um procedimento paralelo que
 # ninguém nunca exercitou.
 #
+# ## O modo de MUTAÇÃO (AT-126, BRB-009)
+#
+# `RESTORE_MUTACAO=tabela-faltando` inverte a pergunta: em vez de "o restore
+# passa?", "o restore REPROVA quando o backup não tem uma tabela que a origem
+# tem?". Depois do backup real, cria `zz_mutacao_restore` na ORIGEM — o dump já
+# está tirado e não a contém, é exatamente o "dump sem uma tabela" — e roda o
+# MESMO restore. Sai 0 só se ele reprovar e disser QUAL tabela faltou; sai 1 se
+# ele aprovar (a quebra passou sem ser pega) ou reprovar por outro motivo. A
+# tabela é derrubada na saída. Um verde da prova normal não diz que ela ainda
+# enxerga uma falha; este modo diz.
+#
 # Uso:
 #   bash deploy/k8s/test-restore.sh
 #   RESTORE_KEEP_JOB=1 bash deploy/k8s/test-restore.sh   # mantém o Job para depurar
+#   RESTORE_MUTACAO=tabela-faltando bash deploy/k8s/test-restore.sh
 set -euo pipefail
 
 NS="${BRABO_NAMESPACE:-brabo}"
 SUFIXO="$(date +%s)"
 JOB_BACKUP="brabo-backup-test-${SUFIXO}"
 JOB_RESTORE="brabo-restore-test-${SUFIXO}"
+JOB_MUTACAO="brabo-restore-mutacao-${SUFIXO}"
+JOB_MUTACAO_LIMPA="brabo-restore-mutacao-limpa-${SUFIXO}"
+MUTACAO="${RESTORE_MUTACAO:-}"
+TABELA_MUTACAO="zz_mutacao_restore"
+mutacao_aplicada=0
 
 info() { printf '\n\033[1m[test-restore]\033[0m %s\n' "$*"; }
 ok()   { printf '  \033[32mok\033[0m   %s\n' "$*"; }
@@ -65,12 +82,84 @@ esperar_job() {
   return 2
 }
 
+# Job efêmero da MESMA imagem do backup, com o mesmo securityContext do CronJob
+# (inclusive rootfs read-only), trocando só o comando — JSON de lista, como o
+# `command:` do YAML. Serve ao restore e, no modo de mutação, ao SQL na origem.
+aplicar_job() {
+  local nome="$1" comando="$2"
+  kubectl -n "${NS}" apply -f - >/dev/null <<YAML
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${nome}
+  labels:
+    app.kubernetes.io/name: brabo-restore
+    app.kubernetes.io/part-of: brabo
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: brabo-restore
+        app.kubernetes.io/part-of: brabo
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: restore
+          image: brabo-backup:prod
+          imagePullPolicy: IfNotPresent
+          command: ${comando}
+          envFrom:
+            - secretRef:
+                name: brabo-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
+YAML
+}
+
 limpar() {
+  # A tabela da mutação sai da origem MESMO com RESTORE_KEEP_JOB=1: deixá-la
+  # faria a próxima prova real ver uma tabela que ninguém criou.
+  if [[ "${mutacao_aplicada}" == "1" ]]; then
+    aplicar_job "${JOB_MUTACAO_LIMPA}" \
+      "[\"sh\", \"-c\", \"psql \\\"\$DATABASE_URL\\\" --set ON_ERROR_STOP=1 --command 'drop table if exists ${TABELA_MUTACAO}'\"]" \
+      >/dev/null 2>&1 || true
+    esperar_job "${JOB_MUTACAO_LIMPA}" 60 || printf '[test-restore] AVISO: não consegui derrubar %s da origem\n' "${TABELA_MUTACAO}" >&2
+  fi
   [[ "${RESTORE_KEEP_JOB:-}" == "1" ]] && return 0
-  kubectl -n "${NS}" delete job "${JOB_BACKUP}" "${JOB_RESTORE}" \
+  kubectl -n "${NS}" delete job "${JOB_BACKUP}" "${JOB_RESTORE}" "${JOB_MUTACAO}" "${JOB_MUTACAO_LIMPA}" \
     --ignore-not-found --wait=false >/dev/null 2>&1 || true
 }
 trap limpar EXIT
+
+case "${MUTACAO}" in
+  ""|tabela-faltando) ;;
+  *) fail "RESTORE_MUTACAO='${MUTACAO}' desconhecida (única aceita: tabela-faltando)" ;;
+esac
 
 command -v kubectl >/dev/null || fail "kubectl não encontrado no PATH"
 kubectl -n "${NS}" get cronjob brabo-backup >/dev/null 2>&1 \
@@ -98,64 +187,36 @@ ok "backup concluído"
 # securityContext do CronJob — inclusive rootfs read-only, para que o teste não
 # passe num ambiente mais permissivo do que o de produção.
 info "restaurando o último backup numa database nova"
-kubectl -n "${NS}" apply -f - >/dev/null <<YAML
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: ${JOB_RESTORE}
-  labels:
-    app.kubernetes.io/name: brabo-restore
-    app.kubernetes.io/part-of: brabo
-spec:
-  backoffLimit: 0
-  activeDeadlineSeconds: 1800
-  ttlSecondsAfterFinished: 3600
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: brabo-restore
-        app.kubernetes.io/part-of: brabo
-    spec:
-      restartPolicy: Never
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 70
-        runAsGroup: 70
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-        - name: restore
-          image: brabo-backup:prod
-          imagePullPolicy: IfNotPresent
-          command: ["brabo-restore"]
-          envFrom:
-            - secretRef:
-                name: brabo-secrets
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              memory: 1Gi
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-      volumes:
-        - name: tmp
-          emptyDir:
-            sizeLimit: 4Gi
-YAML
+if [[ -n "${MUTACAO}" ]]; then
+  info "MUTAÇÃO ${MUTACAO}: criando ${TABELA_MUTACAO} na origem, DEPOIS do backup"
+  mutacao_aplicada=1
+  aplicar_job "${JOB_MUTACAO}" \
+    "[\"sh\", \"-c\", \"psql \\\"\$DATABASE_URL\\\" --set ON_ERROR_STOP=1 --command 'create table ${TABELA_MUTACAO}(id int)'\"]" \
+    || fail "não foi possível criar o Job da mutação"
+  esperar_job "${JOB_MUTACAO}" 120 \
+    || fail "a mutação não pôde ser aplicada na origem — a prova não mediu nada"
+  ok "origem tem ${TABELA_MUTACAO}; o dump, não"
+fi
 
-if esperar_job "${JOB_RESTORE}" 1800; then :; else
+aplicar_job "${JOB_RESTORE}" '["brabo-restore"]' || fail "não foi possível criar o Job de restore"
+
+if esperar_job "${JOB_RESTORE}" 1800; then
+  if [[ -n "${MUTACAO}" ]]; then
+    kubectl -n "${NS}" logs "job/${JOB_RESTORE}" | sed 's/^/    /' || true
+    fail "MUTAÇÃO NÃO PEGA: o restore APROVOU um backup sem ${TABELA_MUTACAO} — a prova não enxerga tabela faltando"
+  fi
+else
   desfecho=$?
   # O log do restore é a mensagem de erro útil (qual validação reprovou), então
   # ele é impresso antes do fail genérico.
   kubectl -n "${NS}" logs "job/${JOB_RESTORE}" --tail=100 | sed 's/^/    /' || true
+  if [[ "${desfecho}" -eq 1 && -n "${MUTACAO}" ]]; then
+    if kubectl -n "${NS}" logs "job/${JOB_RESTORE}" | grep -qF "faltando: ${TABELA_MUTACAO}"; then
+      printf '\n\033[32m[test-restore] mutação PEGA: o restore reprovou nomeando %s\033[0m\n' "${TABELA_MUTACAO}"
+      exit 0
+    fi
+    fail "o restore reprovou, mas NÃO nomeando ${TABELA_MUTACAO} — reprovou por outro motivo, a mutação não foi o que pegou"
+  fi
   if [[ "${desfecho}" -eq 1 ]]; then
     fail "o restore falhou ou uma validação reprovou"
   fi
