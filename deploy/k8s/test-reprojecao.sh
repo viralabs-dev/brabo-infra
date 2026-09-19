@@ -67,9 +67,9 @@ escopo() {
     "${PROJ_ID}" "${SESS_ID}" "${SESS_ID}" "${SLUG_X}" "${SLUG_Y}"
 }
 
-# "nós|arestas" do subgrafo (arestas: as que saem da Interacao e do Handoff).
+# "nós|arestas" do subgrafo (arestas: as que tocam a Interacao e o Handoff).
 medir() {
-  cypher "MATCH (n) WHERE $(escopo) WITH count(n) AS nos OPTIONAL MATCH (a)-[r]->() WHERE (a:Interacao OR a:Handoff) AND a.sessionId = '${SESS_ID}' RETURN nos, count(r)"
+  cypher "MATCH (n) WHERE $(escopo) WITH count(n) AS nos OPTIONAL MATCH (a)-[r]-() WHERE (a:Interacao OR a:Handoff) AND a.sessionId = '${SESS_ID}' RETURN nos, count(r)"
 }
 
 reprojetar() {
