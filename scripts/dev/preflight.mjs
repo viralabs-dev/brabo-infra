@@ -38,6 +38,9 @@ import {
   normalizarBase,
 } from './base-de-projetos.mjs';
 import { GID, avaliarDockerGid, mensagemDoDockerGid } from './docker-gid.mjs';
+import { garantirPontosDeMontagem, pontosDeMontagemDoCompose } from './pontos-de-montagem.mjs';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const COMPOSE = ['-f', 'docker/docker-compose.yml', '--env-file', '.env'];
 
@@ -340,6 +343,23 @@ function relatarDockerGid() {
   else console.log(mensagem);
 }
 
+/**
+ * Cria, como o usuário, os pontos de montagem de `node_modules` dentro do
+ * checkout (AT-172): sem eles o Docker os cria no host como root. RELATA e
+ * não bloqueia.
+ */
+function garantirNodeModulesDoCheckout() {
+  try {
+    const raiz = fileURLToPath(new URL('../..', import.meta.url));
+    const compose = readFileSync(fileURLToPath(new URL('../../docker/docker-compose.yml', import.meta.url)), 'utf8');
+    const { criados, falhas } = garantirPontosDeMontagem(raiz, pontosDeMontagemDoCompose(compose));
+    if (criados.length > 0) console.log(`[preflight] pontos de montagem criados: ${criados.join(', ')}`);
+    for (const f of falhas) console.warn(`[preflight] não consegui criar ${f.ponto} (${f.motivo}).`);
+  } catch (erro) {
+    console.warn(`[preflight] pontos de montagem de node_modules: ${String(erro.message).split('\n')[0]}`);
+  }
+}
+
 async function main() {
   // ANTES de qualquer coisa: não depende de Docker, e é a única checagem aqui
   // que impede um dano em vez de um inconveniente.
@@ -347,6 +367,7 @@ async function main() {
 
   relatarBaseDeProjetos();
   relatarDockerGid();
+  garantirNodeModulesDoCheckout();
 
   let compose;
   try {
