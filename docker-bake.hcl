@@ -1,9 +1,9 @@
-# Definição das quatro imagens de produção para `docker buildx bake`.
+# Definição das cinco imagens de produção para `docker buildx bake`.
 #
 # POR QUE BAKE E NÃO QUATRO STEPS. Em sequência, os builds somavam ~6 dos 8
 # minutos do job (api 130s, engine 160s, web 49s, backup 20s). Bake dispara os
 # alvos em PARALELO num único builder, o que mantém a propriedade que o job já
-# dependia: as quatro imagens ficam no mesmo daemon, disponíveis pro scan e pro
+# dependia: as cinco imagens ficam no mesmo daemon, disponíveis pro scan e pro
 # smoke sem passar 1,3 GB entre jobs por artifact.
 #
 # Paralelizar por matriz de jobs faria o contrário — cada job teria seu daemon,
@@ -41,8 +41,8 @@ variable "TAG" {
 # (imutável, identifica o build mesmo quando uma tag é movida).
 #
 # Vazia por padrão para o `ci.yml` não ganhar tag de enfeite. Cada alvo resolve
-# a lista com um ternário — repetido nos quatro em vez de escondido numa função,
-# porque quatro linhas explícitas se leem melhor que uma indireção.
+# a lista com um ternário — repetido nos cinco em vez de escondido numa função,
+# porque cinco linhas explícitas se leem melhor que uma indireção.
 variable "TAG_EXTRA" {
   default = ""
 }
@@ -79,10 +79,10 @@ variable "OUTPUT" {
 
 # `docker buildx bake` sem alvo constrói este grupo.
 group "default" {
-  targets = ["api", "engine", "web", "backup"]
+  targets = ["api", "engine", "web", "backup", "broker"]
 }
 
-# Cache do GitHub Actions com escopo POR IMAGEM. Escopo único faria os quatro
+# Cache do GitHub Actions com escopo POR IMAGEM. Escopo único faria os cinco
 # builds disputarem a mesma chave e se invalidarem entre si.
 target "_comum" {
   context = "."
@@ -124,4 +124,23 @@ target "backup" {
   tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-backup:${TAG}"] : ["${REGISTRY}brabo-backup:${TAG}", "${REGISTRY}brabo-backup:${TAG_EXTRA}"]
   cache-from = ["type=gha,scope=backup"]
   cache-to   = ["type=gha,scope=backup,mode=max"]
+}
+
+# Quinta imagem (ADR 0162). O `Dockerfile.prod` existia desde o ADR 0130 e já
+# passava pelo hadolint, mas nenhum alvo o construía: `brabo-broker:prod` só
+# existia na máquina de quem rodasse `docker compose build` com o profile, e o
+# compose de instalação não tinha como oferecer o serviço. Entra nos MESMOS
+# gates das outras quatro — non-root, trivy, assinatura por digest — e com mais
+# razão que qualquer uma: é a única que, na instalação que a liga, recebe o
+# socket do Docker do host.
+#
+# `BRABO_VERSION` como a api: o `Dockerfile.prod` a declara e a põe no ambiente,
+# e sem o `args` ela sairia "dev" numa imagem publicada.
+target "broker" {
+  inherits   = ["_comum"]
+  dockerfile = "docker/broker/Dockerfile.prod"
+  tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-broker:${TAG}"] : ["${REGISTRY}brabo-broker:${TAG}", "${REGISTRY}brabo-broker:${TAG_EXTRA}"]
+  args       = { BRABO_VERSION = VERSION }
+  cache-from = ["type=gha,scope=broker"]
+  cache-to   = ["type=gha,scope=broker,mode=max"]
 }

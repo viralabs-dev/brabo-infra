@@ -4,7 +4,7 @@
  *
  * ## Por que existe
  *
- * O `release.yml` construía as quatro imagens com `load: true` e `push:
+ * O `release.yml` construía as quatro imagens de então com `load: true` e `push:
  * false`: provava que a tag era CONSTRUÍVEL e parava aí. O overlay de
  * produção apontava para `ghcr.io/OWNER/*` com `newTag:
  * REPLACE_WITH_DIGEST` — um marcador que nenhum passo substituía. Enquanto
@@ -43,16 +43,35 @@
  *     }
  *
  * Alvo sem digest REPROVA em vez de sair do manifesto: um `images.json` com
- * três das quatro imagens é pior que nenhum — o deploy aplicaria três
+ * quatro das cinco imagens é pior que nenhum — o deploy aplicaria quatro
  * imagens novas e uma velha, e nada no arquivo diria que faltou uma. É a
  * mesma disciplina do `embed` em lote (ADR 0075): resposta parcial é
  * indetectável depois.
  */
 import { readFileSync } from 'node:fs';
 
-/** Os quatro alvos do `docker-bake.hcl`. Alvo fora desta lista é erro. */
-export const ALVOS = ['api', 'engine', 'web', 'backup'] as const;
+/**
+ * Os cinco alvos do `docker-bake.hcl`. Alvo fora desta lista é erro.
+ *
+ * `broker` entrou no ADR 0162: a imagem existia (`docker/broker/Dockerfile.prod`)
+ * e nunca era publicada, e por isso o compose de instalação não podia oferecer
+ * o serviço. Entrar AQUI é o que a faz obrigatória no manifesto — cinco de cinco
+ * ou nenhuma, pela mesma disciplina de sempre.
+ */
+export const ALVOS = ['api', 'engine', 'web', 'backup', 'broker'] as const;
 export type Alvo = (typeof ALVOS)[number];
+
+/**
+ * Os alvos que a base do KUSTOMIZE declara em `image:` — e o broker não está.
+ *
+ * Não há Deployment de broker em `deploy/k8s/`, e isso é decisão do ADR 0162,
+ * não esquecimento: montar o socket de um nó num pod é outra conversa de
+ * privilégio. Emitir `brabo-broker=…` para o `kustomize edit set image` não
+ * quebraria nada — o kustomize acrescenta a entrada e nenhum manifesto a usa —,
+ * e é justamente por isso que não se emite: uma linha que não faz nada no
+ * overlay seria lida por alguém como "o k8s roda o broker".
+ */
+export const ALVOS_DO_KUSTOMIZE: readonly Alvo[] = ['api', 'engine', 'web', 'backup'];
 
 /** `sha256:` + 64 hex. Digest fora deste formato nunca vira manifesto. */
 const PADRAO_DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -139,7 +158,7 @@ export function separarRepositorioETags(imageName: string): {
 
 /**
  * Monta o manifesto a partir do metadata do bake. Lança — nunca devolve
- * parcial — quando qualquer um dos quatro alvos falta, vem sem digest, com
+ * parcial — quando qualquer um dos cinco alvos falta, vem sem digest, com
  * digest malformado ou sem `image.name`.
  */
 export function manifestoDeImagens(
@@ -150,7 +169,7 @@ export function manifestoDeImagens(
     const bruto = metadata[alvo] as MetadataDeAlvo | undefined;
     if (!bruto || typeof bruto !== 'object') {
       throw new Error(
-        `alvo "${alvo}" não aparece no metadata do bake — as quatro imagens ` +
+        `alvo "${alvo}" não aparece no metadata do bake — as cinco imagens ` +
           'são publicadas juntas ou nenhuma é.',
       );
     }
@@ -176,7 +195,8 @@ export function manifestoDeImagens(
 }
 
 /**
- * Os argumentos de `kustomize edit set image`, um por imagem, no formato
+ * Os argumentos de `kustomize edit set image`, um por imagem que a base do
+ * kustomize conhece (`ALVOS_DO_KUSTOMIZE` — o broker fica de fora), no formato
  * `nome=repositorio@digest`.
  *
  * `nome` é o `brabo-api` que a base dos manifests declara em `image:` — o
@@ -185,9 +205,9 @@ export function manifestoDeImagens(
  * é para isso que existe o teste.
  */
 export function argumentosDeSetImage(manifesto: ManifestoDeImagens): string[] {
-  return manifesto.imagens.map(
-    (i) => `brabo-${i.alvo}=${i.repositorio}@${i.digest}`,
-  );
+  return manifesto.imagens
+    .filter((i) => ALVOS_DO_KUSTOMIZE.includes(i.alvo))
+    .map((i) => `brabo-${i.alvo}=${i.repositorio}@${i.digest}`);
 }
 
 async function principal(): Promise<void> {
