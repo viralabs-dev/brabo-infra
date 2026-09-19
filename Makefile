@@ -51,7 +51,7 @@ test-restore: ## Triggers a real backup, restores it into a new database and val
 # SEPARATE target on purpose: unifying it with the one above would make the
 # compose path depend on `kubectl`. The judgement is not duplicated — both run
 # the same `brabo-restore` with the same three validations.
-test-restore-compose: ## Same proof as test-restore, against docker compose (no cluster)
+test-restore-compose: ## Same proof as test-restore, against docker compose (no cluster); BRABO_ENV_FILE passes the installation .env
 	@bash docker/backup/test-restore-compose.sh
 
 # The graph is not backed up (ADR 0152, decision 4): it is REPROJECTED from the
