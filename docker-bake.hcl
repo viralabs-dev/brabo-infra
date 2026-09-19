@@ -84,9 +84,21 @@ group "default" {
 
 # Cache do GitHub Actions com escopo POR IMAGEM. Escopo único faria os cinco
 # builds disputarem a mesma chave e se invalidarem entre si.
+#
+# `no-cache-filter = ["runtime"]` (AT-110): o estágio final de todo Dockerfile.prod
+# roda `apk upgrade`, e o BuildKit chaveia a camada por instrução + camada-pai,
+# NUNCA por tempo. Com `cache-from` ligado, o build de um PR reaproveitava uma
+# camada de `apk upgrade` congelada no primeiro build dele (medido: `CACHED` em
+# 5 de 5 imagens), e o Trivy escaneava um openssl velho que a tag, construída a
+# frio, não teria — foi assim que o PR do broker (AT-097) reprovou. O filtro
+# refaz `runtime` e o que vem depois, e mantém o cache dos estágios de build
+# (`deps`, `build`, `builder`), que é onde está o tempo. Custo medido: ~7–9 s
+# por imagem, em paralelo. Não é allowlist do Trivy: o scan passa a olhar o que
+# a tag publicaria.
 target "_comum" {
-  context = "."
-  output  = [OUTPUT]
+  context         = "."
+  output          = [OUTPUT]
+  no-cache-filter = ["runtime"]
 }
 
 target "api" {
