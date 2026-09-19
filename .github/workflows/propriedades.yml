@@ -7,6 +7,11 @@ name: Provas de propriedade (agendado)
 #   make rollout-test  deploy/k8s/rollout-test.sh  rollout restart sem sessão órfã
 #   make test-restore  deploy/k8s/test-restore.sh  backup real restaurado e validado
 #
+# E, desde a AT-127 (BRB-018), um QUARTO alvo:
+#
+#   make test-reprojecao-k8s  deploy/k8s/test-reprojecao.sh  o grafo apagado é
+#                             reconstruído do event log, dentro do cluster
+#
 # Elas provam propriedade, não configuração: um backup que roda todo dia e não
 # restaura passa pelos cinco alertas de `brabo-alerts.yaml` (backup ATRASADO e
 # backup FALHO, nunca restore que deixou de funcionar). Sem agenda, a última
@@ -207,6 +212,21 @@ jobs:
           echo "| test-restore | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
           exit "${saida}"
 
+      # AT-127 / BRB-018: o quarto alvo. Fica DEPOIS do restore só por ordem de
+      # escrita — não depende dele nem de nenhum outro alvo: cria o próprio
+      # projeto, escopa medida e remoção a ele e só fala com `api` e `neo4j`
+      # (a lição do AT-078: um alvo altera o cluster para o seguinte).
+      - name: make test-reprojecao-k8s
+        id: reprojecao
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        timeout-minutes: 10
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          make test-reprojecao-k8s; saida=$?
+          echo "| test-reprojecao-k8s | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          exit "${saida}"
+
       - name: Estado do cluster (só em falha)
         if: failure()
         run: |
@@ -245,6 +265,7 @@ jobs:
           HPA: ${{ steps.hpa.outcome }}
           ROLLOUT: ${{ steps.rollout.outcome }}
           RESTORE: ${{ steps.restore.outcome }}
+          REPROJECAO: ${{ steps.reprojecao.outcome }}
         run: |
           set -euo pipefail
           alarmar() {
@@ -279,3 +300,4 @@ jobs:
           alarmar 'make hpa-test' "${HPA}"
           alarmar 'make rollout-test' "${ROLLOUT}"
           alarmar 'make test-restore' "${RESTORE}"
+          alarmar 'make test-reprojecao-k8s' "${REPROJECAO}"

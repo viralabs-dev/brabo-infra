@@ -4,7 +4,7 @@
 # Makefile exists for what isn't JavaScript nor Elixir — bringing up the
 # cluster, applying manifests, validating. Doesn't duplicate package.json
 # on purpose.
-.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-compose test-reprojecao k8s-validate k8s-logs k8s-down imagens-do-release
+.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-compose test-reprojecao test-reprojecao-k8s k8s-validate k8s-logs k8s-down imagens-do-release
 
 SHELL := /usr/bin/env bash
 K8S := deploy/k8s
@@ -60,6 +60,13 @@ test-restore-compose: ## Same proof as test-restore, against docker compose (no 
 # depend on a backup having happened, on purpose (RN-569).
 test-reprojecao: ## Wipes a graph scenario, reprojects it from the event log and compares counts (needs Neo4j up)
 	@pnpm --filter api test -- test/scripts/reprojetar-grafo.spec.ts
+
+# The same proof, one environment up (AT-127): against the local cluster, with the
+# image's own `node scripts/reprojetar-grafo.js` over the cluster's Postgres and
+# Neo4j. Its own scenario, its own project — it depends on no other target, and in
+# particular not on `test-restore`.
+test-reprojecao-k8s: ## Same proof as test-reprojecao, inside the local cluster (needs `make deploy-local` first)
+	@bash $(K8S)/test-reprojecao.sh
 
 k8s-validate: ## Renders the overlays and validates them against the Kubernetes schema
 	@bash $(K8S)/validate.sh
