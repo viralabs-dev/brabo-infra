@@ -181,7 +181,7 @@ evidencia_iniciar() {
   : > "${EVIDENCIA_DIR}/.pids"
 
   kubectl -n "${EVIDENCIA_NS}" get events -w \
-    -o custom-columns='ULTIMO:.lastTimestamp,INSTANTE:.eventTime,TIPO:.type,MOTIVO:.reason,OBJETO:.involvedObject.kind/.involvedObject.name,MENSAGEM:.message' \
+    -o custom-columns='ULTIMO:.lastTimestamp,INSTANTE:.eventTime,TIPO:.type,MOTIVO:.reason,TIPO_OBJ:.involvedObject.kind,OBJETO:.involvedObject.name,MENSAGEM:.message' \
     > "${EVIDENCIA_DIR}/events.log" 2>&1 &
   echo "$!" >> "${EVIDENCIA_DIR}/.pids"
 
