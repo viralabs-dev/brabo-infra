@@ -30,6 +30,21 @@
 # Uso:
 #   bash docker/backup/test-restore-compose.sh
 #   BACKUP_DIR=/backups bash docker/backup/test-restore-compose.sh
+#   BRABO_ENV_FILE=/caminho/.env BRABO_COMPOSE_FILE=... bash docker/backup/test-restore-compose.sh
+#
+# ## Onde o `.env` mora (AT-102)
+#
+# O Compose procura o `.env` na pasta do PROJETO, que por padrão é a do arquivo
+# de compose. Na instalação por Release o compose vive em `docker/` e o `.env`
+# uma pasta acima — então, sem ajuda, `${BRABO_BACKUP_IMAGE:?…}` recusava a
+# leitura do arquivo e a prova reprovava por ambiente, não por backup. A
+# escolha foi `--env-file` (variável `BRABO_ENV_FILE`) e não
+# `--project-directory`: o segundo também mudaria a base dos caminhos
+# relativos do compose e o nome do projeto — o que faria a prova subir volumes
+# de OUTRO projeto —, e o instalador já usa `--env-file` em toda chamada. Sem
+# a variável o comportamento é o de sempre (checkout: `.env` ao lado do
+# compose); com ela, o arquivo tem que existir — nunca cai em silêncio para
+# outro.
 set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -43,7 +58,16 @@ command -v docker >/dev/null || fail "docker não encontrado no PATH"
 docker compose version >/dev/null 2>&1 || fail "'docker compose' (v2) não disponível"
 [[ -f "${COMPOSE_FILE}" ]] || fail "compose não encontrado: ${COMPOSE_FILE}"
 
-compose() { docker compose -f "${COMPOSE_FILE}" "$@"; }
+ENV_FILE="${BRABO_ENV_FILE:-}"
+[[ -z "${ENV_FILE}" || -f "${ENV_FILE}" ]] || fail "BRABO_ENV_FILE não existe: ${ENV_FILE}"
+
+# `--env-file` é opção GLOBAL do `docker compose`, e por isso vem antes do
+# subcomando. Array e não string: o caminho pode ter espaço.
+compose() {
+  local flags=(-f "${COMPOSE_FILE}")
+  [[ -n "${ENV_FILE}" ]] && flags+=(--env-file "${ENV_FILE}")
+  docker compose "${flags[@]}" "$@"
+}
 
 # `run --rm` liga sozinho o profile do serviço alvo (Compose v2), então o
 # `backup` não precisa estar de pé — nem deve: ele é um Job, não um daemon.
