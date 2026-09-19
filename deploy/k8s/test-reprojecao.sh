@@ -8,8 +8,9 @@
 #
 # ## O que ele faz
 #
-#   1. cria, pela API, um projeto NOVO com uma sessão levada até `closed` (é o
-#      que dá `Interacao` à reprojeção: fechar sessão não deixa evento no log);
+#   1. cria, pela API, um projeto NOVO com uma sessão de dois eventos (uma
+#      mensagem e um handoff) levada até `closed` — fechar sessão não deixa
+#      evento no log, e a `Interacao` só nasce de sessão que teve algum;
 #   2. reprojeta esse projeto e mede o subgrafo dele (nós e arestas);
 #   3. APAGA esse subgrafo e reprojeta: tem de voltar IGUAL;
 #   4. reprojeta de novo por cima: idempotente, mesma medida.
@@ -23,8 +24,8 @@
 # Também NÃO depende de um backup ter acontecido — proibição da AT-032: não é
 # acoplado ao `test-restore`.
 #
-# Só o subgrafo do cenário é apagado (`Interacao` da sessão e `Projeto` do
-# projeto criados aqui); o `Usuario` é compartilhado e fica.
+# Só o subgrafo do cenário é apagado (o que `escopo()` seleciona); o `Usuario`
+# é compartilhado e fica.
 #
 # Uso: bash deploy/k8s/test-reprojecao.sh
 set -euo pipefail
@@ -49,21 +50,26 @@ fail() {
 command -v kubectl >/dev/null || fail "kubectl não encontrado no PATH"
 command -v jq >/dev/null || fail "jq não encontrado no PATH"
 
-# Cypher no pod do Neo4j, com a credencial que ELE já tem (`PASSWORD_ARG`, a
-# mesma que a readinessProbe usa) — nenhuma senha passa por este script.
+# Cypher pelo driver que a PRÓPRIA api já tem (`neo4j-driver`, com `NEO4J_URI`,
+# `NEO4J_USER` e `NEO4J_PASSWORD` do ambiente do pod) — nenhuma senha passa por
+# este script. Não é `cypher-shell` no pod do Neo4j: o container dele tem teto de
+# 1Gi, quase todo de heap e pagecache, e uma segunda JVM ali morreu com 137
+# (medido, run 35469877869).
+JS_CYPHER='const n=require("neo4j-driver");(async()=>{const d=n.driver(process.env.NEO4J_URI,n.auth.basic(process.env.NEO4J_USER,process.env.NEO4J_PASSWORD));try{const r=await d.session().run(process.argv[1]);for(const x of r.records)console.log(x.keys.map(k=>{const v=x.get(k);return n.isInt(v)?v.toNumber():v}).join("|"))}finally{await d.close()}})().catch(e=>{console.error(e.message);process.exit(1)})'
 cypher() {
-  kubectl -n "${NS}" exec neo4j-0 -- sh -c \
-    'cypher-shell -u neo4j -p "$PASSWORD_ARG" --format plain "$1"' _ "$1" \
-    | tail -n +2 | tr -d '"\r'
+  kubectl -n "${NS}" exec deploy/api -- node -e "${JS_CYPHER}" "$1"
 }
 
-# Medida do subgrafo do cenário, "nós|arestas": o Projeto mais as Interacao dele,
-# e as arestas (PARTICIPOU, NO_PROJETO) da Interacao da sessão.
+# O subgrafo do cenário: o Projeto, a Interacao e o Handoff da sessão e os dois
+# Agente de slug aleatório. O Usuario é compartilhado e NÃO entra.
+escopo() {
+  printf "(n:Projeto AND n.id = '%s') OR (n:Interacao AND n.sessionId = '%s') OR (n:Handoff AND n.sessionId = '%s') OR (n:Agente AND n.slug IN ['%s','%s'])" \
+    "${PROJ_ID}" "${SESS_ID}" "${SESS_ID}" "${SLUG_X}" "${SLUG_Y}"
+}
+
+# "nós|arestas" do subgrafo (arestas: as que saem da Interacao e do Handoff).
 medir() {
-  local nos arestas
-  nos="$(cypher "MATCH (p:Projeto {id: '${PROJ_ID}'}) OPTIONAL MATCH (i:Interacao)-[:NO_PROJETO]->(p) RETURN 1 + count(DISTINCT i)")"
-  arestas="$(cypher "MATCH (i:Interacao {sessionId: '${SESS_ID}'}) OPTIONAL MATCH (i)-[r]-() RETURN count(r)")"
-  printf '%s|%s' "${nos}" "${arestas}"
+  cypher "MATCH (n) WHERE $(escopo) WITH count(n) AS nos OPTIONAL MATCH (a)-[r]->() WHERE (a:Interacao OR a:Handoff) AND a.sessionId = '${SESS_ID}' RETURN nos, count(r)"
 }
 
 reprojetar() {
@@ -96,12 +102,26 @@ sess="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d '{"kind":"consultiva"}' \
 SESS_ID="$(printf '%s' "${sess}" | jq -r '.id // empty')"
 [[ -n "${SESS_ID}" ]] || fail "sessão sem id: ${sess}"
 
-for estado in active closing closed; do
-  r="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d "{\"status\":\"${estado}\"}" \
+# Dois eventos no log: sem evento a sessão fechada não vira Interacao (`nextSeq`
+# 1, `seqFim < 1`) e a prova mediria um grafo vazio — medido no run 35469877869.
+SLUG_X="${sufixo}-x"; SLUG_Y="${sufixo}-y"
+transitar() {
+  local r
+  r="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d "{\"status\":\"$1\"}" \
     "${API}/projects/${PROJ_ID}/sessions/${SESS_ID}/transition")"
-  [[ "$(printf '%s' "${r}" | jq -r '.status // empty')" == "${estado}" ]] \
-    || fail "sessão não foi para ${estado}: ${r}"
+  [[ "$(printf '%s' "${r}" | jq -r '.status // empty')" == "$1" ]] \
+    || fail "sessão não foi para $1: ${r}"
+}
+transitar active
+for corpo in \
+  '{"type":"user.message","actor":{"kind":"system","id":"reprojecao"},"payload":{"text":"oi"}}' \
+  "{\"type\":\"handoff.offered\",\"actor\":{\"kind\":\"agent\",\"id\":\"${SLUG_X}\"},\"payload\":{\"toAgent\":\"${SLUG_Y}\"}}"; do
+  r="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d "${corpo}" "${API}/projects/${PROJ_ID}/sessions/${SESS_ID}/events")"
+  [[ -n "$(printf '%s' "${r}" | jq -r '.id // empty')" ]] || fail "evento não gravado: ${r}"
 done
+
+transitar closing
+transitar closed
 ok "projeto ${PROJ_ID}, sessão ${SESS_ID} fechada"
 
 # --- 2. reprojeta e mede -----------------------------------------------------
@@ -110,12 +130,11 @@ reprojetar "primeira"
 ANTES="$(medir)"
 ok "subgrafo (nós|arestas): ${ANTES}"
 # Medida vazia seria prova vazia: o cenário TEM de ter projetado a Interacao.
-[[ "${ANTES#*|}" -ge 2 ]] || fail "a reprojeção não gravou a Interacao do cenário (${ANTES})"
+[[ "${ANTES}" == "5|4" ]] || fail "subgrafo inesperado depois da reprojeção: ${ANTES} (esperado 5|4: Projeto, Interacao, Handoff, 2 Agente; PARTICIPOU, NO_PROJETO, DE, PARA)"
 
 # --- 3. apaga o subgrafo e reconstrói ---------------------------------------
 info "apagando o subgrafo do cenário e reprojetando"
-cypher "MATCH (i:Interacao {sessionId: '${SESS_ID}'}) DETACH DELETE i" >/dev/null
-cypher "MATCH (p:Projeto {id: '${PROJ_ID}'}) DETACH DELETE p" >/dev/null
+cypher "MATCH (n) WHERE $(escopo) DETACH DELETE n" >/dev/null
 VAZIO="$(medir)"
 [[ "${VAZIO}" != "${ANTES}" ]] || fail "o subgrafo não foi apagado (${VAZIO})"
 ok "apagado (nós|arestas): ${VAZIO}"
