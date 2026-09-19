@@ -41,8 +41,9 @@
  *
  * ## O que este check NÃO cobra, e por quê
  *
- * - **As quatro imagens do PRÓPRIO produto** (`brabo-api`, `brabo-engine`,
- *   `brabo-web`, `brabo-backup`, mais `brabo-broker`, que não é publicada).
+ * - **As cinco imagens do PRÓPRIO produto** (`brabo-api`, `brabo-engine`,
+ *   `brabo-web`, `brabo-backup` e `brabo-broker` — esta publicada desde o
+ *   ADR 0162).
  *   Não há terceiro que possa mover ponteiro nenhum: quem as constrói é este
  *   repositório. `brabo-api:prod` é uma tag LOCAL, produzida por `docker
  *   compose build` — o digest dela não existe antes do build e muda a cada
