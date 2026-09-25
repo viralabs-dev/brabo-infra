@@ -4,7 +4,7 @@
 # Makefile exists for what isn't JavaScript nor Elixir — bringing up the
 # cluster, applying manifests, validating. Doesn't duplicate package.json
 # on purpose.
-.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-compose test-reprojecao test-reprojecao-k8s k8s-validate k8s-logs k8s-down imagens-do-release
+.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-mutacao test-restore-compose test-reprojecao test-reprojecao-k8s k8s-validate k8s-logs k8s-down imagens-do-release
 
 SHELL := /usr/bin/env bash
 K8S := deploy/k8s
@@ -46,6 +46,13 @@ rollout-test: ## Opens active sessions, does a rollout restart and proves none i
 
 test-restore: ## Triggers a real backup, restores it into a new database and validates it
 	@bash $(K8S)/test-restore.sh
+
+# The proof of the proof (AT-126, BRB-009): a deliberate break of the restore
+# (the source gets a table the dump does not have) must be CAUGHT. Exits 0 only
+# if the restore REJECTS it and names the missing table; exits 1 if the restore
+# approves it. Independent of `test-restore`, which stays unchanged.
+test-restore-mutacao: ## Breaks the restore on purpose (dump without a table) and requires the proof to catch it
+	@RESTORE_MUTACAO=tabela-faltando bash $(K8S)/test-restore.sh
 
 # The same proof for an installation that has no cluster (ADR 0152). Kept as a
 # SEPARATE target on purpose: unifying it with the one above would make the

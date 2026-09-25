@@ -12,6 +12,13 @@ name: Provas de propriedade (agendado)
 #   make test-reprojecao-k8s  deploy/k8s/test-reprojecao.sh  o grafo apagado é
 #                             reconstruído do event log, dentro do cluster
 #
+# E, desde a AT-126 (BRB-009), a prova DA prova: `make test-restore-mutacao`
+# quebra o restore de propósito (a origem ganha uma tabela que o dump não tem) e
+# reprova se o restore NÃO reprovar — "um verde não diz que a prova ainda
+# enxerga uma falha". Só numa rodada em que restore e mutação passam, o
+# workflow guarda `ultima-execucao-boa.json` como artefato (a data que a seção
+# "Last verified run" do runbook deixou de manter à mão).
+#
 # Elas provam propriedade, não configuração: um backup que roda todo dia e não
 # restaura passa pelos cinco alertas de `brabo-alerts.yaml` (backup ATRASADO e
 # backup FALHO, nunca restore que deixou de funcionar). Sem agenda, a última
@@ -210,7 +217,65 @@ jobs:
           inicio=$SECONDS
           make test-restore; saida=$?
           echo "| test-restore | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "segundos=$((SECONDS - inicio))" >> "$GITHUB_OUTPUT"
           exit "${saida}"
+
+      # AT-126 / BRB-009: a mutação. O restore acima diz que o backup restaura;
+      # este passo diz que a prova ainda REPROVA quando não restaura. Quebra o
+      # restore de propósito (tabela na origem que o dump não tem) e passa só se
+      # o restore reprovar nomeando essa tabela. Se a quebra passar, o passo
+      # falha e o passo de issues abaixo abre `make test-restore-mutacao` —
+      # sem ninguém olhar. Roda mesmo com o restore vermelho: uma prova cega e
+      # uma prova quebrada são dois defeitos, e os dois têm de aparecer.
+      - name: make test-restore-mutacao
+        id: mutacao
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        timeout-minutes: 20
+        env:
+          RESTORE_KEEP_JOB: '1'
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          make test-restore-mutacao; saida=$?
+          echo "| test-restore-mutacao | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          exit "${saida}"
+
+      # A última execução boa do restore, como FATO datado pelo workflow: só
+      # existe se o restore passou E a quebra proposital foi pega na mesma
+      # rodada. A data que `docs/runbook.md` ("Last verified run") guardava à
+      # mão sai daqui — o run mais recente com este artefato é a resposta.
+      - name: Registrar a última execução boa do restore
+        id: ultima_boa
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && steps.mutacao.outcome == 'success' }}
+        env:
+          RESTORE_SEGUNDOS: ${{ steps.restore.outputs.segundos }}
+        run: |
+          set -euo pipefail
+          dir="${RUNNER_TEMP}/restore-verificado"
+          mkdir -p "${dir}"
+          cat > "${dir}/ultima-execucao-boa.json" <<JSON
+          {
+            "verificadoEm": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "run": "${GITHUB_RUN_ID}",
+            "commit": "${GITHUB_SHA}",
+            "ref": "${GITHUB_REF_NAME}",
+            "evento": "${GITHUB_EVENT_NAME}",
+            "restoreSegundos": ${RESTORE_SEGUNDOS:-null},
+            "mutacaoPega": true
+          }
+          JSON
+          cat "${dir}/ultima-execucao-boa.json"
+          echo "Última execução boa do restore: $(date -u +%Y-%m-%dT%H:%MZ) (restore aprovado e quebra proposital pega)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Artefato da última execução boa do restore
+        if: ${{ !cancelled() && steps.ultima_boa.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: restore-ultima-execucao-boa
+          path: ${{ runner.temp }}/restore-verificado/
+          include-hidden-files: false
+          retention-days: 90
+          if-no-files-found: error
 
       # AT-127 / BRB-018: o quarto alvo. Fica DEPOIS do restore só por ordem de
       # escrita — não depende dele nem de nenhum outro alvo: cria o próprio
@@ -265,6 +330,7 @@ jobs:
           HPA: ${{ steps.hpa.outcome }}
           ROLLOUT: ${{ steps.rollout.outcome }}
           RESTORE: ${{ steps.restore.outcome }}
+          MUTACAO: ${{ steps.mutacao.outcome }}
           REPROJECAO: ${{ steps.reprojecao.outcome }}
         run: |
           set -euo pipefail
@@ -300,4 +366,5 @@ jobs:
           alarmar 'make hpa-test' "${HPA}"
           alarmar 'make rollout-test' "${ROLLOUT}"
           alarmar 'make test-restore' "${RESTORE}"
+          alarmar 'make test-restore-mutacao' "${MUTACAO}"
           alarmar 'make test-reprojecao-k8s' "${REPROJECAO}"
