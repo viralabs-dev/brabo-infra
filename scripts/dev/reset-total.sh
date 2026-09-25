@@ -22,6 +22,20 @@
 # migrar, subir os dois de novo e só então semear — com a saúde de cada um
 # VERIFICADA antes de o script afirmar qualquer coisa.
 #
+# O que este script NÃO faz, e diz ao rodar (AT-181): ele não remove nem
+# recria VOLUME nenhum. "Total" é sobre o BANCO (schemas apagados e recriados
+# dentro do MESMO `pgdata`) e sobre as IMAGENS (rebuild); os volumes nomeados —
+# os de `node_modules` de api/web/broker, `_build`/`deps`/`.mix`/`.hex` do
+# engine, `pgdata`, `neo4j_*`, os repositórios bare e os workspaces — passam
+# intactos. É a escolha CONSERVADORA de propósito: apagar volume aqui
+# descartaria trabalho do usuário (workspaces, repositórios locais) sem que ele
+# tivesse pedido. O preço é declarado, e é por isso que o script o imprime: um
+# reset NUNCA reproduz o defeito de PRIMEIRO CLONE — o que só aparece com volume
+# INEXISTENTE, como o `node_modules` que nascia `root` (AT-172). Provar esse
+# caminho é outro instrumento: um projeto compose DESCARTÁVEL
+# (`docker compose -p <nome-descartável> … run --rm --no-deps <serviço>`, e
+# `down -v` no fim), nunca este script — ver o runbook, "Total reset".
+#
 # Chamado pelo item "Docker › Reset total" do bootstrap.sh; roda sozinho
 # também: bash scripts/dev/reset-total.sh
 set -euo pipefail
@@ -46,6 +60,11 @@ SERVICOS_COM_BANCO=(api engine)
 # tocaria, e é justamente o banco que este script acabou de recriar); o `web`
 # não tem probe própria, então a pergunta honesta é se o Vite entrega a página.
 SERVICOS_VERIFICADOS=("api 3000 /health" "engine 4000 /health" "web 5173 /")
+
+# Dito no COMEÇO (antes de qualquer efeito, para quem esperava o contrário
+# poder cancelar) e no FIM (junto da frase de sucesso, que sem isto soaria como
+# "ambiente de primeiro clone"). Ver o cabeçalho: nenhum volume é tocado.
+AVISO_DE_VOLUMES="volumes nomeados NÃO são removidos nem recriados (node_modules, _build/deps, pgdata, neo4j, repositórios e workspaces seguem como estavam) — este reset não reproduz um primeiro clone."
 
 # O passo em curso, para o `trap` abaixo poder dizer ONDE parou. Sem isto, uma
 # falha no meio deixa o usuário com a última linha de log de um comando
@@ -101,6 +120,8 @@ ao_sair() {
   return 0
 }
 trap ao_sair EXIT
+
+echo "==> ${AVISO_DE_VOLUMES}"
 
 PASSO="preflight de portas"
 echo "==> preflight de portas…"
@@ -232,3 +253,4 @@ if (( ${#falhas[@]} > 0 )); then
 fi
 
 echo "reset completo — banco recriado e semeado; ${verificados[*]} de pé e respondendo."
+echo "${AVISO_DE_VOLUMES}"

@@ -606,6 +606,7 @@ confirmar_reset_total() {
   mover $(( linha + 2 )) 1; printf '  %sOrdem: preflight, build, PARA api e engine, DROP SCHEMA, migrate, up --wait, seed.%s' "${C_MUTED}" "${C_RESET}"
   mover $(( linha + 3 )) 1; printf '  %sA api e o engine ficam fora do ar durante o apagamento — e voltam antes do seed.%s' "${C_MUTED}" "${C_RESET}"
   mover $(( linha + 4 )) 1; printf '  %sCredenciais de provider em .env (*_TEST_KEY) entram já ativas no owner.%s' "${C_MUTED}" "${C_RESET}"
+  mover $(( linha + 5 )) 1; printf '  %sNenhum volume é removido: node_modules, _build/deps e workspaces ficam.%s' "${C_MUTED}" "${C_RESET}"
   rodape "$(( LINHAS - 4 ))" "digite ${C_TEXT}RESET${C_MUTED} e Enter para confirmar — qualquer outra coisa cancela"
 
   mover "$(( LINHAS - 1 ))" 1; printf '\033[2K  '
