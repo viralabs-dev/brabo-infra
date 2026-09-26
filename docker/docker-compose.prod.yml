@@ -134,6 +134,13 @@ services:
       # suprir o literal público como fallback e mascarar esse `raise`
       # (RN-114, mesmo padrão do ADR 0059/RN-093).
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-}
+      # Também sem default, e pelo mesmo motivo: desde a RN-601 o `runtime.exs`
+      # de uma release `:prod` recusa subir sem um token de serviço válido — e
+      # o `eval` da migração avalia o MESMO arquivo. Sem estas duas aqui a
+      # migração morria antes de migrar. O Job do k8s já as recebia pelo
+      # `envFrom` de `brabo-secrets`.
+      BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
+      BRABO_SERVICE_TOKEN_PREVIOUS: ${BRABO_SERVICE_TOKEN_PREVIOUS:-}
       # Sem PHX_SERVER aqui: migração não sobe endpoint HTTP.
     command: ["/app/bin/engine", "eval", "Engine.Release.migrate()"]
     depends_on:
