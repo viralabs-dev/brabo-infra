@@ -36,6 +36,14 @@
 # (`docker compose -p <nome-descartável> … run --rm --no-deps <serviço>`, e
 # `down -v` no fim), nunca este script — ver o runbook, "Total reset".
 #
+# E o que ele pergunta ANTES do primeiro efeito (AT-203): tudo o que o faria
+# morrer DEPOIS do `DROP SCHEMA` por um motivo do host ou de um volume — as
+# dependências do engine no host (`mix deps.get` + `mix compile`, porque
+# `engine:migrate` roda no host e um `mix.lock` novo o derrubava com
+# `lock mismatch` já com o banco apagado), `drizzle-kit`/`ts-node` no
+# `node_modules` do host, e a senha do Neo4j contra a do volume. As funções
+# moram em scripts/dev/reset-total-lib.sh, onde o spec as exercita.
+#
 # Chamado pelo item "Docker › Reset total" do bootstrap.sh; roda sozinho
 # também: bash scripts/dev/reset-total.sh
 set -euo pipefail
@@ -44,6 +52,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 COMPOSE=(docker compose -f docker/docker-compose.yml --env-file .env)
+
+# shellcheck source=scripts/dev/reset-total-lib.sh
+source "${REPO_ROOT}/scripts/dev/reset-total-lib.sh"
 
 # Os DOIS serviços que este script para antes de apagar o banco, e nenhum a
 # mais. O critério é objetivo: quem mantém conexão viva com o Postgres do
@@ -70,7 +81,12 @@ AVISO_DE_VOLUMES="volumes nomeados NÃO são removidos nem recriados (node_modul
 # falha no meio deixa o usuário com a última linha de log de um comando
 # qualquer e nenhuma frase que diga o que ficou pela metade.
 PASSO="iniciando"
+PASSO_DO_UP="subindo o ambiente e esperando ficar saudável"
 concluido=0
+# Vira 1 no primeiro passo que muda o ambiente (o `stop`). Até ali o script só
+# PERGUNTOU — preflight, host, neo4j, build — e uma recusa não deixa nada pela
+# metade.
+destruiu=0
 
 # Lê UMA chave do `.env` sem `source` — a mesma disciplina de
 # scripts/dev/perfil-ollama.sh e do laço de `*_TEST_KEY` no fim deste arquivo.
@@ -114,7 +130,21 @@ ao_sair() {
   local codigo=$?
   (( concluido == 1 )) && return 0
   echo ""
+  # Recusa ANTES do primeiro efeito: o banco está intacto, e a frase genérica
+  # abaixo ("pode estar apagado") seria mentira. A causa já foi dita.
+  if (( destruiu == 0 )); then
+    echo "RESET NÃO COMEÇOU — recusado em: ${PASSO} (código ${codigo}). Nada foi parado nem apagado."
+    return 0
+  fi
   echo "RESET INCOMPLETO — parou em: ${PASSO} (código ${codigo})."
+  # O `up --wait` só diz `container … is unhealthy`. Quando o unhealthy é o
+  # Neo4j recusando a senha, o registro do healthcheck diz isso, e o conserto
+  # não é rodar o script de novo — é a senha (ver reset-total-lib.sh).
+  if [[ "${PASSO}" == "${PASSO_DO_UP}" ]] && neo4j_recusa_a_senha "$(container_do_neo4j)"; then
+    explicar_senha_do_neo4j
+    echo "O banco já foi apagado e migrado; falta subir o resto e semear. Conserte a senha e rode este script de novo."
+    return 0
+  fi
   echo "O banco pode estar apagado e não semeado. Rode este script de novo:"
   echo "  bash scripts/dev/reset-total.sh"
   return 0
@@ -129,6 +159,13 @@ echo "==> preflight de portas…"
 # OLLAMA_PORT e, se for o caso, grava OLLAMA_MODE/OLLAMA_HOST em .env — é
 # essa gravação que scripts/dev/perfil-ollama.sh lê logo abaixo.
 node scripts/dev/preflight.mjs
+
+PASSO="pré-requisitos de host das migrations"
+preparar_host_para_migrar
+
+PASSO="senha do neo4j contra a do volume"
+echo "==> conferindo a senha do neo4j contra a do volume…"
+conferir_senha_do_neo4j
 
 # `--profile local-llm` some quando `.env` (já atualizado pelo preflight,
 # acima) tem OLLAMA_MODE=host — sem isto o `up` tentaria publicar a 11434 de
@@ -147,6 +184,7 @@ echo "==> reconstruindo imagens…"
 "${COMPOSE[@]}" "${PERFIL[@]}" build
 
 PASSO="parando api e engine"
+destruiu=1
 echo "==> parando ${SERVICOS_COM_BANCO[*]} (as duas com conexão viva no banco)…"
 # ESTE é o passo que faltava. Sem ele o `DROP SCHEMA` abaixo derruba os dois
 # processos, e nada os reergue — ver o cabeçalho deste arquivo. `stop` é
@@ -190,7 +228,7 @@ DATABASE_URL_HOST="postgres://$(valor_do_env POSTGRES_USER brabo):$(valor_do_env
 DATABASE_URL="${DATABASE_URL_HOST}" pnpm db:migrate
 DATABASE_URL="${DATABASE_URL_HOST}" pnpm engine:migrate
 
-PASSO="subindo o ambiente e esperando ficar saudável"
+PASSO="${PASSO_DO_UP}"
 echo "==> subindo tudo e esperando ficar saudável (--wait)…"
 # `--wait` só passou a significar alguma coisa para api/engine/web quando os
 # três ganharam `healthcheck` no docker-compose.yml. Antes, ele esperava
