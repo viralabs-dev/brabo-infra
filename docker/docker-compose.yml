@@ -254,13 +254,16 @@ services:
       BRABO_PROJECTS_BASE: ${BRABO_PROJECTS_BASE:-}
       # Broker de container (ADR 0130) — o único processo com acesso ao daemon
       # Docker. A api é a ÚNICA que o alcança (rede `broker`, `internal: true`,
-      # sem porta publicada). Vazia é estado NORMAL — quem lê o estado
-      # observado DIZ "não observado" em vez de herdar o registrado (RN-468) —,
-      # mas aqui ela é o que RESTA configurar: desde o ADR 0146 (RN-512) o
-      # serviço sobe por padrão neste compose, e é esta variável que liga a api
-      # a ele. No compose de PRODUÇÃO o serviço segue sob profile, e lá vazia é
-      # também o caso comum.
-      BROKER_URL: ${BROKER_URL:-}
+      # sem porta publicada). Neste compose ela tem DEFAULT (RN-599): desde o
+      # ADR 0146 (RN-512) o serviço `broker` sobe por padrão aqui, e com a
+      # variável vazia a api respondia `brokerConfigurado: false` para um broker
+      # de pé ao lado — a criação de projeto só oferecia `runner` (ADR 0161).
+      # O default aponta para o serviço e a porta DESTE arquivo (`BROKER_PORT`,
+      # abaixo), e `scripts/dev/broker-url-no-dev.spec.ts` trava os dois juntos.
+      # Nos composes de PRODUÇÃO e de INSTALAÇÃO ela segue SEM default, de
+      # propósito: lá o broker está sob profile, e quem o liga grava a URL
+      # (o `install.sh`, perguntando — ADR 0162). Não uniformize.
+      BROKER_URL: ${BROKER_URL:-http://broker:8090}
     ports:
       - "${API_PORT:-3000}:3000"
     networks:
@@ -562,7 +565,9 @@ services:
       # Deriva de PROJECT_WORKSPACES_HOST_DIR (a mesma variável que troca o
       # volume nomeado por uma pasta real, ver .env.example): com volume
       # gerenciado não há caminho de host que sirva, e o broker prefere recusar
-      # a adivinhar.
+      # a adivinhar. Como vazia é o estado de quem copiou o `.env.example`, o
+      # `preflight.mjs` RELATA a ausência a cada subida (RN-599) — e também o
+      # `~`, que o Compose expande no bind-mount de api/engine mas NÃO aqui.
       PROJECT_WORKSPACES_HOST_ROOT: ${PROJECT_WORKSPACES_HOST_ROOT:-${PROJECT_WORKSPACES_HOST_DIR:-}}
       # A SEGUNDA raiz do broker: a base dos projetos MONTADOS, também no HOST
       # (ADR 0141). Mesmo motivo da de cima, e mesma derivação — o valor
