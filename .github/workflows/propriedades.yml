@@ -44,10 +44,14 @@ name: Provas de propriedade (agendado)
 # que ninguém lia" (`.github/dependabot.yml`), e enxurrada de issues idênticas
 # ensina a ignorar (`tag-release.yml`).
 #
-# FORA daqui, de propósito: `test-restore-compose` (a separação é decisão do
-# `Makefile`, que não faz o caminho do compose depender de `kubectl`) e o
-# golden-set do QA (BRB-007), que tem workflow próprio e semanal,
-# `golden-set-qa.yml` (ADR 0168).
+# Desde a AT-195, um SEGUNDO job, `restore-compose`, roda noutro runner
+# `make test-restore-compose` contra o compose de produção (a instalação sem
+# cluster, ADR 0152). Ele continua um alvo separado no `Makefile`, que não faz
+# o caminho do compose depender de `kubectl`; o que mudou é que ele deixou de
+# rodar só por memória.
+#
+# FORA daqui, de propósito: o golden-set do QA (BRB-007), que tem workflow
+# próprio e semanal, `golden-set-qa.yml` (ADR 0168).
 on:
   schedule:
     # Semanal, domingo 04:00 UTC. A cadência é pelo CUSTO MEDIDO — ver
