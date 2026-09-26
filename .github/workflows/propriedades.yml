@@ -12,6 +12,10 @@ name: Provas de propriedade (agendado)
 #   make test-reprojecao-k8s  deploy/k8s/test-reprojecao.sh  o grafo apagado é
 #                             reconstruído do event log, dentro do cluster
 #
+# E, desde a AT-198, a irmã dele para a pasta `docs/` dos artefatos (RN-590):
+#
+#   make test-reprojecao-artefatos-k8s  deploy/k8s/test-reprojecao-artefatos.sh
+#
 # E, desde a AT-126 (BRB-009), a prova DA prova: `make test-restore-mutacao`
 # quebra o restore de propósito (a origem ganha uma tabela que o dump não tem) e
 # reprova se o restore NÃO reprovar — "um verde não diz que a prova ainda
@@ -306,6 +310,21 @@ jobs:
           echo "| test-reprojecao-k8s | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
           exit "${saida}"
 
+      # AT-198: a irmã do grafo, para a pasta `docs/` dos artefatos (RN-590).
+      # Mesmo desenho: projeto próprio, só fala com a `api`, não depende de
+      # outro alvo. O arquivo reconstruído tem de ter o MESMO sha256 do que o
+      # projetor vivo escreveu.
+      - name: make test-reprojecao-artefatos-k8s
+        id: reprojecao_artefatos
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        timeout-minutes: 10
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          make test-reprojecao-artefatos-k8s; saida=$?
+          echo "| test-reprojecao-artefatos-k8s | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          exit "${saida}"
+
       - name: Estado do cluster (só em falha)
         if: failure()
         run: |
@@ -346,6 +365,7 @@ jobs:
           RESTORE: ${{ steps.restore.outcome }}
           MUTACAO: ${{ steps.mutacao.outcome }}
           REPROJECAO: ${{ steps.reprojecao.outcome }}
+          REPROJECAO_ARTEFATOS: ${{ steps.reprojecao_artefatos.outcome }}
         run: |
           set -euo pipefail
           source scripts/ci/alarmar-prova.sh
@@ -357,6 +377,7 @@ jobs:
           alarmar 'make test-restore' "${RESTORE}" "${cluster}"
           alarmar 'make test-restore-mutacao' "${MUTACAO}" "${cluster}"
           alarmar 'make test-reprojecao-k8s' "${REPROJECAO}" "${cluster}"
+          alarmar 'make test-reprojecao-artefatos-k8s' "${REPROJECAO_ARTEFATOS}" "${cluster}"
 
   # AT-195: a MESMA prova do `make test-restore`, contra a instalação por
   # COMPOSE (ADR 0152) — `make test-restore-compose` dispara um backup real,

@@ -4,7 +4,7 @@
 # Makefile exists for what isn't JavaScript nor Elixir — bringing up the
 # cluster, applying manifests, validating. Doesn't duplicate package.json
 # on purpose.
-.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-mutacao test-restore-compose test-reprojecao test-reprojecao-k8s k8s-validate k8s-logs k8s-down imagens-do-release
+.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-mutacao test-restore-compose test-reprojecao test-reprojecao-k8s test-reprojecao-artefatos-k8s k8s-validate k8s-logs k8s-down imagens-do-release
 
 SHELL := /usr/bin/env bash
 K8S := deploy/k8s
@@ -74,6 +74,14 @@ test-reprojecao: ## Wipes a graph scenario, reprojects it from the event log and
 # particular not on `test-restore`.
 test-reprojecao-k8s: ## Same proof as test-reprojecao, inside the local cluster (needs `make deploy-local` first)
 	@bash $(K8S)/test-reprojecao.sh
+
+# The artifact folder's sibling (AT-198, RN-590): an `artifact.note` written by
+# the live projector, its `docs/<agent>/` folder deleted inside the api pod,
+# rebuilt by the image's own `node scripts/reprojetar-artefatos.js`, and the
+# file compared byte for byte (sha256) with what the live projector wrote.
+# Its own project; depends on no other target.
+test-reprojecao-artefatos-k8s: ## Wipes an artifact file inside the cluster, reprojects it from the event log and compares it (needs `make deploy-local` first)
+	@bash $(K8S)/test-reprojecao-artefatos.sh
 
 k8s-validate: ## Renders the overlays and validates them against the Kubernetes schema
 	@bash $(K8S)/validate.sh
