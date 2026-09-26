@@ -21,6 +21,10 @@
  * que ELA enxerga, que dentro do container dela é `/workspace` — nunca o
  * caminho real no disco de quem desenvolve. Ver `base-de-projetos.mjs`.
  *
+ * TAMBÉM RELATA, sem nunca recusar, o que sobe e só falha no uso: o
+ * `DOCKER_GID` (ADR 0146) e a pasta gerenciada no host (RN-599) — ver
+ * `docker-gid.mjs` e `pasta-gerenciada.mjs`.
+ *
  * TAMBÉM detecta um caso mais específico na porta do `ollama` (OLLAMA_PORT,
  * default 11434, o MESMO default de uma instalação nativa de Ollama na
  * máquina do desenvolvedor): em vez de reportar "porta ocupada" genérico,
@@ -38,6 +42,7 @@ import {
   normalizarBase,
 } from './base-de-projetos.mjs';
 import { GID, avaliarDockerGid, mensagemDoDockerGid } from './docker-gid.mjs';
+import { PASTA, avaliarPastaGerenciada, mensagemDaPastaGerenciada } from './pasta-gerenciada.mjs';
 import { garantirPontosDeMontagem, pontosDeMontagemDoCompose } from './pontos-de-montagem.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -344,6 +349,25 @@ function relatarDockerGid() {
 }
 
 /**
+ * Relata a pasta gerenciada no host (RN-599, AT-213).
+ *
+ * Mesmo molde do `DOCKER_GID`: sem `PROJECT_WORKSPACES_HOST_DIR` o stack sobe
+ * inteiro e o broker também, e só o `container_start` do modo `container` (o
+ * default) termina recusado. RELATA e não bloqueia nem grava — ver
+ * `pasta-gerenciada.mjs`.
+ */
+function relatarPastaGerenciada() {
+  const env = lerEnv();
+  const veredito = avaliarPastaGerenciada({
+    hostDir: process.env.PROJECT_WORKSPACES_HOST_DIR ?? env.get('PROJECT_WORKSPACES_HOST_DIR'),
+    hostRoot: process.env.PROJECT_WORKSPACES_HOST_ROOT ?? env.get('PROJECT_WORKSPACES_HOST_ROOT'),
+  });
+  const mensagem = mensagemDaPastaGerenciada(veredito);
+  if (veredito.estado === PASTA.OK) console.log(mensagem);
+  else console.warn(mensagem);
+}
+
+/**
  * Cria, como o usuário, os pontos de montagem de `node_modules` dentro do
  * checkout (AT-172): sem eles o Docker os cria no host como root. RELATA e
  * não bloqueia.
@@ -367,6 +391,7 @@ async function main() {
 
   relatarBaseDeProjetos();
   relatarDockerGid();
+  relatarPastaGerenciada();
   garantirNodeModulesDoCheckout();
 
   let compose;
