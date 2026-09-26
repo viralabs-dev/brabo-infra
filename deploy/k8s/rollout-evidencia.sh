@@ -136,13 +136,17 @@ citar_orfa() {
 EVIDENCIA_DIR=''
 EVIDENCIA_NS=''
 EVIDENCIA_SELETOR=''
+# De quanto em quanto tempo os dois laços sondam o cluster. 2s na prova de
+# verdade; o spec o encurta para não medir o relógio (AT-174).
+EVIDENCIA_INTERVALO="${EVIDENCIA_INTERVALO:-2}"
 
 marco() {
   [[ -n "${EVIDENCIA_DIR}" ]] || return 0
   printf '%s %s %s\n' "$(date +%s)" "$(date -u +%FT%TZ)" "$*" >> "${EVIDENCIA_DIR}/marcos.log"
 }
 
-# Anexa `logs -f` a cada pod Running ainda não anexado, a cada 2s, até existir
+# Anexa `logs -f` a cada pod Running ainda não anexado, a cada
+# `EVIDENCIA_INTERVALO` (2s), até existir
 # `.parar`. Um anexo por pod: se o `logs -f` cair, o `final-<pod>.log` do fim
 # cobre o que o pod ainda tiver.
 _anexar_logs_em_laco() {
@@ -158,7 +162,7 @@ _anexar_logs_em_laco() {
       printf '%s %s anexado %s\n' "$(date +%s)" "$(date -u +%FT%TZ)" "${pod}" >> "${EVIDENCIA_DIR}/anexos.log"
     done < <(kubectl -n "${EVIDENCIA_NS}" get pods -l "${EVIDENCIA_SELETOR}" \
       -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{"\n"}{end}' 2>/dev/null || true)
-    sleep 2
+    sleep "${EVIDENCIA_INTERVALO}"
   done
 }
 
@@ -169,7 +173,7 @@ _amostrar_replicas_em_laco() {
     hpa="$(kubectl -n "${EVIDENCIA_NS}" get hpa engine -o jsonpath='{.status.currentReplicas} {.status.desiredReplicas}' 2>/dev/null || true)"
     read -r spec prontas <<<"${spec}"
     printf '%s %s %s %s\n' "$(date +%s)" "${spec:-?}" "${prontas:-0}" "${hpa:-? ?}" >> "${EVIDENCIA_DIR}/replicas.log"
-    sleep 2
+    sleep "${EVIDENCIA_INTERVALO}"
   done
 }
 
@@ -177,33 +181,37 @@ _amostrar_replicas_em_laco() {
 evidencia_iniciar() {
   EVIDENCIA_DIR="$1" EVIDENCIA_NS="$2" EVIDENCIA_SELETOR="$3"
   mkdir -p "${EVIDENCIA_DIR}"
-  rm -f "${EVIDENCIA_DIR}/.parar" "${EVIDENCIA_DIR}/.pids" "${EVIDENCIA_DIR}"/.anexado-*
+  rm -f "${EVIDENCIA_DIR}/.parar" "${EVIDENCIA_DIR}/.pids" "${EVIDENCIA_DIR}/.lacos" "${EVIDENCIA_DIR}"/.anexado-*
   : > "${EVIDENCIA_DIR}/.pids"
+  : > "${EVIDENCIA_DIR}/.lacos"
 
   kubectl -n "${EVIDENCIA_NS}" get events -w \
     -o custom-columns='ULTIMO:.lastTimestamp,INSTANTE:.eventTime,TIPO:.type,MOTIVO:.reason,TIPO_OBJ:.involvedObject.kind,OBJETO:.involvedObject.name,MENSAGEM:.message' \
     > "${EVIDENCIA_DIR}/events.log" 2>&1 &
   echo "$!" >> "${EVIDENCIA_DIR}/.pids"
 
+  # Os dois laços vão também para `.lacos`: é por eles que `evidencia_parar`
+  # espera antes de matar o resto.
   _anexar_logs_em_laco &
-  echo "$!" >> "${EVIDENCIA_DIR}/.pids"
+  echo "$!" | tee -a "${EVIDENCIA_DIR}/.lacos" >> "${EVIDENCIA_DIR}/.pids"
 
   _amostrar_replicas_em_laco &
-  echo "$!" >> "${EVIDENCIA_DIR}/.pids"
+  echo "$!" | tee -a "${EVIDENCIA_DIR}/.lacos" >> "${EVIDENCIA_DIR}/.pids"
 
   # Os pods de AGORA são os que o rollout vai matar: não seguir adiante antes de
   # o log de cada um estar anexado (teto de 20s, e o teto é dito, não engolido).
+  # A sonda é de 0,2s: é espera pelo anexo, não um intervalo a cumprir.
   local esperados anexados espera=0
   esperados="$(kubectl -n "${EVIDENCIA_NS}" get pods -l "${EVIDENCIA_SELETOR}" \
     --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)"
   while :; do
     anexados="$(find "${EVIDENCIA_DIR}" -maxdepth 1 -name '.anexado-*' | wc -l)"
     (( anexados >= esperados )) && break
-    if (( espera >= 20 )); then
+    if (( espera >= 100 )); then
       printf '  aviso: só %s de %s pods do engine com log anexado depois de 20s\n' "${anexados}" "${esperados}" >&2
       break
     fi
-    sleep 1; espera=$(( espera + 1 ))
+    sleep 0.2; espera=$(( espera + 1 ))
   done
 
   marco "evidencia-iniciada (${esperados} pod(s) do engine de pé)"
@@ -216,9 +224,23 @@ evidencia_parar() {
   [[ -e "${EVIDENCIA_DIR}/.parar" ]] && return 0
   : > "${EVIDENCIA_DIR}/.parar"
   marco "evidencia-parada"
-  local pid pod
-  # Primeiro os laços (param de anexar), depois tudo o que eles anexaram.
-  sleep 1
+  local pid pod vivos espera=0
+  # Primeiro os laços param de anexar, depois morre tudo o que eles anexaram.
+  # ESPERA que os dois laços saiam sozinhos (eles olham `.parar` a cada volta),
+  # em vez de dormir um tempo fixo: um laço morto não acrescenta PID a `.pids`
+  # depois da leitura abaixo. Teto de 10s, dito; depois dele o `kill` segue.
+  while :; do
+    vivos=0
+    while read -r pid; do
+      if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then vivos=$(( vivos + 1 )); fi
+    done < "${EVIDENCIA_DIR}/.lacos"
+    (( vivos == 0 )) && break
+    if (( espera >= 100 )); then
+      printf '  aviso: %s laço(s) da evidência ainda de pé depois de 10s; matando\n' "${vivos}" >&2
+      break
+    fi
+    sleep 0.1; espera=$(( espera + 1 ))
+  done
   while read -r pid; do
     [[ -n "${pid}" ]] && kill "${pid}" 2>/dev/null || true
   done < "${EVIDENCIA_DIR}/.pids"

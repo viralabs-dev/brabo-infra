@@ -170,17 +170,21 @@ esac
       `
       evidencia_iniciar "${evid}" brabo app.kubernetes.io/name=engine
       echo 'engine-novo Running' >> "${pods}"
-      for _ in $(seq 1 20); do [[ -e "${evid}/.anexado-engine-novo" ]] && break; sleep 0.5; done
-      sleep 1
+      # Espera o EVENTO — a linha do pod novo gravada no log dele —, nunca um
+      # tempo fixo: sob carga o relógio estourava os 5s do vitest (AT-174).
+      # Com teto, para o evidencia_parar abaixo limpar mesmo quando ele não vem.
+      for _ in $(seq 1 200); do grep -qs 'linha de engine-novo' "${evid}/engine-engine-novo.log" && break; sleep 0.05; done
       pids="$(cat "${evid}/.pids")"
       evidencia_parar
       evidencia_parar
-      sleep 0.5
-      vivos=0
-      for p in $pids; do kill -0 "$p" 2>/dev/null && vivos=$((vivos + 1)); done
-      echo "vivos=$vivos"
+      # O kill é assíncrono: espera cada PID sumir, e só então conta.
+      contar_vivos() { local n=0 p; for p in $pids; do if kill -0 "$p" 2>/dev/null; then n=$((n + 1)); fi; done; echo "$n"; }
+      for _ in $(seq 1 100); do [[ "$(contar_vivos)" == 0 ]] && break; sleep 0.05; done
+      echo "vivos=$(contar_vivos)"
       `,
-      { PATH: `${bin}:${process.env.PATH}` },
+      // Os laços da lib sondam a 0,1s em vez de 2s: o que o teste mede é o
+      // mecanismo, e 2s por volta eram a maior parte do tempo dele.
+      { PATH: `${bin}:${process.env.PATH}`, EVIDENCIA_INTERVALO: '0.1' },
     );
 
     expect(saida).toContain('vivos=0');
