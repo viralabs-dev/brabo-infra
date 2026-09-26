@@ -114,30 +114,36 @@ function ambienteDo(caminho: string, servico: string): Map<string, string> {
   return new Map(entradas);
 }
 
-const lidas = Object.fromEntries(
-  Object.keys(LEITORES).map((s) => [s, previousLidasPor(s)]),
+const lidas = new Map(
+  Object.keys(LEITORES).map((s) => [s, previousLidasPor(s)] as const),
 );
+
+function lidasPor(servico: string): Set<string> {
+  const conjunto = lidas.get(servico);
+  if (!conjunto) throw new Error(`serviço sem leitor declarado: ${servico}`);
+  return conjunto;
+}
 
 describe('variáveis `_PREVIOUS` × `environment:` dos composes (RN-595)', () => {
   it('o extrator acha as que já conhecíamos', () => {
     // Piso, não igualdade: protege os REGEX. Se pararem de casar, as
     // comparações abaixo passariam comparando um conjunto vazio.
-    expect([...lidas.api]).toEqual(
+    expect([...lidasPor('api')]).toEqual(
       expect.arrayContaining([
         'AUTH_JWT_SECRET_PREVIOUS',
         'BRABO_SERVICE_TOKEN_PREVIOUS',
         'CREDENTIALS_MASTER_KEY_PREVIOUS',
       ]),
     );
-    expect([...lidas.engine]).toContain('BRABO_SERVICE_TOKEN_PREVIOUS');
-    expect([...lidas.broker]).toContain('BRABO_SERVICE_TOKEN_PREVIOUS');
+    expect([...lidasPor('engine')]).toContain('BRABO_SERVICE_TOKEN_PREVIOUS');
+    expect([...lidasPor('broker')]).toContain('BRABO_SERVICE_TOKEN_PREVIOUS');
   });
 
   for (const caminho of COMPOSES) {
     for (const servico of Object.keys(LEITORES)) {
       it(`${caminho}: \`${servico}\` mapeia toda \`_PREVIOUS\` que lê, com default vazio`, () => {
         const ambiente = ambienteDo(caminho, servico);
-        const problemas = [...lidas[servico]].flatMap((nome) => {
+        const problemas = [...lidasPor(servico)].flatMap((nome) => {
           const valor = ambiente.get(nome);
           if (valor === undefined) return [`${nome} (ausente)`];
           return valor.trim() === `\${${nome}:-}`
