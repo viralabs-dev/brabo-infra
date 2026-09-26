@@ -93,6 +93,18 @@ spec:
             # conexão. O default estrangula qualquer réplica sob carga.
             - name: POOL_SIZE
               value: "20"
+            # SEM `SESSION_CONVERSATION_IDLE_TIMEOUT_MS` (o teto da conversa
+            # ociosa, RN-581), e é decisão, não esquecimento (AT-153). Aqui não
+            # há a camada que faz a ausência virar defeito no Compose: um
+            # Deployment não intercepta ambiente nenhum, então a variável
+            # ausente é o default do `runtime.exs` (8h) — o MESMO valor que se
+            # escreveria. Escrevê-lo seria uma segunda cópia do número, sem
+            # guarda nenhuma contra divergir da primeira, e é pelo mesmo motivo
+            # que `SESSION_HEARTBEAT_TIMEOUT_MS` e `SHUTDOWN_DRAIN_TIMEOUT_MS`
+            # não estão nesta base. Mudar o teto num ambiente é um item `env:`
+            # no patch do engine do overlay (o local já faz isso com o
+            # heartbeat). Sem acoplamento com o heartbeat de 10min do overlay
+            # local: o teto só é aferido DEPOIS de o heartbeat expirar.
             # --- Clustering Erlang ---------------------------------------
             # `Workspace.ensure!` serializa a inicialização do workspace com
             # `:global.trans`, que só é GLOBAL se os nós estiverem em cluster.
