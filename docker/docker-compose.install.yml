@@ -317,9 +317,24 @@ services:
       SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
       # Agentes de fundo desligados por default AQUI (não em dev): este compose
       # existe pra validar as imagens, e Psicólogo/Anamnese começariam a
-      # consumir LLM sem provider configurado. Suba com `true` pra exercitar.
+      # consumir LLM sem provider configurado.
+      #
+      # As quatro `START_*` são CHAVES DE BOOT (decidem se o tick é agendado);
+      # as `*_ENABLED` são as flags de PRODUTO (RN-115/RN-117), que decidem se
+      # uma rodada NOVA pode acontecer — exercitar a Anamnese exige as DUAS em
+      # `true`. As seis de baixo faltavam AQUI e só aqui (AT-202): o Compose
+      # não repassa o ambiente do host, então defini-las no `.env` de uma
+      # instalação era inerte, a mesma classe da RN-540. Elas repetem o
+      # default do `runtime.exs`: a linha existe para EXISTIR o caminho de
+      # virar a flag, não para mudar o que já valia.
       START_OUTBOX_DRAIN: ${START_OUTBOX_DRAIN:-false}
       START_ANAMNESE: ${START_ANAMNESE:-false}
+      START_MODEL_SYNC: ${START_MODEL_SYNC:-true}
+      START_GATE_RESCUE: ${START_GATE_RESCUE:-true}
+      ANAMNESE_ENABLED: ${ANAMNESE_ENABLED:-false}
+      PSYCHOLOGIST_ENABLED: ${PSYCHOLOGIST_ENABLED:-false}
+      GRAPH_TEMPLATES_ENABLED: ${GRAPH_TEMPLATES_ENABLED:-false}
+      GRAPH_INSTRUCTION_TEMPLATES_ENABLED: ${GRAPH_INSTRUCTION_TEMPLATES_ENABLED:-false}
     ports:
       - "${ENGINE_PORT:-4000}:4000"
     volumes:
