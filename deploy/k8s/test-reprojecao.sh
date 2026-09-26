@@ -8,9 +8,10 @@
 #
 # ## O que ele faz
 #
-#   1. cria, pela API, um projeto NOVO com uma sessão de dois eventos (uma
-#      mensagem e um handoff) levada até `closed` — fechar sessão não deixa
-#      evento no log, e a `Interacao` só nasce de sessão que teve algum;
+#   1. cria, pela API, um projeto NOVO com uma sessão de quatro eventos (uma
+#      mensagem, um handoff, uma hipótese do Psicólogo e um perfil da
+#      Anamnese) levada até `closed` — fechar sessão não deixa evento no log,
+#      e a `Interacao` só nasce de sessão que teve algum;
 #   2. reprojeta esse projeto e mede o subgrafo dele (nós e arestas);
 #   3. APAGA esse subgrafo e reprojeta: tem de voltar IGUAL;
 #   4. reprojeta de novo por cima: idempotente, mesma medida.
@@ -25,7 +26,21 @@
 # acoplado ao `test-restore`.
 #
 # Só o subgrafo do cenário é apagado (o que `escopo()` seleciona); o `Usuario`
-# é compartilhado e fica.
+# do login é compartilhado e fica. O `Usuario` do perfil da Anamnese NÃO é o do
+# login: é um id próprio do cenário, e por isso entra no escopo e é apagado e
+# reconstruído junto.
+#
+# ## Os quatro caminhos do tradutor (AT-191)
+#
+# `GraphEventTranslator.projetarEvento` traduz três tipos do log
+# (`handoff.offered`, `psychologist.hypothesis_proposed`,
+# `anamnese.profile_updated`) e `projetarFechamentoDeSessao` o quarto (a
+# `Interacao`). Até a AT-191 o cenário exercitava só dois — a `Hipotese` e o
+# `PerfilAnamnese` ficavam provados apenas no spec contra o Neo4j de dev. Os
+# dois eventos entram pela MESMA rota de append que os outros; o Psicólogo e a
+# Anamnese seguem PAUSADOS (`PSYCHOLOGIST_ENABLED`/`ANAMNESE_ENABLED`), e a
+# prova não depende deles: o que se prova é a TRADUÇÃO do evento que eles
+# gravariam, que é o que a reprojeção reconstrói.
 #
 # Uso: bash deploy/k8s/test-reprojecao.sh
 set -euo pipefail
@@ -60,16 +75,22 @@ cypher() {
   kubectl -n "${NS}" exec deploy/api -- node -e "${JS_CYPHER}" "$1"
 }
 
-# O subgrafo do cenário: o Projeto, a Interacao e o Handoff da sessão e os dois
-# Agente de slug aleatório. O Usuario é compartilhado e NÃO entra.
+# O subgrafo do cenário: o Projeto, a Interacao, o Handoff, a Hipotese e o
+# Evento que ela cita, os dois Agente de slug aleatório, o PerfilAnamnese e o
+# Usuario PRÓPRIO dele. O Usuario do login é compartilhado e NÃO entra.
+# O argumento é o nome da variável do Cypher (`n`, `a`, `b`).
 escopo() {
-  printf "(n:Projeto AND n.id = '%s') OR (n:Interacao AND n.sessionId = '%s') OR (n:Handoff AND n.sessionId = '%s') OR (n:Agente AND n.slug IN ['%s','%s'])" \
-    "${PROJ_ID}" "${SESS_ID}" "${SESS_ID}" "${SLUG_X}" "${SLUG_Y}"
+  local v="${1:-n}"
+  printf "(%s:Projeto AND %s.id = '%s') OR ((%s:Interacao OR %s:Handoff OR %s:Hipotese OR %s:Evento) AND %s.sessionId = '%s') OR (%s:Agente AND %s.slug IN ['%s','%s']) OR (%s:PerfilAnamnese AND %s.userId = '%s') OR (%s:Usuario AND %s.id = '%s')" \
+    "$v" "$v" "${PROJ_ID}" "$v" "$v" "$v" "$v" "$v" "${SESS_ID}" "$v" "$v" "${SLUG_X}" "${SLUG_Y}" \
+    "$v" "$v" "${UID_ANAMNESE}" "$v" "$v" "${UID_ANAMNESE}"
 }
 
-# "nós|arestas" do subgrafo (arestas: as que tocam a Interacao e o Handoff).
+# "nós|arestas" do subgrafo. Aresta é contada UMA vez (direcionada, DISTINCT)
+# se ao menos uma ponta está no escopo — o `PARTICIPOU` do Usuario do login
+# para a Interacao entra, porque a ponta de chegada é do cenário.
 medir() {
-  cypher "MATCH (n) WHERE $(escopo) WITH count(n) AS nos OPTIONAL MATCH (a)-[r]-() WHERE (a:Interacao OR a:Handoff) AND a.sessionId = '${SESS_ID}' RETURN nos, count(r)"
+  cypher "MATCH (n) WHERE $(escopo n) WITH count(n) AS nos OPTIONAL MATCH (a)-[r]->(b) WHERE $(escopo a) OR $(escopo b) RETURN nos, count(DISTINCT r)"
 }
 
 reprojetar() {
@@ -102,9 +123,13 @@ sess="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d '{"kind":"consultiva"}' \
 SESS_ID="$(printf '%s' "${sess}" | jq -r '.id // empty')"
 [[ -n "${SESS_ID}" ]] || fail "sessão sem id: ${sess}"
 
-# Dois eventos no log: sem evento a sessão fechada não vira Interacao (`nextSeq`
-# 1, `seqFim < 1`) e a prova mediria um grafo vazio — medido no run 35469877869.
+# Quatro eventos no log: sem evento a sessão fechada não vira Interacao
+# (`nextSeq` 1, `seqFim < 1`) e a prova mediria um grafo vazio — medido no run
+# 35469877869. A hipótese cita a MENSAGEM como evidência pelo id que o append
+# devolve, que é o que o Psicólogo grava (`evidenceEventIds`); o tradutor a
+# resolve para o `seq` e cria o `Evento` da aresta `EVIDENCIA`.
 SLUG_X="${sufixo}-x"; SLUG_Y="${sufixo}-y"
+UID_ANAMNESE="${sufixo}-usuario"
 transitar() {
   local r
   r="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d "{\"status\":\"$1\"}" \
@@ -113,12 +138,17 @@ transitar() {
     || fail "sessão não foi para $1: ${r}"
 }
 transitar active
-for corpo in \
-  '{"type":"user.message","actor":{"kind":"system","id":"reprojecao"},"payload":{"text":"oi"}}' \
-  "{\"type\":\"handoff.offered\",\"actor\":{\"kind\":\"agent\",\"id\":\"${SLUG_X}\"},\"payload\":{\"toAgent\":\"${SLUG_Y}\"}}"; do
-  r="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d "${corpo}" "${API}/projects/${PROJ_ID}/sessions/${SESS_ID}/events")"
-  [[ -n "$(printf '%s' "${r}" | jq -r '.id // empty')" ]] || fail "evento não gravado: ${r}"
-done
+gravar_evento() {
+  local r id
+  r="$(curl -sS --max-time 60 -X POST "${auth[@]}" -d "$1" "${API}/projects/${PROJ_ID}/sessions/${SESS_ID}/events")"
+  id="$(printf '%s' "${r}" | jq -r '.id // empty')"
+  [[ -n "${id}" ]] || fail "evento não gravado: ${r}"
+  printf '%s' "${id}"
+}
+MSG_ID="$(gravar_evento '{"type":"user.message","actor":{"kind":"system","id":"reprojecao"},"payload":{"text":"oi"}}')"
+gravar_evento "{\"type\":\"handoff.offered\",\"actor\":{\"kind\":\"agent\",\"id\":\"${SLUG_X}\"},\"payload\":{\"toAgent\":\"${SLUG_Y}\"}}" >/dev/null
+gravar_evento "{\"type\":\"psychologist.hypothesis_proposed\",\"actor\":{\"kind\":\"agent\",\"id\":\"psychologist\"},\"payload\":{\"hypothesisId\":\"${sufixo}-hipotese\",\"hipotese\":\"prova de reprojeção\",\"evidenceEventIds\":[\"${MSG_ID}\"]}}" >/dev/null
+gravar_evento "{\"type\":\"anamnese.profile_updated\",\"actor\":{\"kind\":\"agent\",\"id\":\"anamnese\"},\"payload\":{\"userId\":\"${UID_ANAMNESE}\",\"competency\":\"reprojecao\",\"level\":\"avancado\"}}" >/dev/null
 
 transitar closing
 transitar closed
@@ -130,11 +160,11 @@ reprojetar "primeira"
 ANTES="$(medir)"
 ok "subgrafo (nós|arestas): ${ANTES}"
 # Medida vazia seria prova vazia: o cenário TEM de ter projetado a Interacao.
-[[ "${ANTES}" == "5|4" ]] || fail "subgrafo inesperado depois da reprojeção: ${ANTES} (esperado 5|4: Projeto, Interacao, Handoff, 2 Agente; PARTICIPOU, NO_PROJETO, DE, PARA)"
+[[ "${ANTES}" == "9|6" ]] || fail "subgrafo inesperado depois da reprojeção: ${ANTES} (esperado 9|6: Projeto, Interacao, Handoff, 2 Agente, Hipotese, Evento, PerfilAnamnese, Usuario; PARTICIPOU, NO_PROJETO, DE, PARA, EVIDENCIA, SOBRE)"
 
 # --- 3. apaga o subgrafo e reconstrói ---------------------------------------
 info "apagando o subgrafo do cenário e reprojetando"
-cypher "MATCH (n) WHERE $(escopo) DETACH DELETE n" >/dev/null
+cypher "MATCH (n) WHERE $(escopo n) DETACH DELETE n" >/dev/null
 VAZIO="$(medir)"
 [[ "${VAZIO}" != "${ANTES}" ]] || fail "o subgrafo não foi apagado (${VAZIO})"
 ok "apagado (nós|arestas): ${VAZIO}"
