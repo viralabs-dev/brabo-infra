@@ -73,6 +73,42 @@ fail() {
   exit 1
 }
 
+# A checagem dos TRÊS corpos do registro de gates (AT-086, AT-109) é a MESMA
+# para as duas rotas que o servem, `GET /gates` (usuário) e `GET
+# /internal/gates` (service token). Ela imprime o motivo e devolve 1, e quem
+# chama decide o `fail`. As três respostas que ela separa:
+#   - o registro, com `"gates":[` e o gate `merge-protegida`: passa;
+#   - o 500 do Nest (`{"statusCode":500,...}`), que é o que a imagem devolvia
+#     com o loader cobrando arquivo de prova em runtime: reprova;
+#   - uma lista VAZIA, que passaria no primeiro grep e significaria o mesmo
+#     que a rota não funcionar: reprova.
+# É função, e não linha solta, para ser exercitada sem subir o stack
+# (`scripts/ci/smoke-gates.spec.ts`).
+checar_registro_de_gates() {
+  local rota="$1" corpo="$2"
+  if ! printf '%s' "${corpo}" | grep -q '"gates":\['; then
+    printf '%s não devolveu o registro (500 por evidência ausente na imagem?): %s' "${rota}" "${corpo}"
+    return 1
+  fi
+  if ! printf '%s' "${corpo}" | grep -q '"merge-protegida"'; then
+    printf '%s respondeu sem o gate merge-protegida: %s' "${rota}" "${corpo}"
+    return 1
+  fi
+}
+
+# `GET /internal/gates` com o service token. O token NUNCA vai para o argv
+# (`ps` o mostraria a qualquer usuário da máquina) nem para o log: o cabeçalho
+# chega ao curl por `--config -`, pelo stdin, escrito por um `printf` que é
+# builtin do bash. Nenhum processo o recebe como argumento.
+gates_internos() {
+  printf 'header = "x-brabo-service-token: %s"\n' "${BRABO_SERVICE_TOKEN}" \
+    | curl -sS --max-time 30 --config - "${API}/internal/gates"
+}
+
+# Carregado com `source` (pelo spec acima), o script para aqui e entrega só as
+# funções. Executado, segue para o stack.
+[[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0
+
 # trap ANTES do `up`: se o build ou o healthcheck falhar, ainda assim derruba.
 cleanup() {
   local code=$?
@@ -203,7 +239,7 @@ ok "sessão ativada — api -> engine ok"
 
 # --------------------------------------------------------------------------
 step=2.5
-info 'registro de gates servido pela IMAGEM (GET /gates)'
+info 'registro de gates servido pela IMAGEM (GET /gates e /internal/gates)'
 # Por que aqui, e não numa suite: o registro é o único arquivo de `docs/` que
 # a imagem carrega, e o que quebrava não era o conteúdo dele — era o loader
 # cobrando, EM RUNTIME, que os arquivos de prova citados existissem no disco.
@@ -217,13 +253,16 @@ info 'registro de gates servido pela IMAGEM (GET /gates)'
 # smoke a faz, como cliente externo, sem mock, contra a imagem de produção.
 gates="$(curl -sS --max-time 30 "${auth[@]}" "${API}/gates")" \
   || fail "GET /gates não respondeu"
-printf '%s' "${gates}" | grep -q '"gates":\[' \
-  || fail "GET /gates não devolveu o registro (500 por evidência ausente na imagem?): ${gates}"
-# O registro tem gates `active`; uma lista VAZIA passaria no grep acima e
-# significaria o mesmo que a rota não funcionar.
-printf '%s' "${gates}" | grep -q '"merge-protegida"' \
-  || fail "GET /gates respondeu sem o gate merge-protegida: ${gates}"
+motivo="$(checar_registro_de_gates 'GET /gates' "${gates}")" || fail "${motivo}"
 ok 'GET /gates serve o registro de dentro da imagem'
+
+# A rota interna lê o MESMO loader e sofria do MESMO 500 (corrigida junto no
+# #584), mas estava sem smoke: o `GET /gates` acima não a exercita, e ela tem
+# guard próprio (service token, não JWT). O token é o que este script exportou
+# lá em cima para o compose, o mesmo que a api compara.
+gates_int="$(gates_internos)" || fail "GET /internal/gates não respondeu"
+motivo="$(checar_registro_de_gates 'GET /internal/gates' "${gates_int}")" || fail "${motivo}"
+ok 'GET /internal/gates serve o registro de dentro da imagem'
 
 # --------------------------------------------------------------------------
 step=3
