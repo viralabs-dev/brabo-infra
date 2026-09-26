@@ -34,7 +34,8 @@ name: Provas de propriedade (agendado)
 # que um humano obtém com `make deploy-local`: `deploy/k8s/bootstrap.sh` num
 # k3d (k3d e não kind porque o kindnet ignora NetworkPolicy em silêncio — ver o
 # comentário em `pick_cluster_tool`), as quatro imagens de produção CONSTRUÍDAS
-# do checkout e importadas no cluster. Não GHCR por digest (ADR 0119): o que se
+# do checkout e importadas no cluster — menos a stack de observabilidade, que
+# as provas não leem (AT-177, `BRABO_SKIP_OBSERVABILITY`). Não GHCR por digest (ADR 0119): o que se
 # quer provar é a árvore da branch, não a última release, e construir não exige
 # segredo nenhum.
 #
@@ -136,8 +137,16 @@ jobs:
 
       # `bootstrap.sh`, não `make deploy-local`: o alvo encadeia o smoke e o
       # `&&` do make esconderia qual das duas metades falhou.
+      #
+      # AT-177: `BRABO_SKIP_OBSERVABILITY=1` tira Tempo, Loki, Collector, Alloy
+      # e Grafana — ~133 s medidos que nenhuma das provas abaixo lê. O
+      # Prometheus e o prometheus-adapter FICAM: o `smoke-k8s` e o `hpa-test`
+      # leem `oban_queue_depth` pela External Metrics API que eles servem. É a
+      # única diferença entre este cluster e o de `make deploy-local`.
       - name: Subir o cluster (bootstrap)
         id: bootstrap
+        env:
+          BRABO_SKIP_OBSERVABILITY: '1'
         run: |
           set -uo pipefail
           inicio=$SECONDS
