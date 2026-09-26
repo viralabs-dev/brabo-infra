@@ -174,11 +174,17 @@ services:
       # senão quem desiste primeiro é a api e o teto do engine não vale nada.
       OLLAMA_REQUEST_TIMEOUT_MS: ${OLLAMA_REQUEST_TIMEOUT_MS:-300000}
       CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-dev-master-key-change-me}
+      # Os `_PREVIOUS` só existem durante uma rotação sem downtime (runbook: "Auth
+      # key rotation" e "Master key rotation"); vazio = sem rotação, o normal. Sem
+      # estas linhas o Compose não os repassa e a rotação não acontece (RN-595).
+      CREDENTIALS_MASTER_KEY_PREVIOUS: ${CREDENTIALS_MASTER_KEY_PREVIOUS:-}
       # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
       # assina o access token; BRABO_SERVICE_TOKEN autentica o tráfego interno
       # engine <-> api nos dois sentidos.
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-auth-jwt-secret-change-me}
+      AUTH_JWT_SECRET_PREVIOUS: ${AUTH_JWT_SECRET_PREVIOUS:-}
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
+      BRABO_SERVICE_TOKEN_PREVIOUS: ${BRABO_SERVICE_TOKEN_PREVIOUS:-}
       # MAIL_TRANSPORT=log (default) — o link de verificação/reset sai no log
       # da api. Definir MAIL_TRANSPORT=smtp aqui (contra um MailHog local, por
       # exemplo) exige também SMTP_HOST/SMTP_USER/SMTP_PASSWORD/SMTP_FROM —
@@ -350,6 +356,7 @@ services:
       # Mesmo segredo dos dois lados — ver EngineServiceGuard e
       # EngineWeb.Plugs.VerifyServiceToken.
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
+      BRABO_SERVICE_TOKEN_PREVIOUS: ${BRABO_SERVICE_TOKEN_PREVIOUS:-}
       PORT: 4000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       MIX_ENV: dev
@@ -542,6 +549,7 @@ services:
       # Mesmo segredo dos outros dois serviços — ver EngineServiceGuard,
       # EngineWeb.Plugs.VerifyServiceToken e `apps/broker/src/config.ts`.
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
+      BRABO_SERVICE_TOKEN_PREVIOUS: ${BRABO_SERVICE_TOKEN_PREVIOUS:-}
       # De onde o broker LÊ a decisão do Arquiteto. Ele não recebe
       # especificação de container: recebe `projectId` e vem buscar aqui.
       API_URL: ${API_URL:-http://api:3000}
