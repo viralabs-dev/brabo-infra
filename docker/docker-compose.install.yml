@@ -180,12 +180,18 @@ services:
       # (ADR 0059, RN-093/RN-114). A linha continua aqui, com valor vazio,
       # porque omiti-la esconderia que a variável existe.
       CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-}
+      # Os `_PREVIOUS` só existem durante uma rotação sem downtime (runbook: "Auth
+      # key rotation" e "Master key rotation"); vazio = sem rotação, o normal. Sem
+      # estas linhas o Compose não os repassa e a rotação não acontece (RN-595).
+      CREDENTIALS_MASTER_KEY_PREVIOUS: ${CREDENTIALS_MASTER_KEY_PREVIOUS:-}
       # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
       # assina o access token; BRABO_SERVICE_TOKEN autentica o tráfego interno
       # engine <-> api nos dois sentidos — MESMO valor nos dois serviços deste
       # compose (ver a env do serviço `engine`, abaixo).
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      AUTH_JWT_SECRET_PREVIOUS: ${AUTH_JWT_SECRET_PREVIOUS:-}
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
+      BRABO_SERVICE_TOKEN_PREVIOUS: ${BRABO_SERVICE_TOKEN_PREVIOUS:-}
       GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
@@ -278,6 +284,7 @@ services:
       # levaria 401 em toda chamada interna e o sintoma apareceria só no
       # primeiro handoff.
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
+      BRABO_SERVICE_TOKEN_PREVIOUS: ${BRABO_SERVICE_TOKEN_PREVIOUS:-}
       PORT: 4000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       # Obrigatórios no release (runtime.exs, bloco :prod):
@@ -362,6 +369,7 @@ services:
       # variável vazia, com o literal público do repositório ou curta demais. É
       # o MESMO valor da api e do engine (o instalador gera um só).
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
+      BRABO_SERVICE_TOKEN_PREVIOUS: ${BRABO_SERVICE_TOKEN_PREVIOUS:-}
       API_URL: ${API_URL:-http://api:3000}
       # A raiz da pasta GERENCIADA (modo `container`) no HOST. Aqui ela é o
       # volume nomeado `project_workspaces`, e o compose não tem como saber
