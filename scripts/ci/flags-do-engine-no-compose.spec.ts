@@ -36,16 +36,15 @@ import { ler } from '../docs/fontes.mjs';
  * Uma flag sem linha no compose é um interruptor sem fio: o default do código
  * vale para sempre, e quem tenta mudá-lo não recebe erro nenhum.
  *
- * A regra difere por arquivo, e é isso que a torna verdadeira em vez de
- * cômoda:
- *
- *  - no compose de DEV a flag tem de estar mapeada COM o default do código.
- *    Dev é o ambiente onde a promessa dos docblocks é testada, e um default
- *    divergente ali faria o compose decidir produto por baixo do `runtime.exs`.
- *  - no de PRODUÇÃO basta estar mapeada. Aquele arquivo desliga
- *    deliberadamente os agentes de fundo (`START_ANAMNESE:-false` contra o
- *    `true` do código, com o motivo escrito ao lado), e cobrar igualdade
- *    reprovaria uma decisão consciente.
+ * Nos TRÊS arquivos a flag tem de estar mapeada COM o default do código — um
+ * default divergente faria o compose decidir produto por baixo do
+ * `runtime.exs`. A exceção é DECLARADA, por arquivo, em
+ * `DEFAULTS_DIVERGENTES_DECLARADOS`: os composes de PRODUÇÃO e de INSTALAÇÃO
+ * desligam de propósito os dois agentes de fundo (`START_OUTBOX_DRAIN` e
+ * `START_ANAMNESE` em `false` contra o `true` do código, com o motivo escrito
+ * ao lado no próprio compose), e cobrar igualdade ali reprovaria uma decisão
+ * consciente. Até a AT-202 a igualdade só valia no de dev e o de instalação nem
+ * entrava no teste — foi assim que seis flags ficaram de fora dele.
  *
  * `deploy/k8s/` fica FORA de propósito, e não por esquecimento: lá não existe
  * a camada que quebra: um Deployment/ConfigMap não intercepta nada — a
@@ -57,6 +56,29 @@ import { ler } from '../docs/fontes.mjs';
 const CAMINHO_RUNTIME = 'apps/engine/config/runtime.exs';
 const COMPOSE_DEV = 'docker/docker-compose.yml';
 const COMPOSE_PROD = 'docker/docker-compose.prod.yml';
+const COMPOSE_INSTALL = 'docker/docker-compose.install.yml';
+const COMPOSES = [COMPOSE_DEV, COMPOSE_PROD, COMPOSE_INSTALL];
+
+/**
+ * Flag cujo default NO COMPOSE difere do `runtime.exs` de propósito, por
+ * arquivo, com o motivo. Nome fora daqui tem de repetir o default do código.
+ */
+export const DEFAULTS_DIVERGENTES_DECLARADOS: Readonly<
+  Record<string, Readonly<Record<string, string>>>
+> = {
+  [COMPOSE_PROD]: {
+    START_OUTBOX_DRAIN:
+      'agente de fundo (Psicólogo via outbox) desligado: gastaria LLM sem provider configurado',
+    START_ANAMNESE:
+      'agente de fundo (Anamnese periódica) desligado: gastaria LLM sem provider configurado',
+  },
+  [COMPOSE_INSTALL]: {
+    START_OUTBOX_DRAIN:
+      'mesma decisão do compose de produção, de onde a instalação herdou o bloco',
+    START_ANAMNESE:
+      'mesma decisão do compose de produção, de onde a instalação herdou o bloco',
+  },
+};
 
 /**
  * Flag booleana deliberadamente FORA do compose, com o motivo. Vazio hoje —
@@ -153,7 +175,7 @@ describe('flags booleanas do engine × `environment:` do compose', () => {
     expect(flags.get('START_ANAMNESE')).toBe('true');
   });
 
-  for (const caminho of [COMPOSE_DEV, COMPOSE_PROD]) {
+  for (const caminho of COMPOSES) {
     it(`${caminho} mapeia toda flag booleana no serviço \`engine\``, () => {
       const ambiente = ambienteDoEngine(caminho);
       const faltando = [...flags.keys()].filter(
@@ -176,30 +198,50 @@ describe('flags booleanas do engine × `environment:` do compose', () => {
     });
   }
 
-  it(`${COMPOSE_DEV} repete o default do código em cada flag`, () => {
-    // Só no compose de DEV. O de produção desliga os agentes de fundo de
-    // propósito (`START_ANAMNESE:-false` contra o `true` do código), com o
-    // motivo escrito ao lado — cobrar igualdade lá reprovaria uma decisão.
-    const ambiente = ambienteDoEngine(COMPOSE_DEV);
-    const divergentes = [...flags.entries()]
-      .map(([nome, doCodigo]) => {
-        const noCompose = ambiente.get(nome);
-        if (noCompose === undefined) return null;
-        const padrao = defaultDaInterpolacao(noCompose);
-        return padrao === null || padrao === doCodigo
-          ? null
-          : `${nome} (runtime.exs: \`${doCodigo}\`, compose: \`${padrao}\`)`;
-      })
-      .filter((x): x is string => x !== null);
-    expect(
-      divergentes,
-      divergentes.length === 0
-        ? ''
-        : `${divergentes.join('; ')} — o compose de dev decide produto por ` +
-            'baixo do `runtime.exs`. Mapear a flag existe para criar o caminho ' +
-            'de LIGAR, nunca para mudar o que vale sem ninguém pedir (RN-540). ' +
-            'Se a mudança de default é intencional, ela é decisão de produto e ' +
-            'muda o `runtime.exs` primeiro.',
-    ).toEqual([]);
+  for (const caminho of COMPOSES) {
+    it(`${caminho} repete o default do código em cada flag`, () => {
+      const ambiente = ambienteDoEngine(caminho);
+      const declarados = DEFAULTS_DIVERGENTES_DECLARADOS[caminho] ?? {};
+      const divergentes = [...flags.entries()]
+        .map(([nome, doCodigo]) => {
+          if (nome in declarados) return null;
+          const noCompose = ambiente.get(nome);
+          if (noCompose === undefined) return null;
+          const padrao = defaultDaInterpolacao(noCompose);
+          return padrao === null || padrao === doCodigo
+            ? null
+            : `${nome} (runtime.exs: \`${doCodigo}\`, compose: \`${padrao}\`)`;
+        })
+        .filter((x): x is string => x !== null);
+      expect(
+        divergentes,
+        divergentes.length === 0
+          ? ''
+          : `${caminho}: ${divergentes.join('; ')} — o compose decide produto ` +
+              'por baixo do `runtime.exs`. Mapear a flag existe para criar o ' +
+              'caminho de LIGAR, nunca para mudar o que vale sem ninguém pedir ' +
+              '(RN-540). Se a divergência é decisão, declare-a com o motivo em ' +
+              '`DEFAULTS_DIVERGENTES_DECLARADOS`; se é mudança de default, ela ' +
+              'muda o `runtime.exs` primeiro.',
+      ).toEqual([]);
+    });
+  }
+
+  it('toda divergência declarada é mesmo divergente', () => {
+    // Sem isto a lista de exceções vira lugar onde flag esquecida se esconde:
+    // uma entrada cujo compose já repete o default do código não declara
+    // decisão nenhuma, e deve sair.
+    const mortas = Object.entries(DEFAULTS_DIVERGENTES_DECLARADOS).flatMap(
+      ([caminho, nomes]) =>
+        Object.keys(nomes)
+          .filter((nome) => {
+            const padrao = defaultDaInterpolacao(
+              ambienteDoEngine(caminho).get(nome) ?? '',
+            );
+            return padrao === null || padrao === flags.get(nome);
+          })
+          .map((nome) => `${caminho}: ${nome}`),
+    );
+    expect(mortas).toEqual([]);
   });
 });
