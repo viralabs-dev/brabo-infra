@@ -45,7 +45,8 @@ name: Provas de propriedade (agendado)
 #
 # FORA daqui, de propósito: `test-restore-compose` (a separação é decisão do
 # `Makefile`, que não faz o caminho do compose depender de `kubectl`) e o
-# golden-set do QA (BRB-007, travado numa decisão humana sobre segredo de LLM).
+# golden-set do QA (BRB-007), que tem workflow próprio e semanal,
+# `golden-set-qa.yml` (ADR 0168).
 on:
   schedule:
     # Semanal, domingo 04:00 UTC. A cadência é pelo CUSTO MEDIDO — ver
