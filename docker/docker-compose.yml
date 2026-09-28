@@ -190,6 +190,11 @@ services:
       # engine <-> api nos dois sentidos.
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-auth-jwt-secret-change-me}
       AUTH_JWT_SECRET_PREVIOUS: ${AUTH_JWT_SECRET_PREVIOUS:-}
+      # O pepper do hash dos refresh tokens, links de conta e PATs — PRÓPRIO,
+      # nunca o AUTH_JWT_SECRET (RN-613): é essa separação que deixa o JWT
+      # rotacionar sem deslogar ninguém. Default de dev público, recusado em
+      # produção como o do JWT.
+      AUTH_TOKEN_PEPPER: ${AUTH_TOKEN_PEPPER:-dev-auth-token-pepper-change-me}
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-dev-service-token-change-me}
       BRABO_SERVICE_TOKEN_PREVIOUS: ${BRABO_SERVICE_TOKEN_PREVIOUS:-}
       # MAIL_TRANSPORT=log (default) — o link de verificação/reset sai no log

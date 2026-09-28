@@ -40,6 +40,8 @@ export GIT_OAUTH_STATE_SECRET="${GIT_OAUTH_STATE_SECRET:-$(openssl rand -base64 
 # suprir esses defaults. Mesma lógica do de cima — gerados aqui, descartados
 # com o stack.
 export AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-$(openssl rand -base64 32)}"
+# Próprio, nunca o do JWT: desde a RN-613 a api recusa subir sem ele.
+export AUTH_TOKEN_PEPPER="${AUTH_TOKEN_PEPPER:-$(openssl rand -base64 32)}"
 export BRABO_SERVICE_TOKEN="${BRABO_SERVICE_TOKEN:-$(openssl rand -base64 32)}"
 export CREDENTIALS_MASTER_KEY="${CREDENTIALS_MASTER_KEY:-$(openssl rand -base64 32)}"
 # Phoenix quer pelo menos 64 bytes — o dobro do tamanho dos outros três.

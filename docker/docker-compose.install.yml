@@ -202,6 +202,11 @@ services:
       # compose (ver a env do serviço `engine`, abaixo).
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
       AUTH_JWT_SECRET_PREVIOUS: ${AUTH_JWT_SECRET_PREVIOUS:-}
+      # OBRIGATÓRIO desde a RN-613: sem ele a api recusa subir, e a recusa diz
+      # o conserto — numa instalação que já roda, o valor ATUAL do
+      # AUTH_JWT_SECRET, para ninguém ser deslogado. Até ali este compose nem o
+      # repassava, e o pepper caía no JWT: rotacionar o JWT deslogava todos.
+      AUTH_TOKEN_PEPPER: ${AUTH_TOKEN_PEPPER:-}
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
       BRABO_SERVICE_TOKEN_PREVIOUS: ${BRABO_SERVICE_TOKEN_PREVIOUS:-}
       GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-}
