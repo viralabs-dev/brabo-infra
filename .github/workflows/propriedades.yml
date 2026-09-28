@@ -44,10 +44,14 @@ name: Provas de propriedade (agendado)
 # que ninguém lia" (`.github/dependabot.yml`), e enxurrada de issues idênticas
 # ensina a ignorar (`tag-release.yml`).
 #
-# FORA daqui, de propósito: `test-restore-compose` (a separação é decisão do
-# `Makefile`, que não faz o caminho do compose depender de `kubectl`) e o
-# golden-set do QA (BRB-007), que tem workflow próprio e semanal,
-# `golden-set-qa.yml` (ADR 0168).
+# Desde a AT-195, um SEGUNDO job, `restore-compose`, roda noutro runner
+# `make test-restore-compose` contra o compose de produção (a instalação sem
+# cluster, ADR 0152). Ele continua um alvo separado no `Makefile`, que não faz
+# o caminho do compose depender de `kubectl`; o que mudou é que ele deixou de
+# rodar só por memória.
+#
+# FORA daqui, de propósito: o golden-set do QA (BRB-007), que tem workflow
+# próprio e semanal, `golden-set-qa.yml` (ADR 0168).
 on:
   schedule:
     # Semanal, domingo 04:00 UTC. A cadência é pelo CUSTO MEDIDO — ver
@@ -344,37 +348,134 @@ jobs:
           REPROJECAO: ${{ steps.reprojecao.outcome }}
         run: |
           set -euo pipefail
-          alarmar() {
-            local alvo="$1" desfecho="$2" titulo corpo existente
-            [ "${desfecho}" = "failure" ] || return 0
-            titulo="Prova de propriedade falhou: \`${alvo}\`"
-            corpo="$(mktemp)"
-            {
-              echo "A rodada agendada de \`propriedades.yml\` reprovou em \`${alvo}\`."
-              echo
-              echo "- run: ${URL_DO_RUN}"
-              echo "- commit: \`${GITHUB_SHA}\` (${GITHUB_REF_NAME})"
-              echo "- data: $(date -u +%Y-%m-%dT%H:%MZ)"
-              echo
-              echo "O log do passo tem a mensagem do script; o passo \"Estado do cluster\" tem pods, eventos e recursos do nó."
-              echo "Uma nova falha deste alvo vira comentário AQUI. Feche a issue quando a prova voltar a passar."
-            } > "${corpo}"
+          source scripts/ci/alarmar-prova.sh
+          cluster='o passo "Estado do cluster" tem pods, eventos e recursos do nó'
+          alarmar 'bootstrap (o cluster não subiu)' "${BOOTSTRAP}" "${cluster}"
+          alarmar 'make smoke-k8s' "${SMOKE}" "${cluster}"
+          alarmar 'make hpa-test' "${HPA}" "${cluster}"
+          alarmar 'make rollout-test' "${ROLLOUT}" "${cluster}"
+          alarmar 'make test-restore' "${RESTORE}" "${cluster}"
+          alarmar 'make test-restore-mutacao' "${MUTACAO}" "${cluster}"
+          alarmar 'make test-reprojecao-k8s' "${REPROJECAO}" "${cluster}"
 
-            existente="$(TITULO="${titulo}" gh issue list --state open --limit 200 --json number,title \
-              --jq '.[] | select(.title == $ENV.TITULO) | .number' | head -1)"
+  # AT-195: a MESMA prova do `make test-restore`, contra a instalação por
+  # COMPOSE (ADR 0152) — `make test-restore-compose` dispara um backup real,
+  # restaura numa database nova com as três validações e VERIFICA o arquivo dos
+  # bare repos (`brabo-restore-git`, sem escrever nada). Até aqui só rodava por
+  # memória, e é ela que a migração do `install.sh` exige antes de apagar
+  # qualquer coisa (RN-530).
+  #
+  # JOB PRÓPRIO, noutro runner, e não um passo do `provas`: o compose de
+  # produção publica 3000/4000/8088, as MESMAS portas que o k3d mapeia, então os
+  # dois não coexistem num runner. Em série no mesmo job custariam o tempo das
+  # duas metades; em paralelo, o relógio do workflow segue sendo o do cluster.
+  # O que se paga a mais é um segundo build das imagens — este pelo MESMO
+  # `docker-bake.hcl` do `ci.yml`, como o `smoke.sh` de lá espera (o `provas`
+  # constrói pelo bootstrap; o cache do bake ali foi medido e recusado, AT-178).
+  restore-compose:
+    name: Restore da instalação por compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-            if [ -n "${existente}" ]; then
-              gh issue comment "${existente}" --body-file "${corpo}"
-              echo "::notice::comentei na issue #${existente} (${alvo})"
-            else
-              url="$(gh issue create --title "${titulo}" --body-file "${corpo}")"
-              echo "::notice::issue aberta para ${alvo}: ${url}"
-            fi
-          }
-          alarmar 'bootstrap (o cluster não subiu)' "${BOOTSTRAP}"
-          alarmar 'make smoke-k8s' "${SMOKE}"
-          alarmar 'make hpa-test' "${HPA}"
-          alarmar 'make rollout-test' "${ROLLOUT}"
-          alarmar 'make test-restore' "${RESTORE}"
-          alarmar 'make test-restore-mutacao' "${MUTACAO}"
-          alarmar 'make test-reprojecao-k8s' "${REPROJECAO}"
+      - name: Tabela de durações
+        run: |
+          {
+            echo '| passo | duração | saída |'
+            echo '|---|---|---|'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "INICIO_DO_BUILD=$(date +%s)" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+
+      - name: Build das quatro imagens (bake, cache do Actions)
+        id: build
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f  # v7.4.0
+        with:
+          files: docker-bake.hcl
+          targets: api,engine,web,backup
+          load: true
+
+      - name: Duração do build das imagens
+        if: ${{ !cancelled() }}
+        env:
+          DESFECHO: ${{ steps.build.outcome }}
+        run: echo "| build das imagens (bake) | $(( $(date +%s) - INICIO_DO_BUILD ))s | ${DESFECHO} |" >> "$GITHUB_STEP_SUMMARY"
+
+      # O `smoke.sh` do `ci.yml`, com o stack mantido de pé: é ele que deixa o
+      # banco com dados (o usuário do seed, a sessão que ele ativa) para o
+      # backup ter o que levar.
+      - name: Subir o compose de produção (smoke)
+        id: compose
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          SMOKE_NO_BUILD=1 SMOKE_KEEP_UP=1 bash docker/smoke.sh; saida=$?
+          echo "| compose de pé (smoke) | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          exit "${saida}"
+
+      # Sem um bare repo no volume, `brabo-restore-git` responde "nada a
+      # restaurar" e sai com 0 — a metade do git passaria sem ter lido arquivo
+      # nenhum. O repo nasce do MESMO jeito que o `LocalGitProvider` o cria
+      # (`git init --bare` em `/data/git-repos`, pelo usuário da api), só que
+      # sem passar por um projeto: é FIXTURE da prova, e o que ela prova é que
+      # o arquivo do backup é íntegro e contém o repo, não que um projeto o
+      # provisionou. `test-restore-compose.sh` não o cria por conta própria de
+      # propósito — ele também roda na migração de uma instalação real.
+      - name: Um bare repo no volume (fixture da prova)
+        id: fixture
+        if: ${{ !cancelled() && steps.compose.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          docker compose -f docker/docker-compose.prod.yml exec -T api \
+            git init --bare --quiet /data/git-repos/prova-restore.git
+          docker compose -f docker/docker-compose.prod.yml exec -T api \
+            ls /data/git-repos/prova-restore.git/objects
+
+      - name: make test-restore-compose
+        id: restore_compose
+        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
+        timeout-minutes: 15
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          saida_log="$(mktemp)"
+          make test-restore-compose 2>&1 | tee "${saida_log}"; saida=${PIPESTATUS[0]}
+          echo "| test-restore-compose | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          # Verde sem ter lido o repo seria o falso verde que a fixture existe
+          # para impedir: o veredito do git tem de NOMEAR o bare repo.
+          if [ "${saida}" = 0 ] && ! grep -q 'bare repo(s) íntegros' "${saida_log}"; then
+            echo "::error::test-restore-compose passou sem verificar bare repo nenhum"
+            exit 1
+          fi
+          exit "${saida}"
+
+      - name: Estado do compose (só em falha)
+        if: failure()
+        run: |
+          docker compose -f docker/docker-compose.prod.yml ps -a || true
+          docker compose -f docker/docker-compose.prod.yml logs --tail=60 || true
+          df -h / || true
+
+      - name: Abrir ou atualizar issue por alvo que falhou
+        if: ${{ !cancelled() && failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL_DO_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BUILD: ${{ steps.build.outcome }}
+          COMPOSE: ${{ steps.compose.outcome }}
+          FIXTURE: ${{ steps.fixture.outcome }}
+          RESTORE_COMPOSE: ${{ steps.restore_compose.outcome }}
+        run: |
+          set -euo pipefail
+          source scripts/ci/alarmar-prova.sh
+          compose='o passo "Estado do compose" tem os serviços e os logs'
+          alarmar 'build das imagens (bake, restore-compose)' "${BUILD}"
+          alarmar 'compose de produção (o stack não subiu)' "${COMPOSE}" "${compose}"
+          alarmar 'fixture do bare repo' "${FIXTURE}" "${compose}"
+          alarmar 'make test-restore-compose' "${RESTORE_COMPOSE}" "${compose}"
