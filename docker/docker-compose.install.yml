@@ -31,8 +31,13 @@
 # Uso (normalmente pelo `install.sh`, nunca à mão):
 #   docker compose -f docker/docker-compose.install.yml --env-file .env up -d --wait
 #
-# `name` diferente do compose de dev de propósito: os dois podem coexistir na
-# mesma máquina sem disputar containers, redes nem volumes.
+# `name` diferente do compose de dev de propósito — e só passou a ser VERDADE no
+# ADR 0170: até ali os dois se chamavam `brabo` e eram o MESMO projeto Docker
+# (medido em 19/09: o banco da instalação recebeu uma migration do dev). O dev
+# virou `brabo-dev`; este fica `brabo`, porque é o nome que as instalações já
+# existentes têm, e trocá-lo desligaria cada uma dos próprios volumes. Não
+# renomeie. O preflight e o reset do dev RECUSAM enquanto houver container
+# deste compose na máquina (`scripts/dev/instalacao-na-maquina.mjs`).
 name: brabo
 
 # Endurecimento comum a TODOS os nossos serviços de app. Cada um ainda declara

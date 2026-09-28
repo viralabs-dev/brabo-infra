@@ -35,6 +35,10 @@ type Cenario = {
   // O `up -d --wait` de tudo reprova, e o neo4j que ele (re)criou recusa a senha.
   upFalhaComNeo4jRecusando?: boolean;
   env?: string;
+  // Saída de `docker ps -a --format …` (AT-173): as linhas `nome§projeto§config_files`.
+  containers?: string;
+  // O `name:` que `docker compose … config` imprime (AT-173).
+  projetoResolvido?: string;
 };
 
 const pastas: string[] = [];
@@ -75,10 +79,16 @@ function rodar(c: Cenario) {
   }
   stub(bin, 'pnpm', [`[[ "$*" == *drizzle-kit* ]] && exit ${c.drizzleAusente ? 1 : 0}`, 'exit 0']);
 
+  const listaDeContainers = join(raiz, 'containers');
+  writeFileSync(listaDeContainers, c.containers ?? '');
+
   const antes = c.neo4jAntes ?? 'saudavel';
   const recusa = 'The client is unauthorized due to authentication failure.';
   stub(bin, 'docker', [
     'args="$*"',
+    // A guarda da instalação (ADR 0170): `docker ps -a --format …` e `compose … config`.
+    `if [[ "$1" == ps && "$2" == -a && "$3" == --format ]]; then cat "${listaDeContainers}"; exit 0; fi`,
+    `if [[ "$args" == *" config" ]]; then echo "name: ${c.projetoResolvido ?? 'brabo-dev'}"; exit 0; fi`,
     // Existe container? Antes do up conforme o cenário; depois do up, sempre.
     `if [[ "$args" == *" ps -a -q neo4j"* ]]; then`,
     `  if [[ -f "${subiu}" || "${antes}" != ausente ]]; then echo abc123; fi; exit 0`,
@@ -93,7 +103,7 @@ function rodar(c: Cenario) {
     'if [[ "$args" == *" port "* ]]; then echo 0.0.0.0:5432; exit 0; fi',
     'if [[ "$args" == *" up -d --wait"* && "$args" != *postgres* ]]; then',
     `  touch "${subiu}"`,
-    `  ${c.upFalhaComNeo4jRecusando ? 'echo "container brabo-neo4j-1 is unhealthy" >&2; exit 1' : 'exit 0'}`,
+    `  ${c.upFalhaComNeo4jRecusando ? 'echo "container brabo-dev-neo4j-1 is unhealthy" >&2; exit 1' : 'exit 0'}`,
     'fi',
     'exit 0',
   ]);
@@ -194,5 +204,54 @@ describe('reset-total.sh — a senha do neo4j contra a do volume', () => {
     expect(saida).toContain('O NEO4J RECUSA A SENHA DO .env');
     expect(saida).toContain('falta subir o resto e semear');
     expect(saida).not.toContain('pode estar apagado e não semeado');
+  });
+});
+
+// AT-173 (ADR 0170): o compose de dev e o de instalação eram o MESMO projeto
+// Docker, e o DROP SCHEMA deste script cairia no banco da instalação. A guarda
+// roda antes até do preflight, e recusa sem nenhum efeito.
+describe('reset-total.sh — a guarda da instalação na máquina (ADR 0170)', () => {
+  const INSTALACAO =
+    'brabo-postgres-1§brabo§/home/x/brabo/docker/docker-compose.install.yml\n' +
+    'brabo-api-1§brabo§/home/x/brabo/docker/docker-compose.install.yml\n';
+
+  it('container do compose de INSTALAÇÃO na máquina: recusa antes do preflight, nomeando-o, sem efeito nenhum', () => {
+    const { codigo, saida, chamadas } = rodar({ containers: INSTALACAO });
+    expect(codigo).not.toBe(0);
+    expect(saida).toContain('containers do compose de INSTALAÇÃO');
+    expect(saida).toContain('brabo-postgres-1  (projeto brabo, /home/x/brabo/docker/docker-compose.install.yml)');
+    expect(saida).toContain('docker compose -f /home/x/brabo/docker/docker-compose.install.yml --env-file /home/x/brabo/.env down');
+    expect(saida).toContain('RESET NÃO COMEÇOU — recusado em: guarda da instalação na máquina (ADR 0170)');
+    expect(chamadas.some((l) => l.startsWith('node '))).toBe(false);
+    expect(chamadas.some((l) => l.startsWith('mix '))).toBe(false);
+    expect(efeitos(chamadas)).toEqual([]);
+  });
+
+  it('também com projeto descartável (`-p` qualquer) e parado: o que vale é o arquivo de compose do rótulo', () => {
+    const { codigo, saida, chamadas } = rodar({
+      containers: 'prova-web-1§prova-guarda§/tmp/x/brabo-install-compose.yml,/tmp/x/extra.yml\n',
+    });
+    expect(codigo).not.toBe(0);
+    expect(saida).toContain('prova-web-1');
+    expect(efeitos(chamadas)).toEqual([]);
+  });
+
+  it('compose de dev que resolveria o projeto `brabo` (COMPOSE_PROJECT_NAME): recusa antes de qualquer efeito', () => {
+    const { codigo, saida, chamadas } = rodar({ projetoResolvido: 'brabo' });
+    expect(codigo).not.toBe(0);
+    expect(saida).toContain('resolveria o projeto Docker `brabo`');
+    expect(efeitos(chamadas)).toEqual([]);
+  });
+
+  it('sem instalação — só o dev (novo e antigo) e outros projetos: passa e vai até o fim', () => {
+    const { codigo, saida } = rodar({
+      containers:
+        'brabo-dev-api-1§brabo-dev§/w/brabo/docker/docker-compose.yml\n' +
+        'brabo-api-1§brabo§/w/brabo/docker/docker-compose.yml\n' +
+        'outro-db-1§outro§/w/outro/docker-compose.yml\n' +
+        'solto§§\n',
+    });
+    expect(saida).toContain('reset completo');
+    expect(codigo).toBe(0);
   });
 });

@@ -1,4 +1,11 @@
-name: brabo
+# `brabo-dev`, e NUNCA `brabo` (ADR 0170): `brabo` é o nome do compose de
+# INSTALAÇÃO, e com o mesmo nome os dois eram o MESMO projeto Docker —
+# containers, rede e volumes (`brabo_pgdata`…) compartilhados, e o reset total
+# apagaria o banco de uma instalação na mesma máquina. Os volumes de dev são
+# `brabo-dev_*`; os `brabo_*` de antes do ADR ficam no disco (ver o runbook,
+# "Moving a dev environment to brabo-dev"). O overlay de observabilidade repete
+# este nome: o `name:` do ÚLTIMO arquivo passado com `-f` vence.
+name: brabo-dev
 
 services:
   postgres:

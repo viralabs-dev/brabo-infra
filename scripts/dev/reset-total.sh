@@ -44,6 +44,13 @@
 # `node_modules` do host, e a senha do Neo4j contra a do volume. As funções
 # moram em scripts/dev/reset-total-lib.sh, onde o spec as exercita.
 #
+# E, antes de TUDO, a guarda da instalação (AT-173, ADR 0170): até o ADR 0170
+# o compose de dev e o de instalação eram o MESMO projeto Docker (`brabo`), e o
+# `DROP SCHEMA` daqui cairia no banco de uma instalação na mesma máquina. O dev
+# agora é `brabo-dev`; com container do compose de instalação na máquina, ou
+# com o dev resolvendo o projeto `brabo`, o script recusa sem efeito nenhum
+# (`recusar_se_ha_instalacao`, em reset-total-lib.sh).
+#
 # Chamado pelo item "Docker › Reset total" do bootstrap.sh; roda sozinho
 # também: bash scripts/dev/reset-total.sh
 set -euo pipefail
@@ -152,6 +159,10 @@ ao_sair() {
 trap ao_sair EXIT
 
 echo "==> ${AVISO_DE_VOLUMES}"
+
+PASSO="guarda da instalação na máquina (ADR 0170)"
+echo "==> conferindo se há uma instalação do Brabo nesta máquina…"
+recusar_se_ha_instalacao
 
 PASSO="preflight de portas"
 echo "==> preflight de portas…"

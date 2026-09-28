@@ -114,3 +114,50 @@ conferir_senha_do_neo4j() {
     return 1
   fi
 }
+
+# A GUARDA DA INSTALAÇÃO (AT-173, ADR 0170) — a mesma régua de
+# scripts/dev/instalacao-na-maquina.mjs, em bash porque o spec deste script
+# roda com um `node` de mentira no PATH. Até o ADR 0170 o compose de dev e o de
+# instalação eram o MESMO projeto Docker (`brabo`), e o `DROP SCHEMA … CASCADE`
+# deste script cairia no Postgres da instalação. O dev agora é `brabo-dev`;
+# isto cobre o `-p brabo` à mão, o `COMPOSE_PROJECT_NAME=brabo` e o checkout
+# antigo. Roda ANTES de qualquer efeito, antes até do preflight.
+#
+# Duas recusas:
+#   1. existe container (em qualquer estado) cujo rótulo
+#      `com.docker.compose.project.config_files` aponta para o compose de
+#      INSTALAÇÃO (`docker-compose.install.yml`, ou o asset
+#      `brabo-install-compose.yml`);
+#   2. o compose de dev, como ESTE script o chama, resolveria o projeto `brabo`.
+# Docker que não responde NÃO recusa aqui: o `build`, adiante e ainda antes do
+# primeiro efeito, falharia do mesmo jeito.
+recusar_se_ha_instalacao() {
+  local lista achados projeto
+  if ! lista="$(docker ps -a --format '{{.Names}}§{{.Label "com.docker.compose.project"}}§{{.Label "com.docker.compose.project.config_files"}}' 2>/dev/null)"; then
+    echo "==> não consegui listar os containers; a guarda de instalação (ADR 0170) não rodou."
+    return 0
+  fi
+  achados="$(printf '%s\n' "${lista}" \
+    | grep -E '§[^§]*§(.*[/,])?(docker-compose\.install\.yml|brabo-install-compose\.yml)(,|$)' || true)"
+  if [[ -n "${achados}" ]]; then
+    {
+      echo "RECUSADO antes de qualquer efeito: esta máquina tem containers do compose de INSTALAÇÃO do Brabo:"
+      echo ""
+      printf '%s\n' "${achados}" | awk -F'§' '{ printf "  %s  (projeto %s, %s)\n", $1, $2, $3 }'
+      echo ""
+      echo "Até o ADR 0170 o dev e a instalação eram o MESMO projeto Docker (\`brabo\`), e este"
+      echo "reset apagaria o banco da instalação. Para desenvolver nesta máquina, derrube a"
+      echo "instalação SEM -v (os volumes e os dados ficam intactos):"
+      # O `.env` da instalação mora um nível ACIMA de `docker/` (onde o
+      # install.sh grava o compose), e sem ele o `down` falha na interpolação.
+      printf '%s\n' "${achados}" | awk -F'§' '{ split($3, f, ","); env = "<.env da instalação>"; if (f[1] ~ /\/docker\/[^\/]+$/) { env = f[1]; sub(/\/docker\/[^\/]+$/, "/.env", env) } print "  docker compose -f " f[1] " --env-file " env " down" }' | sort -u
+      echo "Nada foi parado nem apagado."
+    } >&2
+    return 1
+  fi
+  projeto="$("${COMPOSE[@]}" config 2>/dev/null | sed -n 's/^name: //p' | head -n1 || true)"
+  if [[ "${projeto}" == "brabo" ]]; then
+    echo "RECUSADO antes de qualquer efeito: o compose de dev resolveria o projeto Docker \`brabo\`, o nome do compose de INSTALAÇÃO (ADR 0170). O do dev é \`brabo-dev\`: tire COMPOSE_PROJECT_NAME do .env/ambiente. Nada foi parado nem apagado." >&2
+    return 1
+  fi
+}

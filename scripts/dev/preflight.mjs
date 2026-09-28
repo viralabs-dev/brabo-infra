@@ -21,6 +21,11 @@
  * que ELA enxerga, que dentro do container dela é `/workspace` — nunca o
  * caminho real no disco de quem desenvolve. Ver `base-de-projetos.mjs`.
  *
+ * TAMBÉM RECUSA subir quando a máquina tem containers do compose de
+ * INSTALAÇÃO, ou quando o compose de dev resolveria o projeto `brabo` (o nome
+ * da instalação) — e AVISA, sem recusar, sobre volumes `brabo_*` órfãos do dev
+ * de antes do ADR 0170. Ver `instalacao-na-maquina.mjs`.
+ *
  * TAMBÉM RELATA, sem nunca recusar, o que sobe e só falha no uso: o
  * `DOCKER_GID` (ADR 0146) e a pasta gerenciada no host (RN-599) — ver
  * `docker-gid.mjs` e `pasta-gerenciada.mjs`.
@@ -44,6 +49,20 @@ import {
 import { GID, avaliarDockerGid, mensagemDoDockerGid } from './docker-gid.mjs';
 import { PASTA, avaliarPastaGerenciada, mensagemDaPastaGerenciada } from './pasta-gerenciada.mjs';
 import { garantirPontosDeMontagem, pontosDeMontagemDoCompose } from './pontos-de-montagem.mjs';
+import {
+  FORMATO_DE_CONTAINER,
+  FORMATO_DE_VOLUME,
+  containersDaInstalacao,
+  containersDaMaquina,
+  containersDoDevAntigo,
+  mensagemDeInstalacaoPresente,
+  mensagemDeProjetoProibido,
+  mensagemDeVolumesOrfaos,
+  projetoDeDevProibido,
+  volumesDaMaquina,
+  volumesDeDevOrfaos,
+  volumesSoDeDev,
+} from './instalacao-na-maquina.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -283,6 +302,52 @@ function baseDeProjetosProibida() {
   return true;
 }
 
+// ------------------------------------------- instalação na mesma máquina
+
+/**
+ * Todos os containers da máquina (`ps -a`: parado também é projeto vivo para o
+ * Compose), ou `null` quando o Docker não respondeu. `null` NÃO bloqueia: sem
+ * Docker o `up` não sobe nada, e ele dirá por quê.
+ */
+function lerContainersDaMaquina() {
+  try {
+    return containersDaMaquina(rodar('docker', ['ps', '-a', '--format', FORMATO_DE_CONTAINER]));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Recusa quando há containers do compose de INSTALAÇÃO (ADR 0170). Devolve
+ * `true` quando é para PARAR.
+ */
+function instalacaoPresente(containers) {
+  if (containers === null) {
+    console.warn('[preflight] não consegui listar os containers — a guarda de instalação (ADR 0170) não rodou.');
+    return false;
+  }
+  const achados = containersDaInstalacao(containers);
+  if (achados.length === 0) return false;
+  console.error(mensagemDeInstalacaoPresente(achados));
+  return true;
+}
+
+/** Avisa, sem recusar, sobre volumes `brabo_*` órfãos do dev antigo. */
+function relatarVolumesOrfaos() {
+  try {
+    const ler = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
+    const soDeDev = volumesSoDeDev(
+      ler('../../docker/docker-compose.yml'),
+      ler('../../docker/docker-compose.install.yml'),
+    );
+    const volumes = volumesDaMaquina(rodar('docker', ['volume', 'ls', '--format', FORMATO_DE_VOLUME]));
+    const veredito = volumesDeDevOrfaos(volumes, soDeDev);
+    if (veredito !== null) console.warn(mensagemDeVolumesOrfaos(veredito));
+  } catch {
+    // Sem Docker ou sem os arquivos: o aviso é conveniência, não guarda.
+  }
+}
+
 // ------------------------------------------------------------------- main
 
 /**
@@ -389,6 +454,12 @@ async function main() {
   // que impede um dano em vez de um inconveniente.
   if (baseDeProjetosProibida()) process.exit(1);
 
+  // Também antes de tudo o que relata: com uma instalação na máquina, nada do
+  // que vem depois interessa (ADR 0170).
+  const containersDaMaquinaAgora = lerContainersDaMaquina();
+  if (instalacaoPresente(containersDaMaquinaAgora)) process.exit(1);
+  relatarVolumesOrfaos();
+
   relatarBaseDeProjetos();
   relatarDockerGid();
   relatarPastaGerenciada();
@@ -407,6 +478,11 @@ async function main() {
     );
     process.exit(0);
     return;
+  }
+
+  if (projetoDeDevProibido(compose.projeto)) {
+    console.error(mensagemDeProjetoProibido(compose.projeto));
+    process.exit(1);
   }
 
   const containers = donosContainer();
@@ -448,6 +524,19 @@ async function main() {
   );
   for (const { porta, servico, dono } of conflitos) {
     console.error(`  ${String(porta).padEnd(6)}${servico.padEnd(larguraServico + 2)}← ${dono}`);
+  }
+
+  // O dev de antes do ADR 0170 ainda de pé, com o nome `brabo`: é ele quem
+  // segura as portas, e o conserto é derrubá-lo SEM `-v` (os volumes ficam).
+  const antigos = new Set(containersDoDevAntigo(containersDaMaquinaAgora ?? []).map((c) => c.nome));
+  if (conflitos.some((c) => antigos.has(c.dono))) {
+    console.error(
+      '\nQuem segura as portas é o compose de dev ANTIGO (projeto `brabo`, antes do\n' +
+        'ADR 0170). Derrube-o SEM `-v` — os volumes e os dados ficam:\n\n' +
+        '  docker compose -p brabo -f docker/docker-compose.yml --env-file .env down\n\n' +
+        'e veja no runbook, "Moving a dev environment to brabo-dev", como levar os dados.\n',
+    );
+    process.exit(1);
   }
 
   // O caso comum, e o que motivou o script: o cluster local de validação.

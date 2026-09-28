@@ -15,7 +15,10 @@
 # Fidelidade ao cluster: os UIDs de datasource, os rótulos (`app`, `pod`,
 # `container`, `level`) e os arquivos de dashboard são os MESMOS de
 # deploy/k8s/. Um dashboard novo vale nos dois ambientes sem cópia.
-name: brabo
+#
+# `name` IGUAL ao do compose de dev (ADR 0170): o `name:` do último `-f` vence,
+# então um valor diferente aqui moveria o stack inteiro para outro projeto.
+name: brabo-dev
 
 services:
   loki:

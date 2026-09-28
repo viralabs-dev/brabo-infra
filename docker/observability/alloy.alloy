@@ -29,7 +29,7 @@ discovery.relabel "brabo" {
   // desenvolvedor entraria no Loki.
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
-    regex         = "brabo"
+    regex         = "brabo-dev"
     action        = "keep"
   }
 

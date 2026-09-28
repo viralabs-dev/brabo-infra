@@ -19,7 +19,7 @@ scrape_configs:
       - targets: ['api:3000']
         labels:
           app: api
-          pod: brabo-api-1
+          pod: brabo-dev-api-1
           namespace: brabo
 
   - job_name: brabo-engine
@@ -28,7 +28,7 @@ scrape_configs:
       - targets: ['engine:4000']
         labels:
           app: engine
-          pod: brabo-engine-1
+          pod: brabo-dev-engine-1
           namespace: brabo
 
   # O próprio Prometheus, para saber se o scrape está vivo quando um painel
