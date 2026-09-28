@@ -81,7 +81,17 @@ executar() { compose run --rm --quiet-pull backup "$@"; }
 # está ativo, enquanto `run` liga o profile do alvo sozinho. Medido — sem a
 # flag, `config --services` não traz o serviço e a checagem reprovaria um
 # compose correto.
-compose --profile backup config --services | grep -qx backup \
+#
+# A lista é LIDA INTEIRA antes de o `grep` olhar (AT-241), e nunca por pipe:
+# `grep -q` sai na primeira linha que casa e fecha o pipe, o Compose ainda
+# escrevendo o resto morre de EPIPE (medido: saída 255, stderr vazio) e, sob
+# `pipefail`, a pipeline inteira falha — com a mensagem "não tem serviço
+# 'backup'" sobre um compose que TEM o serviço. Só acontecia sob carga, quando
+# o `grep` ganhava a corrida. Separar também dá ao Compose que falha de verdade
+# um desfecho PRÓPRIO, com o stderr dele acima.
+servicos="$(compose --profile backup config --services)" \
+  || fail "o compose ${COMPOSE_FILE} não pôde ser lido (a saída do docker compose está acima)"
+grep -qx backup <<<"${servicos}" \
   || fail "o compose ${COMPOSE_FILE} não tem serviço 'backup'"
 
 info "1/3 — disparando um backup REAL (mesma imagem, mesmo comando de produção)"
