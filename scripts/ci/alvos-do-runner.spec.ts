@@ -35,7 +35,7 @@ const daMatriz = matriz.map((i) => i.target).sort();
 function listaDoTs(fonte: string, nome: string): string[] {
   const m = new RegExp(`const ${nome}\\b[^=]*=\\s*\\[([^\\]]*)\\]`).exec(fonte);
   if (!m) throw new Error(`não achei \`const ${nome} = [...]\` — o extrator ficou cego`);
-  return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]).sort();
+  return [...(m[1] ?? '').matchAll(/'([^']+)'/g)].map((x) => x[1] ?? '').sort();
 }
 
 describe('os alvos do binário do runner (ADR 0174)', () => {
