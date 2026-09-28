@@ -144,9 +144,12 @@ info '6/7 — métrica de fila exposta pelo engine'
 metrics="$(kubectl -n "${NS}" exec deploy/engine -- \
   wget -qO- http://127.0.0.1:4000/metrics 2>/dev/null)" \
   || fail "engine não serviu /metrics"
-printf '%s' "${metrics}" | grep -q 'oban_queue_depth' \
+# `<<<` e nunca `printf | grep -q` (AT-242): acima de 64 KiB (a capacidade do
+# pipe) o `printf` escreve em mais de uma vez, o `grep -q` sai na primeira
+# linha que casa e, sob `pipefail`, o EPIPE reprova um /metrics correto.
+grep -q 'oban_queue_depth' <<<"${metrics}" \
   || fail "/metrics não expõe oban_queue_depth"
-printf '%s' "${metrics}" | grep -q 'oban_queue_depth{.*state="available"' \
+grep -q 'oban_queue_depth{.*state="available"' <<<"${metrics}" \
   || fail "oban_queue_depth sem o rótulo state — o HPA não conseguiria filtrar"
 ok "oban_queue_depth com os rótulos queue e state"
 

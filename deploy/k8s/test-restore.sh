@@ -211,7 +211,12 @@ else
   # ele é impresso antes do fail genérico.
   kubectl -n "${NS}" logs "job/${JOB_RESTORE}" --tail=100 | sed 's/^/    /' || true
   if [[ "${desfecho}" -eq 1 && -n "${MUTACAO}" ]]; then
-    if kubectl -n "${NS}" logs "job/${JOB_RESTORE}" | grep -qF "faltando: ${TABELA_MUTACAO}"; then
+    # O log é LIDO INTEIRO antes do `grep` (AT-242), nunca por pipe: `grep -q`
+    # sai na linha que casa, o `kubectl` ainda escrevendo morre de EPIPE e, sob
+    # `pipefail`, a mutação PEGA seria contada como "reprovou por outro motivo".
+    log_do_restore="$(kubectl -n "${NS}" logs "job/${JOB_RESTORE}")" \
+      || fail "o log do Job ${JOB_RESTORE} não pôde ser lido — sem ele não há como saber se a mutação foi o que pegou"
+    if grep -qF "faltando: ${TABELA_MUTACAO}" <<<"${log_do_restore}"; then
       printf '\n\033[32m[test-restore] mutação PEGA: o restore reprovou nomeando %s\033[0m\n' "${TABELA_MUTACAO}"
       exit 0
     fi

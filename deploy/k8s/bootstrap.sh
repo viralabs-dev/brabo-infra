@@ -91,7 +91,14 @@ pick_cluster_tool() {
 # Cluster
 # ---------------------------------------------------------------------------
 create_cluster_k3d() {
-  if k3d cluster list 2>/dev/null | grep -q "^${CLUSTER_NAME}\b"; then
+  # A lista é LIDA INTEIRA antes do `grep` (AT-242): o `k3d` escreve a tabela
+  # em pedaços (medido: 9 escritas só no cabeçalho), o `grep -q` sai na linha
+  # que casa e, sob `pipefail`, o EPIPE do resto faria um cluster que EXISTE
+  # parecer ausente — e o `cluster create` seguinte reprovaria por nome
+  # repetido. `k3d` que falha continua lido como "sem cluster", como antes.
+  local clusters
+  if clusters="$(k3d cluster list 2>/dev/null)" \
+      && grep -q "^${CLUSTER_NAME}\b" <<<"${clusters}"; then
     if [[ "${BRABO_KEEP_CLUSTER:-}" == "1" ]]; then
       ok "cluster k3d ${CLUSTER_NAME} reaproveitado"; return
     fi
@@ -114,7 +121,11 @@ create_cluster_k3d() {
 }
 
 create_cluster_kind() {
-  if kind get clusters 2>/dev/null | grep -qx "${CLUSTER_NAME}"; then
+  # Mesma leitura inteira do k3d acima (AT-242): o `kind` escreve um cluster
+  # por linha, cada uma numa escrita (medido: 5 para uma lista curta).
+  local clusters
+  if clusters="$(kind get clusters 2>/dev/null)" \
+      && grep -qx "${CLUSTER_NAME}" <<<"${clusters}"; then
     if [[ "${BRABO_KEEP_CLUSTER:-}" == "1" ]]; then
       ok "cluster kind ${CLUSTER_NAME} reaproveitado"; return
     fi
