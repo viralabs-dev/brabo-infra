@@ -96,6 +96,11 @@ if [[ "$1" == config ]]; then exec "$REAL" compose "\${prefixo[@]}" "$@"; fi
   return { pasta, env, compose, bin, saida };
 }
 
+/** Stdout e stderr ROTULADOS, para que a falha mostre o que o Compose disse (AT-241). */
+function saidaDe(r: { stdout: string; stderr: string }): string {
+  return `--- stdout ---\n${r.stdout}\n--- stderr ---\n${r.stderr}`;
+}
+
 function rodarProva(i: ReturnType<typeof instalacao>, extra: Record<string, string> = {}) {
   return spawnSync('bash', [PROVA], {
     cwd: i.pasta,
@@ -109,7 +114,7 @@ describe('a prova de restauração da migração enxerga o .env da instalação 
     if (PULAR) ctx.skip(PULAR);
     const i = instalacao();
     const r = rodarProva(i, { BRABO_ENV_FILE: i.env });
-    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.status, saidaDe(r)).toBe(0);
     const cfg = JSON.parse(fs.readFileSync(i.saida, 'utf8')) as {
       services: Record<string, { image?: string; environment?: Record<string, string> }>;
     };
@@ -121,15 +126,79 @@ describe('a prova de restauração da migração enxerga o .env da instalação 
     if (PULAR) ctx.skip(PULAR);
     const i = instalacao();
     const r = rodarProva(i);
-    expect(r.status).not.toBe(0);
+    expect(r.status, saidaDe(r)).not.toBe(0);
     expect(r.stdout + r.stderr).toMatch(/BRABO_BACKUP_IMAGE|serviço 'backup'|required variable/);
   });
 
   it('BRABO_ENV_FILE apontando para arquivo inexistente é recusa nomeada, nunca queda silenciosa', () => {
     const i = instalacao();
     const r = rodarProva(i, { BRABO_ENV_FILE: path.join(i.pasta, 'nao-existe.env') });
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain('BRABO_ENV_FILE não existe');
+    expect(r.status, saidaDe(r)).not.toBe(0);
+    expect(r.stderr, saidaDe(r)).toContain('BRABO_ENV_FILE não existe');
+  });
+
+  // AT-241. A checagem do serviço era `config --services | grep -qx backup` sob
+  // `pipefail`: o `grep` sai na primeira linha que casa, o Compose ainda
+  // escrevendo morre de EPIPE (medido: 255, stderr vazio) e a pipeline falha —
+  // só sob carga, quando o `grep` vence a corrida. Aqui a corrida é FORÇADA: o
+  // `docker` de mentira escreve `backup`, espera o `grep` sair e escreve mais.
+  // Com a pipeline, isto reprova SEMPRE; com a lista lida inteira, nunca.
+  it('a checagem do serviço não depende de o Compose terminar de escrever antes do grep sair (AT-241)', () => {
+    const pasta = fs.mkdtempSync(path.join(tmp, 'pipe-'));
+    const compose = path.join(pasta, 'docker-compose.yml');
+    fs.writeFileSync(compose, 'services: {}\n');
+    const bin = path.join(pasta, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(
+      path.join(bin, 'docker'),
+      `#!/usr/bin/env bash
+if [[ "$1" == compose && "$2" == version ]]; then exit 0; fi
+for a in "$@"; do
+  if [[ "$a" == --services ]]; then
+    printf 'postgres\\nbackup\\n'
+    sleep 0.3
+    for n in $(seq 1 50); do printf 'servico-%s\\n' "$n"; done
+    exit 0
+  fi
+done
+# \`run\`: o backup, o restore e a verificação dos repos — nada a fazer aqui.
+exit 0
+`,
+      { mode: 0o755 },
+    );
+    const r = spawnSync('bash', [PROVA], {
+      cwd: pasta,
+      env: ambiente({ BRABO_COMPOSE_FILE: compose }, `${bin}:${process.env.PATH ?? ''}`),
+      encoding: 'utf8',
+    });
+    expect(r.status, saidaDe(r)).toBe(0);
+    expect(r.stderr).not.toContain("não tem serviço 'backup'");
+  });
+
+  it('o Compose que falha ao listar os serviços tem desfecho próprio, não "sem serviço" (AT-241)', () => {
+    const pasta = fs.mkdtempSync(path.join(tmp, 'falha-'));
+    const compose = path.join(pasta, 'docker-compose.yml');
+    fs.writeFileSync(compose, 'services: {}\n');
+    const bin = path.join(pasta, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(
+      path.join(bin, 'docker'),
+      `#!/usr/bin/env bash
+if [[ "$1" == compose && "$2" == version ]]; then exit 0; fi
+echo 'erro de mentira do compose' >&2
+exit 3
+`,
+      { mode: 0o755 },
+    );
+    const r = spawnSync('bash', [PROVA], {
+      cwd: pasta,
+      env: ambiente({ BRABO_COMPOSE_FILE: compose }, `${bin}:${process.env.PATH ?? ''}`),
+      encoding: 'utf8',
+    });
+    expect(r.status, saidaDe(r)).not.toBe(0);
+    expect(r.stderr).toContain('erro de mentira do compose');
+    expect(r.stderr).toContain('não pôde ser lido');
+    expect(r.stderr).not.toContain("não tem serviço 'backup'");
   });
 
   it('o install.sh entrega o .env da instalação à prova', () => {
