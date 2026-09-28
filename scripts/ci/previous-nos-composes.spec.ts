@@ -23,14 +23,13 @@ import { arquivos, ler } from '../docs/fontes.mjs';
  * `_PREVIOUS` definida é rotação EM ANDAMENTO (a api avisa no log por isso), e
  * um default preenchido deixaria toda instalação eternamente no meio de uma.
  *
- * `deploy/k8s/` fica FORA deste teste, e NÃO por estar resolvido: os Pods leem
- * `envFrom: brabo-secrets`, que o `ExternalSecret`
- * (`deploy/k8s/base/common/externalsecrets.yaml`) materializa só com as chaves
- * que LISTA — e uma entrada de `data` cuja propriedade não existe no provider
- * reprova a sincronização do Secret inteiro. Como a `_PREVIOUS` ausente é o
- * estado NORMAL, listá-la ali quebraria todo cluster fora de rotação. Como ela
- * chega ao Pod (outro Secret opcional, `dataFrom`, ...) é decisão sobre o
- * secret store, declarada aberta no runbook.
+ * `deploy/k8s/` tem o seu bloco no fim, com OUTRA pergunta (AT-220). Lá não há
+ * `environment:` por variável: os Pods leem `envFrom: brabo-secrets`, e o
+ * `ExternalSecret` (`deploy/k8s/base/common/externalsecrets.yaml`) puxa o
+ * objeto INTEIRO do store por `dataFrom.extract` — é assim que a `_PREVIOUS`
+ * entra quando existe. Listá-la em `data:` quebraria todo cluster fora de
+ * rotação (propriedade ausente reprova a sincronização do Secret inteiro), e é
+ * isso que o bloco reprova, junto com o `extract` sumir.
  */
 
 const COMPOSES = [
@@ -162,5 +161,97 @@ describe('variáveis `_PREVIOUS` × `environment:` dos composes (RN-595)', () =>
         ).toEqual([]);
       });
     }
+  }
+});
+
+/**
+ * O lado Kubernetes (AT-220). A pergunta muda: não é "a variável está no
+ * `environment:`", é "o Secret que os Pods leem PODE carregar uma `_PREVIOUS`
+ * que só existe durante a rotação". O ESO não tem chave opcional em `data:`,
+ * então a única forma é o `ExternalSecret` puxar o objeto inteiro do store
+ * (`dataFrom.extract`) — e nenhuma `_PREVIOUS` pode estar em `data:`, onde a
+ * ausência (o estado normal) derrubaria a sincronização do Secret inteiro.
+ */
+const EXTERNAL_SECRET = 'deploy/k8s/base/common/externalsecrets.yaml';
+const DEPLOYMENTS_DO_K8S: Record<string, string> = {
+  api: 'deploy/k8s/base/api/deployment.yaml',
+  engine: 'deploy/k8s/base/engine/deployment.yaml',
+  // O broker não tem Deployment no k8s, de propósito (ADR 0162).
+};
+
+type ExternalSecret = {
+  kind?: string;
+  spec?: {
+    target?: { name?: string };
+    data?: { secretKey?: string }[];
+    dataFrom?: { extract?: { key?: string } }[];
+  };
+};
+
+function externalSecretDoBrabo(): ExternalSecret {
+  const doc = parse(ler(EXTERNAL_SECRET)) as ExternalSecret;
+  if (
+    doc?.kind !== 'ExternalSecret' ||
+    doc.spec?.target?.name !== 'brabo-secrets'
+  ) {
+    throw new Error(
+      `${EXTERNAL_SECRET}: não achei o ExternalSecret de \`brabo-secrets\`. Se ` +
+        'o arquivo mudou de forma, atualize este teste.',
+    );
+  }
+  return doc;
+}
+
+describe('variáveis `_PREVIOUS` × ExternalSecret do k8s (RN-595, AT-220)', () => {
+  it('o ExternalSecret puxa o objeto inteiro do store por `dataFrom.extract`', () => {
+    const extraidos = (externalSecretDoBrabo().spec?.dataFrom ?? []).map(
+      (d) => d.extract?.key,
+    );
+    expect(
+      extraidos,
+      'Sem `dataFrom.extract`, o `brabo-secrets` só carrega as chaves listadas ' +
+        'em `data:` — e a `_PREVIOUS` não pode ser listada ali. A rotação sem ' +
+        'downtime no cluster volta a ser troca seca (AT-220).',
+    ).toContain('brabo');
+  });
+
+  it('nenhuma `_PREVIOUS` está em `data:`, onde a ausência derrubaria o Secret', () => {
+    const emData = (externalSecretDoBrabo().spec?.data ?? [])
+      .map((d) => d.secretKey ?? '')
+      .filter((k) => k.endsWith('_PREVIOUS'));
+    expect(
+      emData,
+      'Entrada de `data:` cuja propriedade falta no provider reprova a ' +
+        'sincronização do Secret INTEIRO, e `_PREVIOUS` ausente é o estado ' +
+        'normal fora de rotação. Ela chega pelo `dataFrom.extract`.',
+    ).toEqual([]);
+  });
+
+  for (const [servico, caminho] of Object.entries(DEPLOYMENTS_DO_K8S)) {
+    it(`${caminho}: \`${servico}\` lê \`brabo-secrets\` inteiro por \`envFrom\``, () => {
+      // Precondição: o serviço LÊ alguma `_PREVIOUS`, senão o teste é vazio.
+      expect(lidasPor(servico).size).toBeGreaterThan(0);
+      const doc = parse(ler(caminho)) as {
+        spec?: {
+          template?: {
+            spec?: {
+              containers?: {
+                envFrom?: { secretRef?: { name?: string } }[];
+              }[];
+            };
+          };
+        };
+      };
+      const containers = doc?.spec?.template?.spec?.containers ?? [];
+      const comOSecret = containers.filter((c) =>
+        (c.envFrom ?? []).some((e) => e.secretRef?.name === 'brabo-secrets'),
+      );
+      expect(
+        comOSecret.length,
+        `${caminho}: nenhum container faz \`envFrom: brabo-secrets\`. A ` +
+          '`_PREVIOUS` que o `dataFrom.extract` põe no Secret não chegaria ao ' +
+          'processo.',
+      ).toBeGreaterThan(0);
+    });
   }
 });

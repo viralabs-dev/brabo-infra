@@ -440,8 +440,14 @@ kubectl -n brabo-db create secret generic brabo-pg-credentials \
 # nunca aqui: o ESO parava em "property NEO4J_PASSWORD does not exist", o
 # `brabo-secrets` não nascia e todo pod do namespace ficava em
 # CreateContainerConfigError. Quem mediu foi a segunda rodada de
-# `.github/workflows/propriedades.yml` — a lista abaixo tem de cobrir TODA
-# `property` de base/common/externalsecrets.yaml.
+# `.github/workflows/propriedades.yml`. Desde a AT-220 o ExternalSecret puxa
+# este objeto INTEIRO (`dataFrom.extract`), então uma chave esquecida aqui não
+# derruba mais a sincronização: o `brabo-secrets` nasce sem ela e quem acusa é
+# o consumidor (secretKeyRef em CreateContainerConfigError, api/engine
+# recusando o boot). A lista abaixo continua sendo o inventário das chaves
+# OBRIGATÓRIAS — e tudo o que entrar aqui vira variável de api, engine,
+# migrações e backup. As `_PREVIOUS` NÃO entram: só existem durante uma
+# rotação (docs/runbook.md, "Auth key rotation").
 kubectl -n brabo create secret generic brabo \
   --from-literal=DATABASE_URL="${DATABASE_URL}" \
   --from-literal=SECRET_KEY_BASE="$(openssl rand -hex 32)" \
