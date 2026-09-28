@@ -332,10 +332,6 @@ services:
       SESSION_CONVERSATION_IDLE_TIMEOUT_MS: ${SESSION_CONVERSATION_IDLE_TIMEOUT_MS:-28800000}
       TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
       SECOPS_SCAN_TIMEOUT_MS: ${SECOPS_SCAN_TIMEOUT_MS:-180000}
-      # Agentes de fundo desligados por default AQUI (não em dev): este compose
-      # existe pra validar as imagens, e Psicólogo/Anamnese começariam a
-      # consumir LLM sem provider configurado.
-      #
       # As quatro `START_*` são CHAVES DE BOOT (decidem se o tick é agendado);
       # as `*_ENABLED` são as flags de PRODUTO (RN-115/RN-117), que decidem se
       # uma rodada NOVA pode acontecer — exercitar a Anamnese exige as DUAS em
@@ -344,8 +340,30 @@ services:
       # instalação era inerte, a mesma classe da RN-540. Elas repetem o
       # default do `runtime.exs`: a linha existe para EXISTIR o caminho de
       # virar a flag, não para mudar o que já valia.
-      START_OUTBOX_DRAIN: ${START_OUTBOX_DRAIN:-false}
-      START_ANAMNESE: ${START_ANAMNESE:-false}
+      #
+      # As duas de cima repetem AQUI o `true` do código, e DIVERGEM do compose
+      # de produção (`docker-compose.prod.yml`, que as desliga) DE PROPÓSITO
+      # (AT-219). Este arquivo nasceu copiando o bloco dele, com o motivo dele
+      # ("existe pra validar as imagens"), e o motivo não vale aqui: isto é uma
+      # INSTALAÇÃO de uso, não uma validação de imagem.
+      #
+      # - `START_OUTBOX_DRAIN` NÃO é só "o Psicólogo via outbox". Ela agenda o
+      #   `OutboxDrainWorker` — o ÚNICO consumidor dos eventos `session`/
+      #   `task`/`container` que a api grava no outbox — e, junto, a poda de
+      #   worktrees órfãos e a adoção de sessões sem dono
+      #   (`Engine.Application`). Desligada numa instalação de uma máquina,
+      #   NINGUÉM drenava: sessão encerrada pela api não parava o processo nem
+      #   os conversacionais dela (RN-581), e o dev agent que esperava uma
+      #   decisão (`task.action_settled`), um gate, a PR ou o container chegar
+      #   em `running` (RN-502) nunca era acordado. O Psicólogo NÃO volta com
+      #   ela: `Outbox.Drain` só o enfileira com `PSYCHOLOGIST_ENABLED=true`.
+      # - `START_ANAMNESE` só decide se o `kickoff/0` do tick é CHAMADO. Com
+      #   `ANAMNESE_ENABLED=false` (a pausa de produto, que segue valendo) o
+      #   `kickoff/0` não agenda job nenhum e `perform/1` não reagenda: nenhuma
+      #   rodada e nenhum token. Ligar a Anamnese continua sendo UMA variável
+      #   só, a de produto, sem a armadilha de a chave de boot estar desligada.
+      START_OUTBOX_DRAIN: ${START_OUTBOX_DRAIN:-true}
+      START_ANAMNESE: ${START_ANAMNESE:-true}
       START_MODEL_SYNC: ${START_MODEL_SYNC:-true}
       START_GATE_RESCUE: ${START_GATE_RESCUE:-true}
       ANAMNESE_ENABLED: ${ANAMNESE_ENABLED:-false}

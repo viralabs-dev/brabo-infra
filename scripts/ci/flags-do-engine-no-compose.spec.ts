@@ -39,12 +39,20 @@ import { ler } from '../docs/fontes.mjs';
  * Nos TRÊS arquivos a flag tem de estar mapeada COM o default do código — um
  * default divergente faria o compose decidir produto por baixo do
  * `runtime.exs`. A exceção é DECLARADA, por arquivo, em
- * `DEFAULTS_DIVERGENTES_DECLARADOS`: os composes de PRODUÇÃO e de INSTALAÇÃO
- * desligam de propósito os dois agentes de fundo (`START_OUTBOX_DRAIN` e
- * `START_ANAMNESE` em `false` contra o `true` do código, com o motivo escrito
- * ao lado no próprio compose), e cobrar igualdade ali reprovaria uma decisão
- * consciente. Até a AT-202 a igualdade só valia no de dev e o de instalação nem
- * entrava no teste — foi assim que seis flags ficaram de fora dele.
+ * `DEFAULTS_DIVERGENTES_DECLARADOS`: o compose de PRODUÇÃO desliga de
+ * propósito os dois agentes de fundo (`START_OUTBOX_DRAIN` e `START_ANAMNESE`
+ * em `false` contra o `true` do código, com o motivo escrito ao lado no
+ * próprio compose), e cobrar igualdade ali reprovaria uma decisão consciente.
+ * Até a AT-202 a igualdade só valia no de dev e o de instalação nem entrava no
+ * teste — foi assim que seis flags ficaram de fora dele.
+ *
+ * O de INSTALAÇÃO já esteve nessa lista, com o motivo "mesma decisão do
+ * compose de produção, de onde a instalação herdou o bloco" — e o motivo era a
+ * herança, não uma decisão. A AT-219 o tirou dela: numa instalação de uma
+ * máquina, `START_OUTBOX_DRAIN=false` deixava o outbox sem NENHUM consumidor
+ * (sessão encerrada não parava, dev agent esperando decisão nunca acordava), e
+ * as duas voltaram ao default do código. Quem voltar a desligá-las ali terá de
+ * declarar a divergência de novo, com um motivo que não seja a cópia.
  *
  * `deploy/k8s/` fica FORA de propósito, e não por esquecimento: lá não existe
  * a camada que quebra: um Deployment/ConfigMap não intercepta nada — a
@@ -71,12 +79,6 @@ export const DEFAULTS_DIVERGENTES_DECLARADOS: Readonly<
       'agente de fundo (Psicólogo via outbox) desligado: gastaria LLM sem provider configurado',
     START_ANAMNESE:
       'agente de fundo (Anamnese periódica) desligado: gastaria LLM sem provider configurado',
-  },
-  [COMPOSE_INSTALL]: {
-    START_OUTBOX_DRAIN:
-      'mesma decisão do compose de produção, de onde a instalação herdou o bloco',
-    START_ANAMNESE:
-      'mesma decisão do compose de produção, de onde a instalação herdou o bloco',
   },
 };
 
