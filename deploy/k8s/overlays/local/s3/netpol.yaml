@@ -1,26 +1,29 @@
-# Rede do MinIO local (Fase 5, item 6).
+# Rede do destino S3 local (Fase 5, item 6; servidor trocado no ADR 0169).
 #
-# A baseline nega tudo, então sem estas duas regras o MinIO sobe e o backup
+# A baseline nega tudo, então sem estas duas regras o S3 sobe e o backup
 # falha com timeout — um modo de falha que parece problema de credencial e não
 # é. Em staging/prod o destino é externo e quem libera a saída é a
 # `allow-external-egress` do overlay correspondente.
+#
+# A porta é a do POD (NetworkPolicy não vê a do Service), e é 9000 porque o
+# gateway do SeaweedFS sobe com `-s3.port=9000`. Mestre, volume e filer
+# escutam nas portas próprias DENTRO do pod e ficam de fora daqui: ninguém de
+# fora do pod fala com eles.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-minio-ingress
+  name: allow-s3-local-ingress
   labels:
     app.kubernetes.io/part-of: brabo
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: minio
+      app.kubernetes.io/name: s3-local
   policyTypes:
     - Ingress
   ingress:
-    # Só backup e restore falam com o MinIO. O console (9001) fica de fora de
-    # propósito: quem quiser olhar usa `kubectl port-forward`, que não passa
-    # por NetworkPolicy.
+    # Só backup e restore falam com o S3.
     - from:
         - podSelector:
             matchExpressions:
@@ -34,7 +37,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-backup-minio-egress
+  name: allow-backup-s3-local-egress
   labels:
     app.kubernetes.io/part-of: brabo
 spec:
@@ -49,7 +52,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: minio
+              app.kubernetes.io/name: s3-local
       ports:
         - protocol: TCP
           port: 9000

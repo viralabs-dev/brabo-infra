@@ -350,7 +350,7 @@ kubectl -n brabo create secret generic brabo \
   --from-literal=AUTH_TOKEN_PEPPER="$(openssl rand -hex 32)" \
   --from-literal=BRABO_SERVICE_TOKEN="$(openssl rand -hex 32)" \
   --from-literal=RELEASE_COOKIE="$(openssl rand -hex 24)" \
-  --from-literal=BACKUP_S3_ENDPOINT="http://minio.brabo.svc.cluster.local:9000" \
+  --from-literal=BACKUP_S3_ENDPOINT="http://s3-local.brabo.svc.cluster.local:9000" \
   --from-literal=BACKUP_S3_BUCKET=brabo-backups \
   --from-literal=BACKUP_S3_ACCESS_KEY=brabo-backup \
   --from-literal=BACKUP_S3_SECRET_KEY="$(openssl rand -hex 20)" \
@@ -385,8 +385,8 @@ info "esperando os workloads ficarem Ready"
 kubectl -n brabo rollout status deployment/api --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/engine --timeout=300s >/dev/null
 kubectl -n brabo rollout status deployment/web --timeout=300s >/dev/null
-kubectl -n brabo rollout status deployment/minio --timeout=300s >/dev/null
-ok "api, engine, web e MinIO Ready"
+kubectl -n brabo rollout status deployment/s3-local --timeout=300s >/dev/null
+ok "api, engine, web e o S3 local Ready"
 
 # O seed roda DEPOIS dos rollouts, e não antes: o último passo dele ativa uma
 # sessão, o que faz a api chamar o engine por HTTP. Rodando antes, aquele passo
@@ -524,10 +524,10 @@ ok "usuário do smoke pronto (login verificado)"
 # EndpointSlice, a criação do bucket falhava aqui — e a mensagem do cliente S3
 # fala em credencial, que manda quem investiga procurar chave errada em vez de
 # corrida de rede.
-info "criando o bucket de backup no MinIO"
+info "criando o bucket de backup no S3 local"
 
 for _ in $(seq 1 30); do
-  if [[ -n "$(kubectl -n brabo get endpoints minio -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null)" ]]; then
+  if [[ -n "$(kubectl -n brabo get endpoints s3-local -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null)" ]]; then
     break
   fi
   sleep 2
@@ -545,7 +545,7 @@ criar_bucket() {
   # Nome único por tentativa mesmo assim: com `--rm` a remoção é assíncrona, e
   # reusar o nome faz a chamada seguinte falhar com "already exists" — um erro
   # que se disfarça de falha de conexão no log.
-  kubectl -n brabo run "minio-mb-$$-${1}" \
+  kubectl -n brabo run "s3-mb-$$-${1}" \
     --rm --attach --restart=Never --quiet \
     --image=brabo-backup:prod \
     --image-pull-policy=IfNotPresent \

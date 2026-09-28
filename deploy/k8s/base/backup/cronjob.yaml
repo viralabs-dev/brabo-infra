@@ -1,6 +1,6 @@
 # Backup do Postgres para destino S3-compatível (Fase 5, item 6).
 #
-# O destino é configurado por ambiente: no overlay local é um MinIO dentro do
+# O destino é configurado por ambiente: no overlay local é um SeaweedFS dentro do
 # cluster; em staging/prod, o bucket real. O manifesto é o mesmo nos dois — só
 # as variáveis `BACKUP_S3_*` mudam, e elas vêm do Secret que o External Secrets
 # materializa, nunca de manifesto plano.
