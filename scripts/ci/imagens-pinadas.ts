@@ -1,6 +1,7 @@
 /**
  * imagens-pinadas — reprova qualquer imagem de terceiro presa a uma referência
- * MUTÁVEL (tag) em vez de um digest, e todo digest sem a tag em comentário.
+ * MUTÁVEL (tag) em vez de um digest, todo digest sem a tag INLINE, e todo
+ * comentário de tag que diverge dela.
  *
  * ## É o IRMÃO de `actions-pinadas.ts`, não uma extensão dele
  *
@@ -12,32 +13,37 @@
  * O que muda é ONDE quem move a tag executa. Numa action, no runner que tem o
  * checkout e as credenciais. Numa imagem, em três lugares piores: dentro da
  * imagem que publicamos no GHCR (as bases dos `FROM`), ao lado do Postgres de
- * quem instalou o produto (`docker-compose.install.yml`), e — desde sempre e
- * sem ninguém ter notado — como `services:` de um job do CI
- * (`ci.yml`/`golden-set-rag.yml`), que é literalmente o runner que a regra das
- * actions existe para proteger.
+ * quem instalou o produto (`docker-compose.install.yml`), e como `services:`
+ * de um job do CI (`ci.yml`/`golden-set-*.yml`), que é literalmente o runner
+ * que a regra das actions existe para proteger.
  *
  * São dois checks e não um só porque são duas perguntas: `uses:` mora em YAML
  * de workflow com uma sintaxe; `image:`/`imageName:`/`FROM` moram em compose,
- * em manifest do kustomize e em Dockerfile, com outras três. Enfiar as duas na
- * mesma função faz um check que responde mal a ambas.
+ * em manifest do kustomize e em Dockerfile, com outras três.
  *
- * ## O comentário de tag é OBRIGATÓRIO, pelo mesmo motivo de lá
+ * ## A forma: `imagem:tag@sha256:<índice>` — a tag DENTRO da referência
  *
- * `sha256:22ec5cd0…` não diz a ninguém que aquilo é o Neo4j 5.26. Digest sem a
- * tag ao lado é pin que ninguém audita e ninguém sabe atualizar.
+ * Desde o ADR 0178 (sobre o ADR 0159), a tag mora na própria referência, antes
+ * do digest. Até ali ela morava num comentário (`imagem@sha256:…  # tag`, e em
+ * Dockerfile na linha de cima), e a medição de 27/09 da AT-139 mostrou o preço:
+ * o Dependabot não lê comentário em formato nenhum, e um pin só de digest ele
+ * atualiza para o digest da `latest` — o comentário ficaria mentindo com o lint
+ * verde. Com a tag inline, o Docker e o Dependabot leem a MESMA tag que um
+ * humano lê, e o digest continua sendo quem decide o conteúdo (com os dois, o
+ * Docker puxa pelo digest).
  *
- * **Em Dockerfile ele fica na linha DE CIMA, e isso não é gosto.** O parser do
- * Docker só reconhece `#` no INÍCIO da linha: `FROM alpine@sha256:… # 3.20`
- * não é um `FROM` com comentário, é um `FROM` com três argumentos, e o build
- * morre em `FROM requires either one or three arguments`. Descoberto do jeito
- * certo — o `bake` do job `images` reprovou; o `hadolint`, que tem parser
- * próprio, tinha passado.
+ * Três consequências para o check:
  *
- * O comentário é UM TOKEN, sem espaço, nos dois formatos. É o que separa a tag
- * da PROSA que já mora acima de quase todo `FROM` deste repositório — sem
- * isso, "tem um comentário em cima" seria satisfeito por qualquer parágrafo, e
- * a chave de "mesma tag, mesmo digest" deixaria de valer alguma coisa.
+ * - digest SEM tag inline reprova, mesmo com a tag num comentário — é a forma
+ *   antiga, e é a que o bot atualizaria para a `latest`;
+ * - comentário de tag continua PERMITIDO, mas só se disser a mesma coisa: um
+ *   comentário que é UMA tag (um token com dígito) diferente da inline reprova,
+ *   porque é justamente o que ficaria para trás quando alguém (ou o bot) sobe a
+ *   referência. Em YAML ele é o de fim de linha; em Dockerfile, a linha de cima;
+ * - em Dockerfile, comentário no FIM da linha do `FROM` continua reprovado: o
+ *   parser do Docker só reconhece `#` no INÍCIO da linha, e `FROM x # y` morre
+ *   em `FROM requires either one or three arguments` (o `hadolint`, que tem
+ *   parser próprio, passava — ADR 0159).
  *
  * ## O que este check NÃO cobra, e por quê
  *
@@ -54,7 +60,7 @@
  *   não uma release congelada — cobrar um digest literal ali brigaria com o
  *   mecanismo em vez de reforçá-lo.
  * - **Referência com interpolação** (`${BRABO_API_IMAGE:?…}`). É o mesmo caso
- *   visto do outro lado: o `install.sh` grava as quatro no `.env` já por
+ *   visto do outro lado: o `install.sh` grava as imagens no `.env` já por
  *   digest, e um literal não cabe numa variável.
  * - **Estágio de build multi-stage** (`FROM deps AS build`, `FROM scratch`).
  *   Não é imagem de registry.
@@ -62,14 +68,13 @@
  * A lista de exceções é por NOME e falha fechado: imagem de terceiro nova
  * nunca casa com `brabo-`, então nasce cobrada.
  *
- * ## O terceiro motivo: digest divergente para a mesma tag
+ * ## O quarto motivo: digest divergente para a mesma tag
  *
  * `golden-set-rag.yml` promete em comentário rodar a "MESMA versão pinada de
  * docker/docker-compose.yml", porque o piso do golden-set é chaveado por
- * modelo e não por ambiente. Com tag, isso era uma promessa; com digest, vira
- * verificável — a mesma imagem com a mesma tag tem de ter o mesmo digest em
- * todo lugar. É a mesma família do passo "Versões dos scanners batem com o
- * Dockerfile.prod" do job `lint`.
+ * modelo e não por ambiente. Com digest isso é verificável — a mesma imagem
+ * com a mesma tag tem de ter o mesmo digest em todo lugar. A chave é a tag
+ * INLINE, que agora é a única fonte dela.
  *
  * Sintaxe apagável apenas (o Node executa este `.ts` por type stripping).
  */
@@ -84,10 +89,14 @@ export interface Violacao {
   imagem: string;
   motivo:
     | 'referência mutável'
-    | 'digest sem a tag em comentário'
+    | 'digest sem a tag inline'
+    | 'comentário diverge da tag inline'
+    | 'comentário no fim do FROM'
     | 'digest divergente para a mesma tag';
   /** Só em `digest divergente`: onde o primeiro digest daquela tag foi visto. */
   primeiraOcorrencia?: string;
+  /** Só em `comentário diverge`: a tag que o comentário afirma. */
+  tagDoComentario?: string;
 }
 
 export interface Arquivo {
@@ -108,12 +117,17 @@ const CHAVE_YAML = /^\s*(?:-\s+)?(?:image|imageName):\s*(\S+)(?:\s+(#.*?))?\s*$/
  * OPCIONAL — que é reconhecido só para poder ser REPROVADO. O parser do Docker
  * não o aceita, e casar com essa linha é o que permite dizer isso.
  */
-const FROM = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?(?:\s+#.*?)?\s*$/i;
+const FROM = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?(\s+#.*?)?\s*$/i;
 
-/** Um comentário que é UMA tag: `#` mais um token, e nada mais. */
-const COMENTARIO_DE_TAG = /^#\s*(\S+)$/;
+/**
+ * Um comentário que AFIRMA uma tag: `#` mais UM token com pelo menos um dígito
+ * (`# 5.26-community`, `# pg16`, `# v1.11.0`). Prosa (mais de um token) e uma
+ * palavra solta sem dígito (`# runtime`) não afirmam versão nenhuma, e não são
+ * julgadas — o check não é revisor de prosa.
+ */
+const COMENTARIO_DE_TAG = /^#\s*(\S*\d\S*)$/;
 
-/** A tag de um comentário bruto (`'# 5.26'` -> `'5.26'`); prosa devolve `undefined`. */
+/** A tag afirmada por um comentário bruto (`'# 5.26'` -> `'5.26'`); prosa devolve `undefined`. */
 function tagDoComentario(bruto: string | undefined): string | undefined {
   if (bruto === undefined) return undefined;
   return COMENTARIO_DE_TAG.exec(bruto.trim())?.[1];
@@ -142,19 +156,27 @@ function semAspas(valor: string): string {
   return valor;
 }
 
-/** A parte antes do `@` — `neo4j@sha256:…` e `neo4j:5.26` viram `neo4j`. */
-function nomeDaImagem(referencia: string): string {
+/**
+ * Separa `registry:5000/ns/nome:tag@sha256:…` em nome e tag. O `:` da tag é o
+ * que vem DEPOIS da última barra — o de antes é porta de registry.
+ */
+export function partesDaReferencia(referencia: string): { nome: string; tag: string | undefined } {
   const arroba = referencia.indexOf('@');
   const semDigest = arroba === -1 ? referencia : referencia.slice(0, arroba);
   const barra = semDigest.lastIndexOf('/');
   const doisPontos = semDigest.indexOf(':', barra + 1);
-  return doisPontos === -1 ? semDigest : semDigest.slice(0, doisPontos);
+  if (doisPontos === -1) return { nome: semDigest, tag: undefined };
+  const tag = semDigest.slice(doisPontos + 1);
+  return { nome: semDigest.slice(0, doisPontos), tag: tag.length > 0 ? tag : undefined };
 }
 
 interface Referencia {
   linha: number;
   referencia: string;
-  comentario: string | undefined;
+  /** A tag que um comentário AFIRMA (fim de linha no YAML, linha de cima no Dockerfile). */
+  tagAfirmada: string | undefined;
+  /** Dockerfile com `# …` no fim da linha do `FROM` — quebra o build. */
+  comentarioNoFrom: boolean;
 }
 
 /** Toda referência de imagem de um arquivo, já sem o que não é de registry. */
@@ -189,12 +211,11 @@ function referenciasDe(arquivo: Arquivo): Referencia[] {
     if (IMAGEM_DO_PRODUTO.test(referencia)) return;
 
     // Em YAML o comentário é de fim de linha; em Dockerfile ele é a linha de
-    // CIMA, porque o parser do Docker não conhece comentário inline — um
-    // comentário no fim do `FROM` é ignorado aqui de propósito, e a referência
-    // cai como "digest sem a tag", que é o que ela é.
-    const comentario = tagDoComentario(dockerfile ? linhas[indice - 1] : achado[2]);
+    // CIMA, porque o parser do Docker não conhece comentário inline.
+    const tagAfirmada = tagDoComentario(dockerfile ? linhas[indice - 1] : achado[2]);
+    const comentarioNoFrom = dockerfile && achado[3] !== undefined;
 
-    achadas.push({ linha: indice + 1, referencia, comentario });
+    achadas.push({ linha: indice + 1, referencia, tagAfirmada, comentarioNoFrom });
   });
 
   return achadas;
@@ -206,30 +227,38 @@ function referenciasDe(arquivo: Arquivo): Referencia[] {
  */
 export function verificarImagens(arquivos: readonly Arquivo[]): Violacao[] {
   const violacoes: Violacao[] = [];
-  /** `<nome>@<tag do comentário>` -> `<digest>` e onde ele apareceu primeiro. */
+  /** `<nome>:<tag inline>` -> `<digest>` e onde ele apareceu primeiro. */
   const digestPorTag = new Map<string, { digest: string; onde: string }>();
 
   for (const arquivo of arquivos) {
-    for (const { linha, referencia, comentario } of referenciasDe(arquivo)) {
+    for (const { linha, referencia, tagAfirmada, comentarioNoFrom } of referenciasDe(arquivo)) {
       const onde = `${arquivo.nome}:${linha}`;
+      const base = { arquivo: arquivo.nome, linha, imagem: referencia };
 
-      if (!DIGEST.test(referencia)) {
-        violacoes.push({ arquivo: arquivo.nome, linha, imagem: referencia, motivo: 'referência mutável' });
+      if (comentarioNoFrom) {
+        violacoes.push({ ...base, motivo: 'comentário no fim do FROM' });
         continue;
       }
 
-      if (comentario === undefined || comentario.length === 0) {
-        violacoes.push({
-          arquivo: arquivo.nome,
-          linha,
-          imagem: referencia,
-          motivo: 'digest sem a tag em comentário',
-        });
+      if (!DIGEST.test(referencia)) {
+        violacoes.push({ ...base, motivo: 'referência mutável' });
+        continue;
+      }
+
+      const { nome, tag } = partesDaReferencia(referencia);
+
+      if (tag === undefined) {
+        violacoes.push({ ...base, motivo: 'digest sem a tag inline' });
+        continue;
+      }
+
+      if (tagAfirmada !== undefined && tagAfirmada !== tag) {
+        violacoes.push({ ...base, motivo: 'comentário diverge da tag inline', tagDoComentario: tagAfirmada });
         continue;
       }
 
       const digest = referencia.slice(referencia.indexOf('@') + 1);
-      const chave = `${nomeDaImagem(referencia)}@${comentario}`;
+      const chave = `${nome}:${tag}`;
       const visto = digestPorTag.get(chave);
 
       if (visto === undefined) {
@@ -238,13 +267,7 @@ export function verificarImagens(arquivos: readonly Arquivo[]): Violacao[] {
       }
 
       if (visto.digest !== digest) {
-        violacoes.push({
-          arquivo: arquivo.nome,
-          linha,
-          imagem: referencia,
-          motivo: 'digest divergente para a mesma tag',
-          primeiraOcorrencia: visto.onde,
-        });
+        violacoes.push({ ...base, motivo: 'digest divergente para a mesma tag', primeiraOcorrencia: visto.onde });
       }
     }
   }
@@ -255,13 +278,16 @@ export function verificarImagens(arquivos: readonly Arquivo[]): Violacao[] {
 /** A mensagem que ensina o que fazer, não só o que está errado. */
 export function mensagemDeViolacao(violacao: Violacao): string {
   const onde = `${violacao.arquivo}:${violacao.linha}`;
+  const forma = '`<imagem>:<tag>@sha256:<digest do índice>`';
 
-  // Dockerfile não tem comentário de fim de linha — ver o docblock.
-  const ondePorOComentario = ehDockerfile(violacao.arquivo)
-    ? 'numa linha de comentário LOGO ACIMA do `FROM` (`# <tag>`, um token só) — ' +
-      'o parser do Docker não conhece comentário de fim de linha, e `FROM x # y` ' +
-      'morre em "FROM requires either one or three arguments"'
-    : 'num comentário ao lado (`# <tag>`, um token só)';
+  if (violacao.motivo === 'comentário no fim do FROM') {
+    return (
+      `${onde}: \`${violacao.imagem}\` tem um comentário no fim da linha do \`FROM\`. ` +
+      'O parser do Docker só reconhece `#` no INÍCIO da linha: isso é um `FROM` com ' +
+      'três argumentos, e o build morre em "FROM requires either one or three arguments". ' +
+      `A tag vai DENTRO da referência (${forma}).`
+    );
+  }
 
   if (violacao.motivo === 'referência mutável') {
     return (
@@ -269,15 +295,25 @@ export function mensagemDeViolacao(violacao: Violacao): string {
       'imagem pode reapontar para outro conteúdo sem aviso. Resolva a tag com ' +
       '`docker buildx imagetools inspect <imagem>:<tag> --format ' +
       "'{{.Manifest.Digest}}'\", use o digest do ÍNDICE para não perder o " +
-      `multi-arch, e escreva a tag ${ondePorOComentario}.`
+      `multi-arch, e escreva ${forma} — a tag fica, o digest decide.`
     );
   }
 
-  if (violacao.motivo === 'digest sem a tag em comentário') {
+  if (violacao.motivo === 'digest sem a tag inline') {
     return (
       `${onde}: \`${violacao.imagem}\` está preso por digest, mas sem a tag ` +
-      `${ondePorOComentario}. Sem ela ninguém sabe que versão é esse hash, nem ` +
-      'como atualizá-lo.'
+      `DENTRO da referência (${forma}, ADR 0178). Sem ela ninguém sabe que versão ` +
+      'é esse hash, e o Dependabot — que não lê comentário — atualizaria o pin ' +
+      'para o digest da `latest`.'
+    );
+  }
+
+  if (violacao.motivo === 'comentário diverge da tag inline') {
+    return (
+      `${onde}: \`${violacao.imagem}\` tem um comentário que afirma a tag ` +
+      `\`${violacao.tagDoComentario ?? '?'}\`, diferente da que está na referência. ` +
+      'A tag inline é a fonte: apague o comentário ou faça-o dizer o mesmo — ' +
+      'comentário que sobra de uma subida de versão é o que mente com o lint verde.'
     );
   }
 
@@ -345,7 +381,7 @@ function principal(): void {
     process.exit(1);
   }
 
-  console.log('  ✓ todas presas por digest, com a tag em comentário.');
+  console.log('  ✓ todas presas por digest, com a tag inline.');
 }
 
 if (process.argv[1]?.endsWith('imagens-pinadas.ts')) {
