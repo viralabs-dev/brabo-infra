@@ -4,7 +4,7 @@
 # Makefile exists for what isn't JavaScript nor Elixir — bringing up the
 # cluster, applying manifests, validating. Doesn't duplicate package.json
 # on purpose.
-.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-mutacao test-restore-compose test-reprojecao test-reprojecao-k8s test-reprojecao-artefatos-k8s k8s-validate k8s-logs k8s-down imagens-do-release
+.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-mutacao test-restore-compose test-reprojecao test-reprojecao-k8s test-reprojecao-artefatos-k8s test-rotacao-chave-mestra-k8s k8s-validate k8s-logs k8s-down imagens-do-release
 
 SHELL := /usr/bin/env bash
 K8S := deploy/k8s
@@ -82,6 +82,15 @@ test-reprojecao-k8s: ## Same proof as test-reprojecao, inside the local cluster 
 # Its own project; depends on no other target.
 test-reprojecao-artefatos-k8s: ## Wipes an artifact file inside the cluster, reprojects it from the event log and compares it (needs `make deploy-local` first)
 	@bash $(K8S)/test-reprojecao-artefatos.sh
+
+# The master key rotation rehearsal (AT-146, BRB-010; RN-562/563): the three
+# steps of the runbook against the cluster — both keys published in the
+# `brabo` source Secret, ESO force-synced, api restarted, the image's
+# `node scripts/rewrap-deks.js`, the previous key removed and the api restarted
+# again — with every envelope checked to open at each step. It leaves the
+# cluster on the NEW key, so run it last.
+test-rotacao-chave-mestra-k8s: ## Rehearses the master key rotation (three runbook steps) inside the local cluster (needs `make deploy-local` first; leaves the cluster on a new key)
+	@bash $(K8S)/test-rotacao-chave-mestra.sh
 
 k8s-validate: ## Renders the overlays and validates them against the Kubernetes schema
 	@bash $(K8S)/validate.sh

@@ -16,6 +16,12 @@ name: Provas de propriedade (agendado)
 #
 #   make test-reprojecao-artefatos-k8s  deploy/k8s/test-reprojecao-artefatos.sh
 #
+# E, desde a AT-146 (BRB-010), o ENSAIO da rotação da chave mestra, que nunca
+# tinha rodado em ambiente real — o ÚLTIMO alvo, porque troca um segredo e
+# reinicia a api:
+#
+#   make test-rotacao-chave-mestra-k8s  deploy/k8s/test-rotacao-chave-mestra.sh
+#
 # E, desde a AT-126 (BRB-009), a prova DA prova: `make test-restore-mutacao`
 # quebra o restore de propósito (a origem ganha uma tabela que o dump não tem) e
 # reprova se o restore NÃO reprovar — "um verde não diz que a prova ainda
@@ -333,6 +339,22 @@ jobs:
           echo "| test-reprojecao-artefatos-k8s | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
           exit "${saida}"
 
+      # AT-146 (BRB-010): os três passos da rotação de `CREDENTIALS_MASTER_KEY`
+      # do runbook, pela fonte do `ExternalSecret`, com restart da api e o
+      # `rewrap-deks.js` da imagem. POR ÚLTIMO de propósito: troca a chave
+      # mestra do cluster e reinicia a api, e nenhum alvo deveria herdar isso.
+      # Não depende do verde dos outros, só do bootstrap.
+      - name: make test-rotacao-chave-mestra-k8s
+        id: rotacao_chave_mestra
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        timeout-minutes: 15
+        run: |
+          set -uo pipefail
+          inicio=$SECONDS
+          make test-rotacao-chave-mestra-k8s; saida=$?
+          echo "| test-rotacao-chave-mestra-k8s | $((SECONDS - inicio))s | ${saida} |" >> "$GITHUB_STEP_SUMMARY"
+          exit "${saida}"
+
       - name: Estado do cluster (só em falha)
         if: failure()
         run: |
@@ -377,6 +399,7 @@ jobs:
           MUTACAO: ${{ steps.mutacao.outcome }}
           REPROJECAO: ${{ steps.reprojecao.outcome }}
           REPROJECAO_ARTEFATOS: ${{ steps.reprojecao_artefatos.outcome }}
+          ROTACAO_CHAVE_MESTRA: ${{ steps.rotacao_chave_mestra.outcome }}
         run: |
           set -euo pipefail
           source scripts/ci/alarmar-prova.sh
@@ -389,6 +412,7 @@ jobs:
           alarmar 'make test-restore-mutacao' "${MUTACAO}" "${cluster}"
           alarmar 'make test-reprojecao-k8s' "${REPROJECAO}" "${cluster}"
           alarmar 'make test-reprojecao-artefatos-k8s' "${REPROJECAO_ARTEFATOS}" "${cluster}"
+          alarmar 'make test-rotacao-chave-mestra-k8s' "${ROTACAO_CHAVE_MESTRA}" "${cluster}"
 
   # AT-195: a MESMA prova do `make test-restore`, contra a instalação por
   # COMPOSE (ADR 0152) — `make test-restore-compose` dispara um backup real,
