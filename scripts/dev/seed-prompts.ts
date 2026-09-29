@@ -53,7 +53,9 @@ export interface TemplateComHash extends TemplateParseado {
 }
 
 /**
- * Extrai `name`/`version`/`body` de um arquivo `prompts/*.md`. O
+ * Extrai `name`/`version`/`body` de um arquivo `prompts/*.md`. O corpo é o
+ * texto entre o front-matter e a seção de documentação
+ * (`SECAO_DE_DOCUMENTACAO`), que nunca é semeada. O
  * front-matter é o bloco `---\n...\n---` no topo, YAML puro (a lib `yaml`
  * já é dependência do workspace `scripts`, sem precisar de `gray-matter` —
  * não há outra lib de front-matter em uso no repo). `sourceLabel` só entra
@@ -96,12 +98,34 @@ export function parseFrontMatter(raw: string, sourceLabel: string): TemplatePars
     );
   }
 
-  const body = bodyRaw.replace(/^\n+/, '').replace(/[ \t\r\n]+$/, '\n');
+  const body = corpoSemDocumentacao(bodyRaw)
+    .replace(/^\n+/, '')
+    .replace(/[ \t\r\n]+$/, '\n');
   if (body.trim() === '') {
     throw new Error(`${sourceLabel}: corpo do template está vazio depois do front-matter.`);
   }
 
   return { name, version, body };
+}
+
+/**
+ * O título da seção de DOCUMENTAÇÃO de cada `prompts/*.md` (AT-244). Tudo a
+ * partir dela é para quem LÊ o arquivo, nunca para o modelo: ela cita os
+ * mesmos `{{placeholders}}` do corpo, e os consumidores do engine trocam TODAS
+ * as ocorrências (`String.replace/3`) — semeada, a seção fazia o sumarizador
+ * receber a documentação e os turnos DUAS vezes.
+ *
+ * O corte é AQUI, no seeder, e não no render: há um render por consumidor
+ * (Psicólogo, Anamnese, `ContextManager`, identidade do UX), e o que é corpo é
+ * uma pergunta sobre o ARQUIVO, que só o seeder lê. A documentação continua no
+ * arquivo, em Markdown, ao lado do texto que ela explica.
+ */
+export const SECAO_DE_DOCUMENTACAO = '## Variáveis';
+
+function corpoSemDocumentacao(bodyRaw: string): string {
+  const linhas = bodyRaw.split('\n');
+  const inicio = linhas.findIndex((l) => l.replace(/\r$/, '').trimEnd() === SECAO_DE_DOCUMENTACAO);
+  return inicio === -1 ? bodyRaw : linhas.slice(0, inicio).join('\n');
 }
 
 function erroComoTexto(err: unknown): string {
