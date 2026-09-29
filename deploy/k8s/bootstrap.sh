@@ -552,11 +552,14 @@ kubectl -n brabo run seed-smoke --restart=Never --image="${API_IMAGE}" \
 # satisfeito por um pod que NUNCA rodou, e foi isso que deixou o bootstrap
 # anunciar "usuário do smoke pronto" com o seed em CreateContainerConfigError.
 #
-# O segundo é que o seed NÃO é idempotente, ao contrário do que este bloco
-# afirmava: `createWorkspace` não faz upsert, então uma segunda execução morre
-# em `workspaces_slug_unique` — o que acontece sempre que se reaproveita um
-# cluster com BRABO_KEEP_CLUSTER=1. Nesse caso o pod termina em erro e está
-# tudo certo: o usuário já existe desde a primeira vez.
+# O segundo foi o motivo de este bloco ter nascido tolerante: o seed JÁ FOI
+# não-idempotente — a segunda execução morria em `workspaces_slug_unique`, o
+# que acontecia sempre que se reaproveitava um cluster com
+# BRABO_KEEP_CLUSTER=1. Hoje ele É idempotente (`apps/api/src/db/seed.ts`
+# reaproveita workspace, projeto e sessão; ver a convenção no CLAUDE.md), então
+# num cluster reaproveitado o pod também termina `Succeeded`. Um pod em `Error`
+# deixou de ser o desfecho esperado do reaproveitamento e passou a ser defeito
+# do seed — e continua sendo o login, logo abaixo, quem decide (AT-212).
 #
 # AT-176: este wait durava SEMPRE 3m00s (9 execuções medidas) — a assinatura do
 # `--timeout=180s` estourando, não de trabalho. A hipótese (o seed não chama
@@ -571,11 +574,10 @@ kubectl -n brabo run seed-smoke --restart=Never --image="${API_IMAGE}" \
 # Neo4j que a NetworkPolicy não deixa o pod `migrate-api` alcançar — o ingress
 # do `neo4j` só admite `api` e `engine`).
 #
-# O `|| true` FICA, e por um motivo que não é esconder a falha: o pod pode
-# terminar em `Error` de forma legítima (cluster reaproveitado com
-# BRABO_KEEP_CLUSTER=1), e aí `kubectl wait` sai != 0 do mesmo jeito. Quem
-# decide se o seed deu certo é o login logo abaixo — que morre com `die` —, e
-# este bloco passa a DIZER o que viu em vez de calar.
+# O `|| true` FICA, e por um motivo que não é esconder a falha: o `wait` não é
+# o veredito. Quem decide se o seed deu certo é o login logo abaixo — que morre
+# com `die` —, e este bloco DIZ o que viu (duração, fase, fim do log) em vez de
+# calar.
 seed_wait_inicio="${SECONDS}"
 seed_wait_rc=0
 kubectl -n brabo wait --for=jsonpath='{.status.phase}'=Succeeded \

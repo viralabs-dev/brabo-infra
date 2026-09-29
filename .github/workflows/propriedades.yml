@@ -46,7 +46,9 @@ name: Provas de propriedade (agendado)
 # Falha vira ISSUE, uma por alvo, e a segunda falha do mesmo alvo vira
 # COMENTÁRIO na issue aberta — senão isto seria "um workflow vermelho por dia
 # que ninguém lia" (`.github/dependabot.yml`), e enxurrada de issues idênticas
-# ensina a ignorar (`tag-release.yml`).
+# ensina a ignorar (`tag-release.yml`). Desde a AT-212 a primeira rodada em que
+# o alvo PASSA fecha a issue dele, e só a rodada do ramo PADRÃO toca issue: a de
+# um `workflow_dispatch` numa branch reprova no próprio run e para aí.
 #
 # Desde a AT-195, um SEGUNDO job, `restore-compose`, roda noutro runner
 # `make test-restore-compose` contra o compose de produção (a instalação sem
@@ -63,10 +65,16 @@ on:
     - cron: '0 4 * * 0'
   workflow_dispatch:
 
-# Duas rodadas nunca disputam o mesmo runner... mas disputariam as MESMAS
-# issues: a segunda veria a issue que a primeira ainda está abrindo.
+# O grupo é POR REF (AT-212). Duas rodadas no MESMO ref seguem em fila —
+# disputariam as MESMAS issues: a segunda veria a issue que a primeira ainda
+# está abrindo. Em refs DIFERENTES não há o que disputar: só a rodada do ramo
+# padrão toca issue (`scripts/ci/alarmar-prova.sh`), e cada uma sobe o próprio
+# cluster no próprio runner. Com o grupo global, um `workflow_dispatch` numa
+# branch ficava pendente atrás do de outra e um TERCEIRO cancelava o pendente
+# (o Actions guarda um só na fila por grupo) — medido nas rodadas 1 e 2 do
+# Plano de entrega. No mesmo ref isso continua valendo, e é o desejado.
 concurrency:
-  group: propriedades
+  group: propriedades-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -353,8 +361,11 @@ jobs:
       # O bootstrap também tem título próprio: com o cluster fora, os três alvos
       # ficam `skipped`, e skipped num run agendado é o silêncio que isto existe
       # para quebrar.
-      - name: Abrir ou atualizar issue por alvo que falhou
-        if: ${{ !cancelled() && failure() }}
+      #
+      # Roda também no VERDE (AT-212): é o verde que fecha a issue do alvo que
+      # voltou a passar. Numa branch, `alarmar` não toca issue nenhuma.
+      - name: Abrir, atualizar ou fechar a issue de cada alvo
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           URL_DO_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -483,8 +494,8 @@ jobs:
           docker compose -f docker/docker-compose.prod.yml logs --tail=60 || true
           df -h / || true
 
-      - name: Abrir ou atualizar issue por alvo que falhou
-        if: ${{ !cancelled() && failure() }}
+      - name: Abrir, atualizar ou fechar a issue de cada alvo
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           URL_DO_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
