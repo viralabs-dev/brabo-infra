@@ -139,6 +139,9 @@ reiniciar_api() {
   fail "o pod antigo da api não terminou em 120s depois do rollout"
 }
 
+# Lido INTEIRO antes do `grep` (AT-242), nunca por pipe: o log da api é longo,
+# o `grep -q` sairia na linha que casa e, sob `pipefail`, o EPIPE do `kubectl`
+# ainda escrevendo reprovaria uma checagem VERDADEIRA.
 log_da_api() {
   kubectl -n "${NS}" logs -l app.kubernetes.io/name=api --tail=-1 2>/dev/null || true
 }
@@ -182,7 +185,7 @@ V1="$(verificar)"
 KID2="$(campo .keyId "${V1}")"
 [[ "${KID2}" != "${KID1}" ]] || fail "a impressão digital não mudou (${KID2}) — a api não carregou a chave nova"
 [[ "$(campo .previousKeyId "${V1}")" == "${KID1}" ]] || fail "a anterior carregada não é a de antes: ${V1}"
-log_da_api | grep -q "rotação em andamento (atual key_id=${KID2}, anterior key_id=${KID1})" \
+grep -q "rotação em andamento (atual key_id=${KID2}, anterior key_id=${KID1})" <<<"$(log_da_api)" \
   || fail "o log da api não traz o aviso de rotação com as duas impressões (${KID2}, ${KID1})"
 ok "api em modo de rotação: atual ${KID2}, anterior ${KID1}"
 
@@ -196,15 +199,15 @@ info "rodando node scripts/rewrap-deks.js (a imagem)"
 saida="$(kubectl -n "${NS}" exec deploy/api -- node scripts/rewrap-deks.js 2>&1)" \
   || { printf '%s\n' "${saida}" | sed 's/^/    /' >&2; fail "rewrap-deks.js saiu com erro"; }
 printf '%s\n' "${saida}" | grep -E '^\s+(user_credentials|project_git_connections)|\[rewrap\]' | sed 's/^/    /'
-printf '%s\n' "${saida}" | grep -Eq 'user_credentials .* falhas=0' || fail "rewrap sem 'falhas=0' em user_credentials"
-printf '%s\n' "${saida}" | grep -Eq 'project_git_connections .* falhas=0' || fail "rewrap sem 'falhas=0' em project_git_connections"
+grep -Eq 'user_credentials .* falhas=0' <<<"${saida}" || fail "rewrap sem 'falhas=0' em user_credentials"
+grep -Eq 'project_git_connections .* falhas=0' <<<"${saida}" || fail "rewrap sem 'falhas=0' em project_git_connections"
 V2="$(verificar)"
 [[ "$(campo '[.tabelas[].pendentes] | add' "${V2}")" == "0" ]] || fail "ainda há pendentes depois do rewrap: ${V2}"
 ok "zero pendentes nas duas tabelas"
 
 saida="$(kubectl -n "${NS}" exec deploy/api -- node scripts/rewrap-deks.js 2>&1)" \
   || { printf '%s\n' "${saida}" | sed 's/^/    /' >&2; fail "a segunda execução do rewrap saiu com erro"; }
-printf '%s\n' "${saida}" | grep -q 'nada a fazer' || fail "a segunda execução do rewrap reescreveu algo (não é idempotente): ${saida}"
+grep -q 'nada a fazer' <<<"${saida}" || fail "a segunda execução do rewrap reescreveu algo (não é idempotente): ${saida}"
 ok "idempotente: a segunda execução não tem nada a fazer"
 
 # --- 3. descarta a anterior ---------------------------------------------------
@@ -220,9 +223,9 @@ V3="$(verificar)"
 [[ "$(campo .previousKeyId "${V3}")" == "null" ]] || fail "a api ainda carrega uma anterior: ${V3}"
 [[ "$(campo .encontrado "${V3}")" == "true" ]] || fail "a credencial do passo 0 não decifra no mesmo valor só com a chave nova: ${V3}"
 [[ "$(campo '[.tabelas[].pendentes] | add' "${V3}")" == "0" ]] || fail "há pendentes com a chave nova sozinha: ${V3}"
-log_da_api | grep -q "chave mestra corrente: key_id=${KID2}" \
+grep -q "chave mestra corrente: key_id=${KID2}" <<<"$(log_da_api)" \
   || fail "o log de boot da api não traz 'chave mestra corrente: key_id=${KID2}'"
-if log_da_api | grep -q 'rotação em andamento'; then
+if grep -q 'rotação em andamento' <<<"$(log_da_api)"; then
   fail "a api ainda avisa rotação em andamento depois de descartar a anterior"
 fi
 ok "só a chave nova (key_id=${KID2}), todo envelope abre, a credencial decifra igual: $(jq -c .tabelas <<<"${V3}")"
