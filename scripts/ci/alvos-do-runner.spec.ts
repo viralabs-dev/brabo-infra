@@ -22,6 +22,11 @@ import { describe, expect, it } from 'vitest';
  * produz o defeito silencioso que este arquivo existe para impedir — a api
  * aceitando uma plataforma que nunca publica, ou o instalador baixando um
  * asset que dá 404 com cara de rede fora.
+ *
+ * O ADR 0187 tirou `win32-x64` pelo mesmo molde: o binário carrega o
+ * node-pty, mas sob o Bun o pipe nomeado de saída do ConPTY fecha depois do
+ * primeiro pedaço. O `install.sh` já recusava Windows inteiro (ADR 0150),
+ * então nunca teve `win32-x64` no `case`; os outros lugares mudam.
  */
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -40,18 +45,20 @@ function listaDoTs(fonte: string, nome: string): string[] {
   return [...(m[1] ?? '').matchAll(/'([^']+)'/g)].map((x) => x[1] ?? '').sort();
 }
 
-describe('os alvos do binário do runner (ADR 0174)', () => {
-  it('a matriz tem QUATRO alvos e nenhum deles é o Mac Intel', () => {
-    expect(daMatriz).toEqual(['darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-x64']);
+describe('os alvos do binário do runner (ADR 0174, ADR 0187)', () => {
+  it('a matriz tem TRÊS alvos: nem o Mac Intel nem o Windows', () => {
+    expect(daMatriz).toEqual(['darwin-arm64', 'linux-arm64', 'linux-x64']);
     expect(matriz.map((i) => i.os)).not.toContain('macos-13');
     expect(matriz.map((i) => i.os)).not.toContain('macos-15-intel');
+    expect(matriz.map((i) => i.os)).not.toContain('windows-latest');
   });
 
   it('a api aceita exatamente o que a matriz constrói', () => {
     const fonte = ler('apps/api/src/interfaces/http/runner/runner-releases.controller.ts');
     expect(listaDoTs(fonte, 'PLATAFORMAS')).toEqual(daMatriz);
-    // E o Mac Intel tem recusa PRÓPRIA, que aponta o npm.
-    expect(fonte).toMatch(/SEM_BINARIO_POR_DECISAO = 'darwin-x64'/);
+    // E o Mac Intel e o Windows têm recusa PRÓPRIA, que aponta o npm e o ADR.
+    expect(fonte).toMatch(/'darwin-x64': \{ nome: 'Mac Intel', adr: 'ADR 0174' \}/);
+    expect(fonte).toMatch(/'win32-x64': \{ nome: 'Windows', adr: 'ADR 0187' \}/);
     expect(fonte).toContain('npm install -g @brabo/runner');
   });
 
@@ -65,6 +72,8 @@ describe('os alvos do binário do runner (ADR 0174)', () => {
     expect(baixados.length).toBeGreaterThan(0);
     for (const alvo of baixados) expect(daMatriz).toContain(alvo);
     expect(corpo).toMatch(/darwin-amd64\)\s*\n[\s\S]*?npm install -g @brabo\/runner[\s\S]*?return 0/);
+    // Windows nem chega aqui: a instalação inteira é recusada antes (ADR 0150).
+    expect(fonte).toMatch(/windows\)\s*\n\s*recusar "Windows está fora de escopo/);
   });
 
   it('o navegador não enumera mais alvo nenhum: o fluxo do ADR 0118 saiu (ADR 0203)', () => {

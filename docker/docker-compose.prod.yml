@@ -336,7 +336,10 @@ services:
       START_ANAMNESE: ${START_ANAMNESE:-false}
       START_MODEL_SYNC: ${START_MODEL_SYNC:-true}
       START_GATE_RESCUE: ${START_GATE_RESCUE:-true}
-      ANAMNESE_ENABLED: ${ANAMNESE_ENABLED:-false}
+      # `ANAMNESE_ENABLED` segue o `true` do código desde a RN-680; aqui o
+      # tick continua desligado por `START_ANAMNESE=false` (acima), então só
+      # a rodada pedida à mão roda.
+      ANAMNESE_ENABLED: ${ANAMNESE_ENABLED:-true}
       PSYCHOLOGIST_ENABLED: ${PSYCHOLOGIST_ENABLED:-false}
       GRAPH_TEMPLATES_ENABLED: ${GRAPH_TEMPLATES_ENABLED:-false}
       GRAPH_INSTRUCTION_TEMPLATES_ENABLED: ${GRAPH_INSTRUCTION_TEMPLATES_ENABLED:-false}
