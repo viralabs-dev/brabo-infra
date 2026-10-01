@@ -358,15 +358,16 @@ services:
       #   em `running` (RN-502) nunca era acordado. O Psicólogo NÃO volta com
       #   ela: `Outbox.Drain` só o enfileira com `PSYCHOLOGIST_ENABLED=true`.
       # - `START_ANAMNESE` só decide se o `kickoff/0` do tick é CHAMADO. Com
-      #   `ANAMNESE_ENABLED=false` (a pausa de produto, que segue valendo) o
-      #   `kickoff/0` não agenda job nenhum e `perform/1` não reagenda: nenhuma
-      #   rodada e nenhum token. Ligar a Anamnese continua sendo UMA variável
-      #   só, a de produto, sem a armadilha de a chave de boot estar desligada.
+      #   `ANAMNESE_ENABLED=false` o `kickoff/0` não agenda job nenhum e
+      #   `perform/1` não reagenda: nenhuma rodada e nenhum token. Desde a
+      #   RN-680 (ADR 0196) a flag de produto é `true` por padrão — a Anamnese
+      #   foi religada, e não roda sem sujeito elegível —, então pausá-la é UMA
+      #   variável só, `ANAMNESE_ENABLED=false`.
       START_OUTBOX_DRAIN: ${START_OUTBOX_DRAIN:-true}
       START_ANAMNESE: ${START_ANAMNESE:-true}
       START_MODEL_SYNC: ${START_MODEL_SYNC:-true}
       START_GATE_RESCUE: ${START_GATE_RESCUE:-true}
-      ANAMNESE_ENABLED: ${ANAMNESE_ENABLED:-false}
+      ANAMNESE_ENABLED: ${ANAMNESE_ENABLED:-true}
       PSYCHOLOGIST_ENABLED: ${PSYCHOLOGIST_ENABLED:-false}
       GRAPH_TEMPLATES_ENABLED: ${GRAPH_TEMPLATES_ENABLED:-false}
       GRAPH_INSTRUCTION_TEMPLATES_ENABLED: ${GRAPH_INSTRUCTION_TEMPLATES_ENABLED:-false}
