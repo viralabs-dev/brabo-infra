@@ -68,9 +68,9 @@ function instalacao() {
   fs.mkdirSync(base);
   const g = spawnSync(
     'bash',
-    // O caminho vai como argumento posicional ($3), nunca interpolado no `-c` (AT-346).
-    ['-c', 'source "$3"; BASE_DE_PROJETOS="$1"; BROKER_LIGADO=nao; gerar_segredos; escrever_env "$2"', 'x', base, env, carregavel],
-    { env: ambiente(IMAGENS), encoding: 'utf8' },
+    // Os caminhos vão pelo AMBIENTE, nunca no argv do `bash -c` (AT-346 reaberta).
+    ['-c', 'source "$T_ALVO"; BASE_DE_PROJETOS="$T_BASE"; BROKER_LIGADO=nao; gerar_segredos; escrever_env "$T_ENV"'],
+    { env: { ...ambiente(IMAGENS), T_ALVO: carregavel, T_BASE: base, T_ENV: env }, encoding: 'utf8' },
   );
   expect(g.status, g.stderr).toBe(0);
   fs.appendFileSync(env, 'BACKUP_KEEP_DAILY=13\n');

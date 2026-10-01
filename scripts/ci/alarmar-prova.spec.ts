@@ -56,18 +56,15 @@ function alarmar(
 ): { saida: string; chamadas: string[] } {
   const saida = execFileSync(
     'bash',
-    // Caminho e desfecho vão como ARGUMENTOS posicionais, nunca interpolados
-    // na string do `-c` (AT-346, CodeQL `js/shell-command-injection-from-environment`).
+    // Caminho e desfecho vão pelo AMBIENTE, nunca no argv do `bash -c` (AT-346
+    // reaberta, CodeQL `js/shell-command-injection-from-environment`).
     [
       '--norc',
       '--noprofile',
       '-euo',
       'pipefail',
       '-c',
-      'source "$1"\nalarmar \'make alvo\' "$2" \'olhe o cluster\'',
-      'bash',
-      SCRIPT,
-      desfecho,
+      'source "$BRABO_ALVO"\nalarmar \'make alvo\' "$BRABO_DESFECHO" \'olhe o cluster\'',
     ],
     {
       encoding: 'utf8',
@@ -78,6 +75,8 @@ function alarmar(
         GITHUB_SHA: 'abc123',
         URL_DO_RUN: 'https://github.com/daneiel/brabo/actions/runs/1',
         ...env,
+        BRABO_ALVO: SCRIPT,
+        BRABO_DESFECHO: desfecho,
       },
     },
   );
