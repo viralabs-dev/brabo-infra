@@ -434,7 +434,9 @@ services:
       # As flags de PRODUTO dos dois agentes de fundo (RN-115/RN-117), e as
       # duas de rollout do grafo. Todas com o MESMO default do `runtime.exs` —
       # esta linha não muda decisão de produto nenhuma, ela só faz existir o
-      # caminho de LIGAR.
+      # caminho de virar. `ANAMNESE_ENABLED` é `true` desde a RN-680 (ADR
+      # 0196): a Anamnese foi RELIGADA, com a guarda de sujeito elegível; o
+      # Psicólogo segue pausado.
       #
       # Por que estão aqui (RN-540): variável que o `runtime.exs` lê e que o
       # `environment:` não mapeia NUNCA chega ao processo — o Compose não
@@ -443,7 +445,7 @@ services:
       # lugares no código prometendo que "ligar de volta é `X=true` e
       # reiniciar". `scripts/ci/flags-do-engine-no-compose.spec.ts` reprova a
       # próxima que faltar.
-      ANAMNESE_ENABLED: ${ANAMNESE_ENABLED:-false}
+      ANAMNESE_ENABLED: ${ANAMNESE_ENABLED:-true}
       PSYCHOLOGIST_ENABLED: ${PSYCHOLOGIST_ENABLED:-false}
       GRAPH_TEMPLATES_ENABLED: ${GRAPH_TEMPLATES_ENABLED:-false}
       GRAPH_INSTRUCTION_TEMPLATES_ENABLED: ${GRAPH_INSTRUCTION_TEMPLATES_ENABLED:-false}

@@ -172,7 +172,8 @@ describe('flags booleanas do engine × `environment:` do compose', () => {
     expect(flags.size).toBeGreaterThanOrEqual(6);
     // O default do código é o que a RN-540 obriga o compose a repetir — se
     // ele deixasse de ser lido, a checagem de default viraria decorativa.
-    expect(flags.get('ANAMNESE_ENABLED')).toBe('false');
+    // `true` desde a RN-680 (ADR 0196): a Anamnese foi religada pelo dono.
+    expect(flags.get('ANAMNESE_ENABLED')).toBe('true');
     expect(flags.get('PSYCHOLOGIST_ENABLED')).toBe('false');
     expect(flags.get('START_ANAMNESE')).toBe('true');
   });
