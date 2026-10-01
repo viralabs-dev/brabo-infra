@@ -1,18 +1,20 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Os alvos do binário standalone do runner moram em QUATRO lugares, em três
+ * Os alvos do binário standalone do runner moram em TRÊS lugares, em três
  * linguagens, e nenhum deles pode derivar do outro em tempo de execução:
  *
  * - a matriz de `build-runner-binaries.yml` (o que se CONSTRÓI);
  * - `PLATAFORMAS` do proxy `GET /runner-releases/binary` (o que a api ACEITA);
- * - o `case` de `instalar_o_runner` no `install.sh` (o que o instalador BAIXA);
- * - `PLATAFORMAS` e `SEM_BINARIO_PUBLICADO` em `apps/web/src/lib/runner-bootstrap.ts`
- *   (o que o navegador DETECTA, e para qual delas ele nem pede o download).
+ * - o `case` de `instalar_o_runner` no `install.sh` (o que o instalador BAIXA).
+ *
+ * Eram QUATRO até o ADR 0203 (RN-687): a quarta era a lista do navegador em
+ * `apps/web/src/lib/runner-bootstrap.ts`, que saiu junto com o fluxo do ADR
+ * 0118. O último teste abaixo trava que ela não volte calada.
  *
  * O ADR 0174 tirou `darwin-x64` (Mac Intel) da matriz: sem runner Intel
  * utilizável no Actions, e o Bun quebrando o `onData` do node-pty no
@@ -65,12 +67,7 @@ describe('os alvos do binário do runner (ADR 0174)', () => {
     expect(corpo).toMatch(/darwin-amd64\)\s*\n[\s\S]*?npm install -g @brabo\/runner[\s\S]*?return 0/);
   });
 
-  it('o navegador detecta mais do que baixa, e a diferença é só o que não tem binário', () => {
-    const fonte = ler('apps/web/src/lib/runner-bootstrap.ts');
-    const detectaveis = listaDoTs(fonte, 'PLATAFORMAS');
-    const semBinario = listaDoTs(fonte, 'SEM_BINARIO_PUBLICADO');
-    expect(semBinario).toEqual(['darwin-x64']);
-    for (const alvo of semBinario) expect(daMatriz).not.toContain(alvo);
-    expect([...daMatriz, ...semBinario].sort()).toEqual(detectaveis);
+  it('o navegador não enumera mais alvo nenhum: o fluxo do ADR 0118 saiu (ADR 0203)', () => {
+    expect(existsSync(path.join(RAIZ, 'apps/web/src/lib/runner-bootstrap.ts'))).toBe(false);
   });
 });
