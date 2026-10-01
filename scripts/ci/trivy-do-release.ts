@@ -147,7 +147,18 @@ export function resumirAlvo(ref: ReferenciaEscaneavel, relatorio: unknown): Resu
   };
 }
 
-const celula = (s: string): string => (s === '' ? '—' : s.replace(/\|/g, '\\|'));
+/**
+ * Célula de tabela GFM. A barra invertida é escapada ANTES da barra vertical
+ * (AT-345): sem isso, um valor `x\|y` virava `x\\|y` e a `|` voltava a separar
+ * coluna. Quebra de linha vira espaço, porque linha nova encerra a tabela.
+ */
+export const celula = (s: string): string =>
+  s === ''
+    ? '—'
+    : s
+        .replace(/\\/g, '\\\\')
+        .replace(/\|/g, '\\|')
+        .replace(/\r?\n/g, ' ');
 
 /**
  * O markdown do resumo. A tabela de cima é por imagem e diz os DOIS números; a
