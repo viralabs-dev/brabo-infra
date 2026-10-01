@@ -1,0 +1,67 @@
+name: Imagens de terceiro lidas do compose
+
+# Workflow REUTILIZÁVEL (só `workflow_call`): lê do compose de DEV as imagens de
+# terceiro que os `services:` dos outros workflows sobem, e as devolve como
+# `outputs` (AT-246, ADR 0197).
+#
+# Por que existe: até o ADR 0197, `pgvector` e `ollama` eram literais aqui nos
+# workflows E no compose. Nenhum ecossistema do Dependabot lê `services:` de
+# workflow, então todo PR do bot que subisse uma delas no compose nasceria
+# vermelho pela regra "mesma tag, dois digests" (`scripts/ci/imagens-pinadas.ts`),
+# e alinhar o workflow no PR do bot exigiria empurrar commit em
+# `.github/workflows/`, o que o `GITHUB_TOKEN` não pode. Sem o literal, a
+# duplicata não existe: quem chama faz
+#
+#   jobs:
+#     imagens:
+#       uses: ./.github/workflows/imagens-do-compose.yml
+#     test-x:
+#       needs: imagens
+#       services:
+#         postgres:
+#           image: ${{ needs.imagens.outputs.pgvector }}
+#
+# e o `imagens-pinadas.ts` reprova num workflow todo `image:` literal, toda
+# expressão que não seja exatamente essa, e todo `needs.<job>` cujo job não
+# chama este arquivo. A tabela output → serviço do compose mora em
+# `scripts/ci/imagens-do-compose.ts` (`IMAGENS_DOS_WORKFLOWS`), e o spec dele
+# reprova se as saídas abaixo divergirem dela.
+on:
+  workflow_call:
+    outputs:
+      pgvector:
+        description: Imagem do serviço `postgres` de docker/docker-compose.yml.
+        value: ${{ jobs.ler.outputs.pgvector }}
+      ollama:
+        description: Imagem do serviço `ollama` de docker/docker-compose.yml.
+        value: ${{ jobs.ler.outputs.ollama }}
+
+permissions:
+  contents: read
+
+jobs:
+  ler:
+    name: Ler as imagens do compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      pgvector: ${{ steps.ler.outputs.pgvector }}
+      ollama: ${{ steps.ler.outputs.ollama }}
+    steps:
+      # Só o que o script lê: o compose e os dois `.ts` (o `package.json` da
+      # raiz vem junto no modo cone, e é ele que diz ao Node que é ESM).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            docker
+            scripts/ci
+
+      # Node com type stripping; sem `pnpm install` — o script só usa `node:fs`.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: '24.11.1'
+
+      - id: ler
+        name: Ler do compose
+        run: node scripts/ci/imagens-do-compose.ts

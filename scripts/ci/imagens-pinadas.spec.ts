@@ -2,7 +2,15 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { mensagemDeViolacao, partesDaReferencia, verificarImagens, type Arquivo } from './imagens-pinadas.ts';
+import {
+  mensagemDeViolacao,
+  partesDaReferencia,
+  saidasDoWorkflowReutilizavel,
+  usesDosJobs,
+  verificarImagens,
+  WORKFLOW_DAS_IMAGENS,
+  type Arquivo,
+} from './imagens-pinadas.ts';
 
 /**
  * A regra, irmã da de `actions-pinadas.spec.ts`: toda imagem de TERCEIRO presa
@@ -76,6 +84,7 @@ describe('verificarImagens — compose, manifest e workflow', () => {
       { nome: '.github/workflows/ci.yml', conteudo: '        image: pgvector/pgvector:pg16' },
     ]);
     expect(violacoes).toHaveLength(1);
+    expect(violacoes[0]?.motivo).toBe('literal no workflow');
   });
 
   it('aceita valor entre aspas — YAML permite as duas formas', () => {
@@ -167,12 +176,15 @@ describe('verificarImagens — a mesma tag tem de ser o mesmo digest', () => {
   it('reprova dois digests para a mesma imagem e a mesma tag INLINE, nomeando a primeira ocorrência', () => {
     const arquivos: Arquivo[] = [
       { nome: 'docker/docker-compose.yml', conteudo: `    image: ollama/ollama:0.33.1@${DIGEST}` },
-      { nome: '.github/workflows/golden-set-rag.yml', conteudo: `        image: ollama/ollama:0.33.1@${OUTRO_DIGEST}` },
+      {
+        nome: 'deploy/k8s/base/ollama/job-model-loader.yaml',
+        conteudo: `          image: ollama/ollama:0.33.1@${OUTRO_DIGEST}`,
+      },
     ];
     const violacoes = verificarImagens(arquivos);
     expect(violacoes).toHaveLength(1);
     expect(violacoes[0]).toMatchObject({
-      arquivo: '.github/workflows/golden-set-rag.yml',
+      arquivo: 'deploy/k8s/base/ollama/job-model-loader.yaml',
       motivo: 'digest divergente para a mesma tag',
       primeiraOcorrencia: 'docker/docker-compose.yml:1',
     });
@@ -184,6 +196,140 @@ describe('verificarImagens — a mesma tag tem de ser o mesmo digest', () => {
       { nome: 'docker/engine/Dockerfile.prod', conteudo: `FROM alpine:3.20.3@${OUTRO_DIGEST}` },
     ];
     expect(verificarImagens(arquivos)).toEqual([]);
+  });
+});
+
+// --------------------------------------------------------------------------
+// Workflows: a imagem vem do compose, por um job anterior (ADR 0197). Cada
+// teste abaixo é a MUTAÇÃO de uma das três regras novas: desligar a regra
+// (ou afrouxar a forma da expressão) derruba pelo menos um deles.
+// --------------------------------------------------------------------------
+
+const REUTILIZAVEL: Arquivo = {
+  nome: WORKFLOW_DAS_IMAGENS,
+  conteudo: [
+    'on:',
+    '  workflow_call:',
+    '    outputs:',
+    '      pgvector:',
+    '        value: ${{ jobs.ler.outputs.pgvector }}',
+    '      ollama:',
+    '        value: ${{ jobs.ler.outputs.ollama }}',
+    'jobs:',
+    '  ler:',
+    '    runs-on: ubuntu-latest',
+  ].join('\n'),
+};
+
+/** Um workflow com o job `imagens` chamando o reutilizável e um `services:` com `imagem`. */
+function workflowCom(imagem: string, jobDasImagens = '    uses: ./.github/workflows/imagens-do-compose.yml'): Arquivo[] {
+  const conteudo = [
+    'on: pull_request',
+    'jobs:',
+    '  imagens:',
+    jobDasImagens,
+    '',
+    '  outro:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1',
+    '',
+    '  test-x:',
+    '    needs: [imagens, outro]',
+    '    services:',
+    '      postgres:',
+    `        image: ${imagem}`,
+  ].join('\n');
+  return [REUTILIZAVEL, { nome: '.github/workflows/ci.yml', conteudo }];
+}
+
+describe('verificarImagens — workflow lê a imagem do compose (ADR 0197)', () => {
+  it('aceita `${{ needs.<job>.outputs.<imagem> }}` de um job que chama o reutilizável', () => {
+    expect(verificarImagens(workflowCom('${{ needs.imagens.outputs.pgvector }}'))).toEqual([]);
+  });
+
+  it('aceita a mesma expressão entre aspas, e sem espaço interno', () => {
+    expect(verificarImagens(workflowCom('"${{ needs.imagens.outputs.pgvector }}"'))).toEqual([]);
+    expect(verificarImagens(workflowCom('${{needs.imagens.outputs.ollama}}'))).toEqual([]);
+  });
+
+  it('reprova literal no workflow MESMO preso por digest — é a duplicata que o Dependabot não lê', () => {
+    const violacoes = verificarImagens(workflowCom(`pgvector/pgvector:pg16@${DIGEST}`));
+    expect(violacoes).toHaveLength(1);
+    expect(violacoes[0]).toMatchObject({ motivo: 'literal no workflow', imagem: `pgvector/pgvector:pg16@${DIGEST}` });
+    expect(mensagemDeViolacao(violacoes[0]!)).toContain('imagens-do-compose');
+  });
+
+  it('reprova a forma curta `container: <imagem>` de um job', () => {
+    const arquivos: Arquivo[] = [{ nome: '.github/workflows/x.yml', conteudo: '    container: node:24-alpine' }];
+    expect(verificarImagens(arquivos)[0]?.motivo).toBe('literal no workflow');
+  });
+
+  it('não confunde `container:` que abre um mapa com uma imagem', () => {
+    const arquivos: Arquivo[] = [{ nome: '.github/workflows/x.yml', conteudo: '    container:\n      options: --x' }];
+    expect(verificarImagens(arquivos)).toEqual([]);
+  });
+
+  it('aceita imagem do PRÓPRIO produto num workflow, como nas outras árvores', () => {
+    expect(verificarImagens(workflowCom('brabo-api:prod'))).toEqual([]);
+  });
+
+  // O literal ESCONDIDO. Cada caso é um lugar onde uma referência mutável mora
+  // dentro de uma expressão, e o padrão antigo (`\S+`) nem via a linha.
+  it.each([
+    ["${{ 'postgres:16' }}", 'literal dentro da expressão'],
+    ["${{ needs.imagens.outputs.pgvector || 'postgres:16' }}", 'valor padrão com `||`'],
+    ["${{ 'postgres:16' || needs.imagens.outputs.pgvector }}", 'literal ANTES da saída, com `||`'],
+    ['${{ env.IMAGEM }}', '`env.`'],
+    ['${{ vars.IMAGEM }}', '`vars.`'],
+    ["${{ format('{0}:16', 'postgres') }}", '`format()`'],
+    ['${{ needs.imagens.outputs.pgvector }}-alpine', 'sufixo depois da expressão'],
+    ['${{ needs.imagens.outputs.pgvector', 'expressão sem fecho'],
+  ])('reprova `%s` (%s)', (imagem) => {
+    const violacoes = verificarImagens(workflowCom(imagem));
+    expect(violacoes).toHaveLength(1);
+    expect(violacoes[0]?.motivo).toBe('expressão de imagem fora da forma');
+  });
+
+  it('reprova literal com expressão no MEIO — `postgres:${{ … }}` é literal', () => {
+    expect(verificarImagens(workflowCom('postgres:${{ inputs.versao }}'))[0]?.motivo).toBe('literal no workflow');
+  });
+
+  it('reprova `needs` de um job que NÃO chama o reutilizável — ele pode devolver qualquer literal', () => {
+    const violacoes = verificarImagens(workflowCom('${{ needs.outro.outputs.pgvector }}'));
+    expect(violacoes).toHaveLength(1);
+    expect(violacoes[0]?.motivo).toBe('imagem do workflow fora do compose');
+  });
+
+  it('reprova o job `imagens` quando ele chama OUTRO workflow', () => {
+    const violacoes = verificarImagens(
+      workflowCom('${{ needs.imagens.outputs.pgvector }}', '    uses: ./.github/workflows/outro.yml'),
+    );
+    expect(violacoes[0]?.motivo).toBe('imagem do workflow fora do compose');
+  });
+
+  it('reprova um output que o reutilizável não declara', () => {
+    const violacoes = verificarImagens(workflowCom('${{ needs.imagens.outputs.neo4j }}'));
+    expect(violacoes[0]?.motivo).toBe('imagem do workflow fora do compose');
+  });
+
+  it('ignora linha comentada num workflow, como nas outras árvores', () => {
+    const arquivos: Arquivo[] = [{ nome: '.github/workflows/x.yml', conteudo: '        # image: postgres:16' }];
+    expect(verificarImagens(arquivos)).toEqual([]);
+  });
+});
+
+describe('usesDosJobs e saidasDoWorkflowReutilizavel', () => {
+  it('lê o `uses:` do JOB, nunca o `- uses:` de um passo', () => {
+    const jobs = usesDosJobs(workflowCom('x')[1]!.conteudo);
+    expect(jobs.get('imagens')).toBe('./.github/workflows/imagens-do-compose.yml');
+    expect(jobs.get('outro')).toBeUndefined();
+    expect(jobs.has('test-x')).toBe(true);
+  });
+
+  it('lê as saídas declaradas em `on.workflow_call.outputs`, e só elas', () => {
+    expect([...saidasDoWorkflowReutilizavel(REUTILIZAVEL.conteudo)].sort()).toEqual(['ollama', 'pgvector']);
+    expect(saidasDoWorkflowReutilizavel('on: pull_request\n').size).toBe(0);
   });
 });
 
@@ -254,5 +400,16 @@ describe('o repositório', () => {
     const arquivos = arquivosDoRepositorio();
     const comDigest = arquivos.filter(({ conteudo }) => /@sha256:[0-9a-f]{64}/.test(conteudo));
     expect(comDigest.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it('não tem imagem literal em workflow nenhum: os `services:` leem do compose (ADR 0197)', () => {
+    const workflows = arquivosDoRepositorio().filter(({ nome }) => nome.startsWith('.github/workflows/'));
+    const expressoes = workflows.flatMap(({ conteudo }) =>
+      conteudo.split('\n').filter((linha) => /^\s*image:\s*\$\{\{\s*needs\.imagens\.outputs\./.test(linha)),
+    );
+    // ci.yml (test-api-shard, test-engine) e os dois golden-sets (pgvector + ollama).
+    expect(expressoes.length).toBeGreaterThanOrEqual(6);
+    const semComentario = workflows.map(({ conteudo }) => conteudo.replace(/^\s*#.*$/gm, ''));
+    expect(semComentario.filter((conteudo) => /^\s*image:.*@sha256:/m.test(conteudo))).toEqual([]);
   });
 });

@@ -70,11 +70,34 @@
  *
  * ## O quarto motivo: digest divergente para a mesma tag
  *
- * `golden-set-rag.yml` promete em comentário rodar a "MESMA versão pinada de
- * docker/docker-compose.yml", porque o piso do golden-set é chaveado por
- * modelo e não por ambiente. Com digest isso é verificável — a mesma imagem
- * com a mesma tag tem de ter o mesmo digest em todo lugar. A chave é a tag
- * INLINE, que agora é a única fonte dela.
+ * A mesma imagem com a mesma tag tem de ter o mesmo digest em todo lugar —
+ * entre os composes, os Dockerfiles e os manifests. A chave é a tag INLINE,
+ * que agora é a única fonte dela. A regra nasceu de uma promessa do
+ * `golden-set-rag.yml` ("a MESMA versão pinada de docker/docker-compose.yml",
+ * porque o piso do golden-set é chaveado por modelo e não por ambiente); desde
+ * o ADR 0197 essa promessa é construção, não verificação (seção abaixo).
+ *
+ * ## Nos workflows, nenhum literal: a imagem vem do compose (ADR 0197)
+ *
+ * O `image:` dos `services:` (e a forma curta `container: <imagem>`) de um
+ * workflow só pode ser `${{ needs.<job>.outputs.<imagem> }}`, com `<job>`
+ * chamando `.github/workflows/imagens-do-compose.yml` e `<imagem>` um output
+ * que ele declara. Uma fonte só de digest: nenhum ecossistema do Dependabot lê
+ * `services:` de workflow, e o literal ali faria todo PR do bot de imagem nascer
+ * vermelho pela regra acima, sem que o `GITHUB_TOKEN` pudesse alinhá-lo
+ * (ele não empurra commit em `.github/workflows/`).
+ *
+ * A forma é EXATA porque expressão é onde um literal se esconde: `${{
+ * 'postgres:16' }}`, `${{ needs.x.outputs.y || 'postgres:16' }}`, `env.`,
+ * `vars.`, `format()` — o padrão antigo (`\S+`) nem casava com uma linha com
+ * espaço, e ela sumia do check em vez de ser julgada. Reprovam:
+ *
+ * - `literal no workflow` — qualquer referência de terceiro literal, mesmo
+ *   presa por digest;
+ * - `expressão de imagem fora da forma` — tudo que não é exatamente a
+ *   expressão acima;
+ * - `imagem do workflow fora do compose` — o job de `needs` não chama o
+ *   workflow reutilizável, ou o output não é declarado por ele.
  *
  * Sintaxe apagável apenas (o Node executa este `.ts` por type stripping).
  */
@@ -92,7 +115,10 @@ export interface Violacao {
     | 'digest sem a tag inline'
     | 'comentário diverge da tag inline'
     | 'comentário no fim do FROM'
-    | 'digest divergente para a mesma tag';
+    | 'digest divergente para a mesma tag'
+    | 'literal no workflow'
+    | 'expressão de imagem fora da forma'
+    | 'imagem do workflow fora do compose';
   /** Só em `digest divergente`: onde o primeiro digest daquela tag foi visto. */
   primeiraOcorrencia?: string;
   /** Só em `comentário diverge`: a tag que o comentário afirma. */
@@ -134,6 +160,11 @@ function tagDoComentario(bruto: string | undefined): string | undefined {
 }
 
 const DIGEST = /@sha256:[0-9a-f]{64}$/;
+
+/** A referência termina num digest completo (64 hex)? Não diz nada sobre a tag. */
+export function referenciaPresaPorDigest(referencia: string): boolean {
+  return DIGEST.test(referencia);
+}
 
 /**
  * As imagens que este repositório CONSTRÓI. `ghcr.io/<owner>/brabo-*` cobre o
@@ -221,6 +252,142 @@ function referenciasDe(arquivo: Arquivo): Referencia[] {
   return achadas;
 }
 
+// --- Workflows: o `image:` vem do compose, nunca de um literal ----------------
+
+/**
+ * O workflow reutilizável que lê as imagens do compose (ADR 0197). Um
+ * `services:`/`container:` de workflow só pode apontar para um `output` dele.
+ */
+export const WORKFLOW_DAS_IMAGENS = '.github/workflows/imagens-do-compose.yml';
+
+/** `.github/workflows/*.yml` — onde a regra da fonte única vale. */
+export function ehWorkflow(nome: string): boolean {
+  return nome.startsWith('.github/workflows/');
+}
+
+/**
+ * `image: <valor>` e a forma CURTA `container: <valor>` (um job pode rodar
+ * inteiro dentro de uma imagem). Diferente de `CHAVE_YAML`, o valor aqui pode
+ * ter espaço: `${{ needs.x.outputs.y }}` tem, e um padrão `\S+` deixaria de
+ * casar com a linha — a expressão sumiria do check em vez de ser julgada, e
+ * `${{ 'postgres:16' }}` passaria calado. Este é o literal escondido que a
+ * forma nova não pode abrir.
+ */
+const CHAVE_DE_WORKFLOW = /^\s*(?:-\s+)?(?:image|container):\s*(\S.*?)\s*$/;
+
+/**
+ * A ÚNICA expressão aceita: `${{ needs.<job>.outputs.<nome> }}`, nada antes,
+ * nada depois, sem `||`, sem `format()`, sem `env.`/`vars.` — cada uma dessas
+ * é um lugar onde um literal mora sem que o check o veja.
+ */
+const EXPRESSAO_DO_COMPOSE = /^\$\{\{\s*needs\.([A-Za-z_][\w-]*)\.outputs\.([A-Za-z_][\w-]*)\s*\}\}$/;
+
+/** `job -> uses:` de cada job de um workflow, lido por indentação. */
+export function usesDosJobs(conteudo: string): Map<string, string | undefined> {
+  const jobs = new Map<string, string | undefined>();
+  let emJobs = false;
+  let nivelDoJob: number | undefined;
+  let atual: string | undefined;
+
+  for (const linha of conteudo.split('\n')) {
+    const aparada = linha.trim();
+    if (aparada.length === 0 || aparada.startsWith('#')) continue;
+    const nivel = linha.length - linha.trimStart().length;
+
+    if (nivel === 0) {
+      emJobs = /^jobs:\s*(#.*)?$/.test(linha);
+      atual = undefined;
+      continue;
+    }
+    if (!emJobs) continue;
+
+    nivelDoJob ??= nivel;
+    if (nivel === nivelDoJob) {
+      const nome = /^([A-Za-z_][\w-]*):\s*(#.*)?$/.exec(aparada)?.[1];
+      atual = nome;
+      if (nome !== undefined) jobs.set(nome, undefined);
+      continue;
+    }
+    if (atual === undefined) continue;
+    const uses = /^uses:\s*(\S+)/.exec(aparada)?.[1];
+    if (uses !== undefined && jobs.get(atual) === undefined) jobs.set(atual, uses);
+  }
+
+  return jobs;
+}
+
+/** Os `outputs` declarados em `on.workflow_call.outputs` de um workflow reutilizável. */
+export function saidasDoWorkflowReutilizavel(conteudo: string): Set<string> {
+  const saidas = new Set<string>();
+  const linhas = conteudo.split('\n');
+  const nivel = (linha: string): number => linha.length - linha.trimStart().length;
+
+  const chamada = linhas.findIndex((linha) => /^\s+workflow_call:\s*(#.*)?$/.test(linha));
+  if (chamada === -1) return saidas;
+  const nivelDaChamada = nivel(linhas[chamada] ?? '');
+
+  let nivelDeOutputs: number | undefined;
+  let nivelDaSaida: number | undefined;
+  for (const linha of linhas.slice(chamada + 1)) {
+    const aparada = linha.trim();
+    if (aparada.length === 0 || aparada.startsWith('#')) continue;
+    const n = nivel(linha);
+    if (n <= nivelDaChamada) break;
+    if (nivelDeOutputs === undefined) {
+      if (aparada.startsWith('outputs:')) nivelDeOutputs = n;
+      continue;
+    }
+    if (n <= nivelDeOutputs) break;
+    nivelDaSaida ??= n;
+    if (n !== nivelDaSaida) continue;
+    const nome = /^([A-Za-z_][\w-]*):/.exec(aparada)?.[1];
+    if (nome !== undefined) saidas.add(nome);
+  }
+  return saidas;
+}
+
+/**
+ * Julga um `image:`/`container:` de workflow. Devolve a violação, ou
+ * `undefined` quando a linha está na forma (ou é imagem do próprio produto).
+ */
+function julgarImagemDeWorkflow(
+  arquivo: Arquivo,
+  linha: number,
+  bruto: string,
+  jobs: Map<string, string | undefined>,
+  saidasConhecidas: Set<string> | undefined,
+): Violacao | undefined {
+  const base = { arquivo: arquivo.nome, linha };
+
+  // `image: "${{ … }}"` é YAML válido e comum: a aspa não muda o julgamento.
+  const entreAspas = /^(["'])(.*)\1(\s+#.*)?$/.exec(bruto);
+  const valor = entreAspas === null ? bruto : (entreAspas[2] ?? '').trim();
+
+  if (valor.startsWith('${{')) {
+    const fim = valor.indexOf('}}');
+    const expressao = fim === -1 ? valor : valor.slice(0, fim + 2);
+    const resto = fim === -1 ? '' : valor.slice(fim + 2).trim();
+    const forma = EXPRESSAO_DO_COMPOSE.exec(expressao);
+    if (forma === null || (resto.length > 0 && !resto.startsWith('#'))) {
+      return { ...base, imagem: valor, motivo: 'expressão de imagem fora da forma' };
+    }
+    const job = forma[1] ?? '';
+    const saida = forma[2] ?? '';
+    const uses = jobs.get(job);
+    const doReutilizavel = uses === `./${WORKFLOW_DAS_IMAGENS}`;
+    const saidaDeclarada = saidasConhecidas === undefined || saidasConhecidas.has(saida);
+    if (!doReutilizavel || !saidaDeclarada) {
+      return { ...base, imagem: expressao, motivo: 'imagem do workflow fora do compose' };
+    }
+    return undefined;
+  }
+
+  const referencia = semAspas(valor.replace(/\s+#.*$/, ''));
+  // Imagem construída por este repositório — ver o docblock.
+  if (IMAGEM_DO_PRODUTO.test(referencia)) return undefined;
+  return { ...base, imagem: referencia, motivo: 'literal no workflow' };
+}
+
 /**
  * @param arquivos - conteúdo de cada compose, manifest, Dockerfile e workflow
  * @returns toda violação encontrada, na ordem em que aparecem
@@ -230,7 +397,25 @@ export function verificarImagens(arquivos: readonly Arquivo[]): Violacao[] {
   /** `<nome>:<tag inline>` -> `<digest>` e onde ele apareceu primeiro. */
   const digestPorTag = new Map<string, { digest: string; onde: string }>();
 
+  const reutilizavel = arquivos.find(({ nome }) => nome === WORKFLOW_DAS_IMAGENS);
+  const saidasConhecidas = reutilizavel === undefined ? undefined : saidasDoWorkflowReutilizavel(reutilizavel.conteudo);
+
   for (const arquivo of arquivos) {
+    if (ehWorkflow(arquivo.nome)) {
+      const jobs = usesDosJobs(arquivo.conteudo);
+      arquivo.conteudo.split('\n').forEach((texto, indice) => {
+        if (/^\s*#/.test(texto)) return;
+        const achado = CHAVE_DE_WORKFLOW.exec(texto);
+        if (achado === null) return;
+        const valor = achado[1] ?? '';
+        // `image:` que abre um mapa não tem valor na linha; `image: # x` não é imagem.
+        if (valor.startsWith('#')) return;
+        const violacao = julgarImagemDeWorkflow(arquivo, indice + 1, valor, jobs, saidasConhecidas);
+        if (violacao !== undefined) violacoes.push(violacao);
+      });
+      continue;
+    }
+
     for (const { linha, referencia, tagAfirmada, comentarioNoFrom } of referenciasDe(arquivo)) {
       const onde = `${arquivo.nome}:${linha}`;
       const base = { arquivo: arquivo.nome, linha, imagem: referencia };
@@ -308,6 +493,34 @@ export function mensagemDeViolacao(violacao: Violacao): string {
     );
   }
 
+  if (violacao.motivo === 'literal no workflow') {
+    return (
+      `${onde}: \`${violacao.imagem}\` é um literal de imagem num workflow. Desde o ` +
+      'ADR 0197 a imagem de `services:`/`container:` vem do compose, por ' +
+      `\`\${{ needs.<job>.outputs.<imagem> }}\` de um job que chama \`./${WORKFLOW_DAS_IMAGENS}\` — ` +
+      'uma fonte só de digest. Um literal aqui é a duplicata que nenhum ecossistema do ' +
+      'Dependabot lê, e todo PR do bot nasceria vermelho por ela. Ponha a imagem no ' +
+      'compose e a linha em `IMAGENS_DOS_WORKFLOWS` (`scripts/ci/imagens-do-compose.ts`).'
+    );
+  }
+
+  if (violacao.motivo === 'expressão de imagem fora da forma') {
+    return (
+      `${onde}: \`${violacao.imagem}\` não é \`\${{ needs.<job>.outputs.<imagem> }}\`, ` +
+      'a única expressão aceita num `image:` de workflow. Literal entre aspas, `||` com ' +
+      'valor padrão, `format()`, `env.` e `vars.` são lugares onde uma referência mutável ' +
+      'mora sem que este check a veja (ADR 0197).'
+    );
+  }
+
+  if (violacao.motivo === 'imagem do workflow fora do compose') {
+    return (
+      `${onde}: \`${violacao.imagem}\` lê o output de um job que não chama ` +
+      `\`./${WORKFLOW_DAS_IMAGENS}\`, ou um output que ele não declara. Só esse workflow ` +
+      'lê do compose (ADR 0197); qualquer outro job pode devolver um literal.'
+    );
+  }
+
   if (violacao.motivo === 'comentário diverge da tag inline') {
     return (
       `${onde}: \`${violacao.imagem}\` tem um comentário que afirma a tag ` +
@@ -365,9 +578,14 @@ function principal(): void {
   }
 
   const violacoes = verificarImagens(arquivos);
-  const total = arquivos.reduce((soma, { nome, conteudo }) => soma + referenciasDe({ nome, conteudo }).length, 0);
+  const total = arquivos
+    .filter(({ nome }) => !ehWorkflow(nome))
+    .reduce((soma, { nome, conteudo }) => soma + referenciasDe({ nome, conteudo }).length, 0);
 
-  console.log(`imagens-pinadas: ${total} imagens de terceiro em ${arquivos.length} arquivos.`);
+  console.log(
+    `imagens-pinadas: ${total} imagens de terceiro em ${arquivos.length} arquivos ` +
+      '(nos workflows, nenhum literal: a imagem vem do compose).',
+  );
 
   if (violacoes.length > 0) {
     for (const violacao of violacoes) {
