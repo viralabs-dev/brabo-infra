@@ -37,7 +37,8 @@ afterEach(() => {
 });
 
 function bash(trecho: string, env: Record<string, string> = {}): string {
-  return execFileSync('bash', ['-euo', 'pipefail', '-c', `source "${LIB}"\n${trecho}`], {
+  // O caminho vai como argumento posicional, nunca interpolado no `-c` (AT-346).
+  return execFileSync('bash', ['-euo', 'pipefail', '-c', 'source "$1"\n' + trecho, 'bash', LIB], {
     encoding: 'utf8',
     env: { ...process.env, LC_ALL: 'C.UTF-8', ...env },
     timeout: 60_000,

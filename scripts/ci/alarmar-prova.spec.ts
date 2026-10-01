@@ -56,7 +56,19 @@ function alarmar(
 ): { saida: string; chamadas: string[] } {
   const saida = execFileSync(
     'bash',
-    ['--norc', '--noprofile', '-euo', 'pipefail', '-c', `source "${SCRIPT}"\nalarmar 'make alvo' '${desfecho}' 'olhe o cluster'`],
+    // Caminho e desfecho vão como ARGUMENTOS posicionais, nunca interpolados
+    // na string do `-c` (AT-346, CodeQL `js/shell-command-injection-from-environment`).
+    [
+      '--norc',
+      '--noprofile',
+      '-euo',
+      'pipefail',
+      '-c',
+      'source "$1"\nalarmar \'make alvo\' "$2" \'olhe o cluster\'',
+      'bash',
+      SCRIPT,
+      desfecho,
+    ],
     {
       encoding: 'utf8',
       env: {

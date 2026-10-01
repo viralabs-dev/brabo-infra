@@ -68,7 +68,8 @@ function instalacao() {
   fs.mkdirSync(base);
   const g = spawnSync(
     'bash',
-    ['-c', `source "${carregavel}"; BASE_DE_PROJETOS="$1"; BROKER_LIGADO=nao; gerar_segredos; escrever_env "$2"`, 'x', base, env],
+    // O caminho vai como argumento posicional ($3), nunca interpolado no `-c` (AT-346).
+    ['-c', 'source "$3"; BASE_DE_PROJETOS="$1"; BROKER_LIGADO=nao; gerar_segredos; escrever_env "$2"', 'x', base, env, carregavel],
     { env: ambiente(IMAGENS), encoding: 'utf8' },
   );
   expect(g.status, g.stderr).toBe(0);
