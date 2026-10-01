@@ -37,10 +37,11 @@ afterEach(() => {
 });
 
 function bash(trecho: string, env: Record<string, string> = {}): string {
-  // O caminho vai como argumento posicional, nunca interpolado no `-c` (AT-346).
-  return execFileSync('bash', ['-euo', 'pipefail', '-c', 'source "$1"\n' + trecho, 'bash', LIB], {
+  // O caminho vai pelo AMBIENTE, nunca no argv do `bash -c` (AT-346 reaberta:
+  // o CodeQL trata o argv inteiro como comando de shell).
+  return execFileSync('bash', ['-euo', 'pipefail', '-c', 'source "$BRABO_ALVO"\n' + trecho], {
     encoding: 'utf8',
-    env: { ...process.env, LC_ALL: 'C.UTF-8', ...env },
+    env: { ...process.env, LC_ALL: 'C.UTF-8', ...env, BRABO_ALVO: LIB },
     timeout: 60_000,
   });
 }

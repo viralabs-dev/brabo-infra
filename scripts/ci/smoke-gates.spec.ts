@@ -40,10 +40,10 @@ afterEach(() => {
 });
 
 function comSmoke(trecho: string, env: Record<string, string> = {}) {
-  // O caminho vai como argumento posicional, nunca interpolado no `-c` (AT-346).
-  const r = spawnSync('bash', ['-c', 'source "$1"\n' + trecho, 'bash', SMOKE], {
+  // O caminho vai pelo AMBIENTE, nunca no argv do `bash -c` (AT-346 reaberta).
+  const r = spawnSync('bash', ['-c', 'source "$BRABO_ALVO"\n' + trecho], {
     encoding: 'utf8',
-    env: { ...process.env, LC_ALL: 'C.UTF-8', ...env },
+    env: { ...process.env, LC_ALL: 'C.UTF-8', ...env, BRABO_ALVO: SMOKE },
     timeout: 30_000,
   });
   return { codigo: r.status, saida: r.stdout, erro: r.stderr };
@@ -136,15 +136,12 @@ echo '{"version":1,"gates":[{"id":"merge-protegida"}]}'
         'bash',
         [
           '-c',
-          `source "$1"
-          API="http://127.0.0.1:$2"
+          `source "$BRABO_ALVO"
+          API="http://127.0.0.1:$BRABO_PORTA"
           corpo="$(gates_internos)"
           checar_registro_de_gates 'GET /internal/gates' "$corpo" && echo aprovado`,
-          'bash',
-          SMOKE,
-          String(port),
         ],
-        { env: { ...process.env, BRABO_SERVICE_TOKEN: token }, timeout: 30_000 },
+        { env: { ...process.env, BRABO_SERVICE_TOKEN: token, BRABO_ALVO: SMOKE, BRABO_PORTA: String(port) }, timeout: 30_000 },
       );
       expect(recebido).toBe(token);
       expect(stdout).toContain('aprovado');
