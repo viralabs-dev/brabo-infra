@@ -8,6 +8,7 @@ import {
   achadosDoRelatorio,
   referenciasDoManifesto,
   resumirAlvo,
+  celula,
   resumoEmMarkdown,
   resumosDoDiretorio,
 } from './trivy-do-release.ts';
@@ -266,6 +267,30 @@ describe('resumoEmMarkdown', () => {
   it('diz em texto quando não há nada sem correção, em vez de uma seção vazia', () => {
     const md = resumoEmMarkdown('9.9.9', refs.map((r) => resumirAlvo(r, {})));
     expect(md).toContain('Nenhum HIGH/CRITICAL sem correção');
+  });
+});
+
+describe('celula (AT-345)', () => {
+  it('escapa a barra invertida ANTES da barra vertical', () => {
+    expect(celula('a|b')).toBe('a\\|b');
+    expect(celula('a\\|b')).toBe('a\\\\\\|b');
+    expect(celula('fim\\')).toBe('fim\\\\');
+    expect(celula('')).toBe('—');
+  });
+
+  it('valor com `\\|` ou `\\` no fim não abre coluna nova na tabela', () => {
+    // Uma `|` só separa coluna quando não está escapada: precedida de um
+    // número PAR de barras invertidas (`\\` consome as duas no GFM).
+    const separadores = (linha: string) =>
+      [...linha.matchAll(/(\\*)\|/g)].filter((m) => m[1]!.length % 2 === 0).length;
+    for (const valor of ['x\\|y', 'x\\', 'a|b\\', '\\\\|']) {
+      const linha = `| ${celula(valor)} | ${celula('fim\\')} |`;
+      expect(separadores(linha)).toBe(3);
+    }
+  });
+
+  it('quebra de linha vira espaço (linha nova encerraria a tabela)', () => {
+    expect(celula('a\nb\r\nc')).toBe('a b c');
   });
 });
 

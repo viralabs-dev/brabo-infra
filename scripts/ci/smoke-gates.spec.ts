@@ -40,7 +40,8 @@ afterEach(() => {
 });
 
 function comSmoke(trecho: string, env: Record<string, string> = {}) {
-  const r = spawnSync('bash', ['-c', `source "${SMOKE}"\n${trecho}`], {
+  // O caminho vai como argumento posicional, nunca interpolado no `-c` (AT-346).
+  const r = spawnSync('bash', ['-c', 'source "$1"\n' + trecho, 'bash', SMOKE], {
     encoding: 'utf8',
     env: { ...process.env, LC_ALL: 'C.UTF-8', ...env },
     timeout: 30_000,
@@ -135,10 +136,13 @@ echo '{"version":1,"gates":[{"id":"merge-protegida"}]}'
         'bash',
         [
           '-c',
-          `source "${SMOKE}"
-          API=http://127.0.0.1:${port}
+          `source "$1"
+          API="http://127.0.0.1:$2"
           corpo="$(gates_internos)"
           checar_registro_de_gates 'GET /internal/gates' "$corpo" && echo aprovado`,
+          'bash',
+          SMOKE,
+          String(port),
         ],
         { env: { ...process.env, BRABO_SERVICE_TOKEN: token }, timeout: 30_000 },
       );

@@ -38,7 +38,7 @@ afterEach(() => {
 
 /** Roda um trecho de sh com a lib carregada. Devolve stdout; lança em status != 0. */
 function sh(trecho: string, env: Record<string, string> = {}): string {
-  return execFileSync('sh', ['-eu', '-c', `. "${LIB}"\n${trecho}`], {
+  return execFileSync('sh', ['-eu', '-c', '. "$1"\n' + trecho, 'sh', LIB], {
     encoding: 'utf8',
     env: { ...process.env, LC_ALL: 'C', ...env },
   });
@@ -47,7 +47,7 @@ function sh(trecho: string, env: Record<string, string> = {}): string {
 /** Roda um trecho de sh e devolve o status de saída em vez de lançar. */
 function status(trecho: string, env: Record<string, string> = {}): number {
   try {
-    execFileSync('sh', ['-eu', '-c', `. "${LIB}"\n${trecho}`], {
+    execFileSync('sh', ['-eu', '-c', '. "$1"\n' + trecho, 'sh', LIB], {
       encoding: 'utf8',
       stdio: 'pipe',
       env: { ...process.env, LC_ALL: 'C', ...env },
