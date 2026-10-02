@@ -141,7 +141,10 @@ services:
     restart: "no"
     tmpfs:
       - /tmp
-      - /home/engine
+      # uid/gid 1000 (o usuário `engine` da imagem): sem eles o tmpfs nasce
+      #   root 0755 sob read_only, o semgrep não cria ~/.semgrep e sai 1 com
+      #   stdout vazio, o `:invalid_output` da AT-380 (RN-707).
+      - /home/engine:uid=1000,gid=1000,mode=0700
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       # SEM default: o `runtime.exs` já derruba o boot sem ela (bloco :prod,
@@ -294,7 +297,10 @@ services:
       # /home/engine: o semgrep baixa e cacheia as regras do registry no $HOME
       #   na primeira execução — sem isto os scans do gate de SecOps falham.
       - /tmp
-      - /home/engine
+      # uid/gid 1000 (o usuário `engine` da imagem): sem eles o tmpfs nasce
+      #   root 0755 sob read_only, o semgrep não cria ~/.semgrep e sai 1 com
+      #   stdout vazio, o `:invalid_output` da AT-380 (RN-707).
+      - /home/engine:uid=1000,gid=1000,mode=0700
     environment:
       # MESMA variável do lado da api, sem default (ver o comentário grande no
       # serviço `api`, acima) — se as duas pontas divergissem, o engine
