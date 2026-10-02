@@ -439,7 +439,7 @@ vulnerabilities:
     expired_at: 2026-10-31
   - id: CVE-2026-52869
     paths:
-      - "usr/lib/python3.12/site-packages/mcp-1.23.3.dist-info/METADATA"
+      - "usr/lib/python3.14/site-packages/mcp-1.23.3.dist-info/METADATA"
     statement: >-
       `mcp` 1.23.3 entra como dependência FIXA do semgrep 1.171.0
       (`mcp==1.23.3`, não é range) e o semgrep já está no último release
@@ -451,7 +451,7 @@ vulnerabilities:
     expired_at: 2026-10-31
   - id: CVE-2026-52870
     paths:
-      - "usr/lib/python3.12/site-packages/mcp-1.23.3.dist-info/METADATA"
+      - "usr/lib/python3.14/site-packages/mcp-1.23.3.dist-info/METADATA"
     statement: >-
       `mcp` 1.23.3 entra como dependência FIXA do semgrep 1.171.0
       (`mcp==1.23.3`, não é range) e o semgrep já está no último release
@@ -463,7 +463,7 @@ vulnerabilities:
     expired_at: 2026-10-31
   - id: CVE-2026-59950
     paths:
-      - "usr/lib/python3.12/site-packages/mcp-1.23.3.dist-info/METADATA"
+      - "usr/lib/python3.14/site-packages/mcp-1.23.3.dist-info/METADATA"
     statement: >-
       `mcp` 1.23.3 entra como dependência FIXA do semgrep 1.171.0
       (`mcp==1.23.3`, não é range) e o semgrep já está no último release
