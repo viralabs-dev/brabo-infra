@@ -30,7 +30,7 @@
 # "server version mismatch" que motivou pinar o CloudNativePG em 16 — ver
 # deploy/k8s/overlays/local/db/cluster.yaml.
 
-FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS runtime
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS runtime
 
 # `aws-cli` no lugar do `mc`: fala qualquer endpoint S3-compatível (inclusive
 # MinIO, via AWS_ENDPOINT_URL) e vem do apk, então recebe patch de segurança
