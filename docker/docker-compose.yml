@@ -342,7 +342,7 @@ services:
     # depois de apagar e recriar os schemas — "esta api está de pé CONTRA o
     # banco migrado?" —, e `/live` responderia "ok" com o banco vazio.
     #
-    # `wget` do busybox (o `node:24-alpine` não traz `curl`) e contra
+    # `wget` do busybox (o `node:26-alpine` não traz `curl`) e contra
     # `127.0.0.1`, como no broker. `start_period` alto porque o CMD de dev roda
     # `pnpm install` e `pnpm db:migrate` ANTES de o Nest escutar — numa primeira
     # subida com os volumes de node_modules vazios isso passa de dois minutos,
@@ -627,7 +627,7 @@ services:
     # "reset completo" com o processo morto cinco segundos depois. Foi assim que
     # a queda por corepack/registry passou despercebida: verde falso.
     #
-    # `wget` do busybox porque `node:24-alpine` não traz `curl`, e contra
+    # `wget` do busybox porque `node:26-alpine` não traz `curl`, e contra
     # `127.0.0.1` porque este serviço não publica porta nenhuma — o teste roda
     # DENTRO do container, que é a única forma que sobra e a que a contenção
     # quer. Mesmo teste do `HEALTHCHECK` do `Dockerfile.prod`, deliberadamente.
