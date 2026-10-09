@@ -729,3 +729,55 @@ vulnerabilities:
       entrada de terceiros. Sai desta lista quando houver release novo do
       actionlint.
     expired_at: 2026-10-31
+  - id: CVE-2026-78667
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib (Go 1.24.11) embutida no BINÁRIO OFICIAL do gitleaks 8.30.1, que segue
+      sendo o último release publicado (checado em 2026-10-09 na API do
+      GitHub: v8.30.1, de 2026-03-21) — baixamos o artefato com checksum verificado,
+      não o compilamos, então não há como recompilar contra o Go corrigido
+      (1.26.9/1.27.2) sem um release do upstream. A falha é em net/http (negação de serviço por requisição HTTP forjada):
+      o gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps, não escuta rede nem
+      processa entrada de terceiros, então o caminho vulnerável não é
+      alcançável neste uso. Sai desta lista quando houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-78667
+    paths:
+      - "usr/local/bin/actionlint"
+    statement: >-
+      Go stdlib (Go 1.26.1) embutida no BINÁRIO OFICIAL do actionlint 1.7.12, que segue
+      sendo o último release publicado (checado em 2026-10-09 na API do
+      GitHub: v1.7.12, de 2026-03-30) — baixamos o artefato com checksum verificado,
+      não o compilamos, então não há como recompilar contra o Go corrigido
+      (1.26.9/1.27.2) sem um release do upstream. A falha é em net/http (negação de serviço por requisição HTTP forjada):
+      o actionlint aqui é uma CLI que lê arquivos de workflow do próprio repositório, não escuta rede nem
+      processa entrada de terceiros, então o caminho vulnerável não é
+      alcançável neste uso. Sai desta lista quando houver release novo do actionlint.
+    expired_at: 2026-10-31
+  - id: CVE-2026-97031
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      Go stdlib (Go 1.24.11) embutida no BINÁRIO OFICIAL do gitleaks 8.30.1, que segue
+      sendo o último release publicado (checado em 2026-10-09 na API do
+      GitHub: v8.30.1, de 2026-03-21) — baixamos o artefato com checksum verificado,
+      não o compilamos, então não há como recompilar contra o Go corrigido
+      (1.26.9/1.27.2) sem um release do upstream. A falha é em crypto/tls (negação de serviço no handshake):
+      o gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps, não escuta rede nem
+      processa entrada de terceiros, então o caminho vulnerável não é
+      alcançável neste uso. Sai desta lista quando houver release novo do gitleaks.
+    expired_at: 2026-10-31
+  - id: CVE-2026-97031
+    paths:
+      - "usr/local/bin/actionlint"
+    statement: >-
+      Go stdlib (Go 1.26.1) embutida no BINÁRIO OFICIAL do actionlint 1.7.12, que segue
+      sendo o último release publicado (checado em 2026-10-09 na API do
+      GitHub: v1.7.12, de 2026-03-30) — baixamos o artefato com checksum verificado,
+      não o compilamos, então não há como recompilar contra o Go corrigido
+      (1.26.9/1.27.2) sem um release do upstream. A falha é em crypto/tls (negação de serviço no handshake):
+      o actionlint aqui é uma CLI que lê arquivos de workflow do próprio repositório, não escuta rede nem
+      processa entrada de terceiros, então o caminho vulnerável não é
+      alcançável neste uso. Sai desta lista quando houver release novo do actionlint.
+    expired_at: 2026-10-31
