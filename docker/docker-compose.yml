@@ -397,7 +397,7 @@ services:
       # valor tem que ser o MESMO dos dois lados, e uma variável presente num
       # só é como os dois passam a enxergar árvores diferentes.
       BRABO_PROJECTS_BASE: ${BRABO_PROJECTS_BASE:-}
-      TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-15000}
+      TERMINAL_ACTION_TIMEOUT_MS: ${TERMINAL_ACTION_TIMEOUT_MS:-120000}
       # Teto de BYTES da saída de um comando (RN-074). A saída fica no
       # histórico do laço e viaja em TODO turno seguinte — sem teto, um `find`
       # numa árvore grande derruba a execução com 413 da api do Brabo (o
