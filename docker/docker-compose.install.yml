@@ -52,7 +52,7 @@ x-app-hardening: &app-hardening
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
+    image: pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-brabo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brabo}
@@ -79,7 +79,7 @@ services:
   # (senha precisa ter >= 8 caracteres) — a validação não é nossa, mas o
   # efeito é o mesmo, "sem fallback silencioso para um valor público".
   neo4j:
-    image: neo4j:5.26-community@sha256:5eb12ad77fa46ab73e23df9ea1f43f5c0f2a79523435577648e046be042b9b93
+    image: neo4j:5.26-community@sha256:d9cfe82983d27f5a75b3aaae8f316d04f9a698a3b7f6103a508f7caf8362f255
     restart: unless-stopped
     environment:
       NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-}
@@ -493,7 +493,7 @@ services:
     # sem aviso, e um upgrade silencioso de Ollama já quebrou build antes
     # (mudança de rota da API). Atualizar é decisão manual — subir o número
     # aqui, não seguir `latest`.
-    image: ollama/ollama:0.34.4@sha256:8262851b2846b87c649eddf3e76beb270c52f4d1bc94559f47efde16b0841551
+    image: ollama/ollama:0.35.1@sha256:292ee7945dfc3d5840a181f3ab86fedb1e66703e02c8af98b50f4da56b7e278c
     profiles: ["llm"]
     entrypoint: ["sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2:1b; wait"]
     volumes:
@@ -514,7 +514,7 @@ services:
     # MESMA tag do serviço `ollama` acima, de propósito: os dois falam o
     # mesmo protocolo HTTP, e divergir a versão entre daemon e CLI é o tipo
     # de coisa que só aparece em produção.
-    image: ollama/ollama:0.34.4@sha256:8262851b2846b87c649eddf3e76beb270c52f4d1bc94559f47efde16b0841551
+    image: ollama/ollama:0.35.1@sha256:292ee7945dfc3d5840a181f3ab86fedb1e66703e02c8af98b50f4da56b7e278c
     profiles: ["llm"]
     depends_on:
       ollama:
