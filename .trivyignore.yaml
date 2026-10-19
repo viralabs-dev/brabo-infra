@@ -23,6 +23,20 @@
 # e REMOVA daqui o que tiver sido resolvido.
 
 vulnerabilities:
+  - id: CVE-2026-56851
+    paths:
+      - "usr/local/bin/gitleaks"
+    statement: >-
+      golang.org/x/text v0.22.0 embutido no BINÁRIO OFICIAL do gitleaks 8.30.1,
+      que segue sendo o último release publicado (checado em 2026-10-19, mesma
+      versão de 2026-03-21; o go.mod da tag ainda pede x/text v0.22.0) — mesmo
+      caso da CVE-2026-56852 logo abaixo: baixamos o artefato com checksum
+      verificado, não o compilamos. O pânico do perfil Nickname (slice fora dos
+      limites) exige entrada controlada por atacante passando pelo `precis`; o
+      gitleaks aqui é uma CLI que lê arquivos locais nos gates de SecOps, não
+      escuta rede, e um pânico só derruba a própria execução do scan.
+      Sai desta lista quando houver release novo do gitleaks.
+    expired_at: 2026-10-31
   - id: CVE-2026-56852
     paths:
       - "usr/local/bin/gitleaks"
