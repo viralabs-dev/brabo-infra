@@ -176,6 +176,9 @@ services:
       # isto fecha o lado de quem a escolhe de propósito.
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-5173}}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      # O 9Router roda no HOST, fora do compose (AT-576a, ADR 0222): a URL é da
+      # instalação e o padrão atravessa o `extra_hosts` do serviço.
+      NINE_ROUTER_BASE_URL: ${NINE_ROUTER_BASE_URL:-http://host.docker.internal:20128/v1}
       # Teto de INATIVIDADE do socket na chamada ao Ollama (ver
       # ollama-provider.ts). Precisa ser >= o LLM_TURN_TIMEOUT_MS do engine,
       # senão quem desiste primeiro é a api e o teto do engine não vale nada.

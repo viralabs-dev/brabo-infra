@@ -172,6 +172,10 @@ services:
     # arquivos intermediários). O resto do rootfs é read-only.
     tmpfs:
       - /tmp
+    # `host.docker.internal` não resolve no Docker Engine nativo do Linux sem
+    # este mapeamento: é por ele que a api alcança o 9Router no host (ADR 0222).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -181,6 +185,9 @@ services:
       # publicada e quebrar o CORS em silêncio (ADR 0037 — a porta é contrato).
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-8088}}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      # O 9Router roda no HOST, fora do compose (AT-576a, ADR 0222): a URL é da
+      # instalação e o padrão atravessa o `extra_hosts` do serviço.
+      NINE_ROUTER_BASE_URL: ${NINE_ROUTER_BASE_URL:-http://host.docker.internal:20128/v1}
       OLLAMA_REQUEST_TIMEOUT_MS: ${OLLAMA_REQUEST_TIMEOUT_MS:-300000}
       # Os quatro segredos abaixo (mais o GIT_OAUTH_STATE_SECRET, logo em
       # seguida) NÃO têm default de desenvolvimento aqui, de propósito. Este
