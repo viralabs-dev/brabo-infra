@@ -58,7 +58,7 @@ services:
   # (senha precisa ter >= 8 caracteres) — a validação não é nossa, mas o
   # efeito é o mesmo, "sem fallback silencioso para um valor público".
   neo4j:
-    image: neo4j:5.26-community@sha256:d9cfe82983d27f5a75b3aaae8f316d04f9a698a3b7f6103a508f7caf8362f255
+    image: neo4j:5.26-community@sha256:adaa077a3ab023015143b8f73f7076a7d053f12985f5b06f4c6a128c3a2f7240
     restart: unless-stopped
     environment:
       NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-}
@@ -548,7 +548,7 @@ services:
     # sem aviso, e um upgrade silencioso de Ollama já quebrou build antes
     # (mudança de rota da API). Atualizar é decisão manual — subir o número
     # aqui, não seguir `latest`.
-    image: ollama/ollama:0.40.6@sha256:265409e1d931028a8f7d5a32bcbafddd7bffbc6cc629d77efe9560adf692a5e7
+    image: ollama/ollama:0.40.10@sha256:4c5b27871a3239a717048f9b93057680a51b60c8119a7016aebb57f938e25e35
     profiles: ["llm"]
     entrypoint: ["sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2:1b; wait"]
     volumes:
@@ -569,7 +569,7 @@ services:
     # MESMA tag do serviço `ollama` acima, de propósito: os dois falam o
     # mesmo protocolo HTTP, e divergir a versão entre daemon e CLI é o tipo
     # de coisa que só aparece em produção.
-    image: ollama/ollama:0.40.6@sha256:265409e1d931028a8f7d5a32bcbafddd7bffbc6cc629d77efe9560adf692a5e7
+    image: ollama/ollama:0.40.10@sha256:4c5b27871a3239a717048f9b93057680a51b60c8119a7016aebb57f938e25e35
     profiles: ["llm"]
     depends_on:
       ollama:
