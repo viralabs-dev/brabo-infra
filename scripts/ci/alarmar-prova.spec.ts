@@ -31,6 +31,8 @@ let log: string;
 // JÁ filtrado pelo `--jq` — o script pede só o número.
 const GH_FALSO = `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$GH_LOG"
+prev=""
+for a in "$@"; do [ "$prev" = --body-file ] && cp "$a" "$GH_LOG.corpo"; prev="$a"; done
 case "$1 $2" in
   "repo view") printf '%s\\n' "\${RAMO_DO_GITHUB:-main}" ;;
   "issue list") [ -n "\${ISSUE_ABERTA:-}" ] && printf '%s\\n' "$ISSUE_ABERTA" ;;
@@ -121,6 +123,28 @@ describe('alarmar — no ramo padrão', () => {
       rmSync(log, { force: true });
       expect(alarmar(desfecho, { ...noPadrao, ISSUE_ABERTA: '42' }).chamadas).toEqual([]);
     }
+  });
+});
+
+describe('alarmar — WORKFLOW_DA_PROVA (AT-667)', () => {
+  const noPadrao = { RAMO_PADRAO: 'main', GITHUB_REF_NAME: 'main' };
+
+  it('sem a variável, o corpo e o fechamento nomeiam propriedades.yml', () => {
+    alarmar('failure', noPadrao);
+    expect(readFileSync(`${log}.corpo`, 'utf8')).toContain('`propriedades.yml`');
+  });
+
+  it('com a variável, o corpo nomeia o workflow dela e o título não muda', () => {
+    const { chamadas } = alarmar('failure', { ...noPadrao, WORKFLOW_DA_PROVA: 'golden-set-rag.yml' });
+    const corpo = readFileSync(`${log}.corpo`, 'utf8');
+    expect(corpo).toContain('`golden-set-rag.yml`');
+    expect(corpo).not.toContain('propriedades.yml');
+    expect(mutaveis(chamadas)[0]).toContain('issue create --title Prova de propriedade falhou: `make alvo`');
+  });
+
+  it('com a variável, o fechamento nomeia o workflow dela', () => {
+    const { chamadas } = alarmar('success', { ...noPadrao, ISSUE_ABERTA: '42', WORKFLOW_DA_PROVA: 'golden-set-rag.yml' });
+    expect(mutaveis(chamadas)[0]).toMatch(/Fechada pelo próprio `golden-set-rag\.yml`/);
   });
 });
 

@@ -13,6 +13,10 @@
 #   source scripts/ci/alarmar-prova.sh
 #   alarmar '<alvo>' '<outcome do passo>' ['<onde olhar além do log>']
 #
+# `WORKFLOW_DA_PROVA` (opcional, AT-667) nomeia o workflow no corpo da issue e no
+# comentário de fechamento; sem ele, `propriedades.yml`. O TÍTULO não usa a
+# variável: ele é a chave das issues já abertas.
+#
 # O desfecho decide o que acontece com a issue do alvo (AT-212):
 #   - `failure` abre a issue, ou comenta na aberta;
 #   - `success` FECHA a aberta, com um comentário que nomeia a rodada — antes
@@ -50,7 +54,8 @@ ramo_padrao_da_prova() {
 }
 
 alarmar() {
-  local alvo="$1" desfecho="$2" onde="${3:-}" titulo corpo existente url ramo
+  local alvo="$1" desfecho="$2" onde="${3:-}" titulo corpo existente url ramo wf
+  wf="${WORKFLOW_DA_PROVA:-propriedades.yml}"
   case "${desfecho}" in
     failure|success) ;;
     *) return 0 ;;
@@ -72,14 +77,14 @@ alarmar() {
   if [ "${desfecho}" = "success" ]; then
     [ -n "${existente}" ] || return 0
     gh issue close "${existente}" \
-      --comment "Passou na rodada ${URL_DO_RUN} (\`${GITHUB_SHA}\`, ${GITHUB_REF_NAME}, $(date -u +%Y-%m-%dT%H:%MZ)). Fechada pelo próprio \`propriedades.yml\`; uma nova falha abre outra."
+      --comment "Passou na rodada ${URL_DO_RUN} (\`${GITHUB_SHA}\`, ${GITHUB_REF_NAME}, $(date -u +%Y-%m-%dT%H:%MZ)). Fechada pelo próprio \`${wf}\`; uma nova falha abre outra."
     echo "::notice::fechei a issue #${existente} (${alvo} voltou a passar)"
     return 0
   fi
 
   corpo="$(mktemp)"
   {
-    echo "A rodada de \`propriedades.yml\` no ramo padrão reprovou em \`${alvo}\`."
+    echo "A rodada de \`${wf}\` no ramo padrão reprovou em \`${alvo}\`."
     echo
     echo "- run: ${URL_DO_RUN}"
     echo "- commit: \`${GITHUB_SHA}\` (${GITHUB_REF_NAME})"
