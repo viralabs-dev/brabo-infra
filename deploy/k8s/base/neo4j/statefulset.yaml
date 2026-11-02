@@ -45,7 +45,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: neo4j
-          image: neo4j:5.26-community@sha256:adaa077a3ab023015143b8f73f7076a7d053f12985f5b06f4c6a128c3a2f7240
+          image: neo4j:5.26-community@sha256:249a1ec6e3c52d82101a5ed33d6ed2b5ed5b0017b21a28c0bfebc335e87fb177
           ports:
             - name: bolt
               containerPort: 7687
