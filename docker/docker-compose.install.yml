@@ -178,6 +178,9 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: production
+      # AT-722: vazio por padrão = sem acesso rápido. `local` só nesta máquina, e
+      # junto com BRABO_BIND=127.0.0.1 (runbook): senão a porta está aberta na rede.
+      BRABO_AMBIENTE: ${BRABO_AMBIENTE:-}
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
       # Origem do web NESTE compose (nginx publicado abaixo), não a de dev.
@@ -266,7 +269,7 @@ services:
       # apontando para um serviço que não sobe, ou um broker que ninguém chama.
       BROKER_URL: ${BROKER_URL:-}
     ports:
-      - "${API_PORT:-3000}:3000"
+      - "${BRABO_BIND:-0.0.0.0}:${API_PORT:-3000}:3000"
     networks:
       # A api participa de DUAS redes. Declarar `networks` num serviço tira
       # dele a default implícita — omitir `default` aqui a desligaria do
@@ -480,7 +483,7 @@ services:
     # 8088 no host por convenção herdada; 8080 dentro do container porque
     # nginx roda non-root e não pode fazer bind em porta privilegiada.
     ports:
-      - "${WEB_PORT:-8088}:8080"
+      - "${BRABO_BIND:-0.0.0.0}:${WEB_PORT:-8088}:8080"
     depends_on:
       api:
         condition: service_healthy

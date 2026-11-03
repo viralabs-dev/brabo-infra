@@ -57,6 +57,15 @@ variable "TAG_EXTRA" {
 variable "VERSION" {
   default = "dev"
 }
+
+# Ambiente da imagem (AT-722): `dev` | `prd` | vazio. O acesso rápido por papel só
+# existe com `local`, e `local` NUNCA sai por GitHub Actions. O default é VAZIO de
+# propósito (seguro: sem a variável a imagem não tem o acesso) e quem constrói
+# para esta máquina passa `AMBIENTE=local` à mão. O `ambiente-nas-actions.spec.ts`
+# reprova default diferente de vazio e `local` em qualquer workflow.
+variable "AMBIENTE" {
+  default = ""
+}
 # Prefixo de registry, COM a barra final quando presente:
 # `ghcr.io/daneiel/`. Vazio por padrão de propósito — o `ci.yml` constrói para
 # o daemon local e compara nomes curtos (`brabo-api:prod`) no scan e no smoke;
@@ -105,7 +114,7 @@ target "api" {
   inherits   = ["_comum"]
   dockerfile = "docker/api/Dockerfile.prod"
   tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-api:${TAG}"] : ["${REGISTRY}brabo-api:${TAG}", "${REGISTRY}brabo-api:${TAG_EXTRA}"]
-  args       = { BRABO_VERSION = VERSION }
+  args       = { BRABO_VERSION = VERSION, BRABO_AMBIENTE = AMBIENTE }
   cache-from = ["type=gha,scope=api"]
   cache-to   = ["type=gha,scope=api,mode=max"]
 }
@@ -122,7 +131,7 @@ target "web" {
   inherits   = ["_comum"]
   dockerfile = "docker/web/Dockerfile.prod"
   tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-web:${TAG}"] : ["${REGISTRY}brabo-web:${TAG}", "${REGISTRY}brabo-web:${TAG_EXTRA}"]
-  args       = { VITE_BRABO_VERSION = VERSION }
+  args       = { VITE_BRABO_VERSION = VERSION, VITE_BRABO_AMBIENTE = AMBIENTE }
   cache-from = ["type=gha,scope=web"]
   cache-to   = ["type=gha,scope=web,mode=max"]
 }

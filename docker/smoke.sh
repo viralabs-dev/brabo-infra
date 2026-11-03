@@ -275,6 +275,20 @@ printf '%s' "${engine_health}" | grep -q '"status":"ok"' \
 ok "engine /health ok"
 
 # O web é estático: basta provar que o nginx serve o index do bundle real.
+# AT-722: o acesso rápido por papel nunca existe nas imagens construídas pelas
+# Actions (AMBIENTE vazio/dev/prd): a rota é 404 e a marca do componente não
+# está em nenhum asset do nginx.
+codigo_dev_login="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+  -X POST -H 'Content-Type: application/json' -d '{"papel":"owner"}' \
+  "${API}/auth/dev-login")" || fail "api não respondeu em ${API}/auth/dev-login"
+[[ "${codigo_dev_login}" == "404" ]] \
+  || fail "POST /auth/dev-login deveria ser 404 fora do ambiente local, veio ${codigo_dev_login}"
+ok "acesso rápido ausente na api (dev-login 404)"
+if "${COMPOSE[@]}" exec -T web grep -rqs 'data-acesso-rapido' /usr/share/nginx/html; then
+  fail "a marca data-acesso-rapido está nos assets da imagem web"
+fi
+ok "acesso rápido ausente nos assets da web"
+
 web_index="$(curl -sS --max-time 15 "${WEB}/")" || fail "web não respondeu em ${WEB}"
 printf '%s' "${web_index}" | grep -q '/assets/' \
   || fail "index.html servido não referencia /assets/ (bundle não entrou na imagem?)"
