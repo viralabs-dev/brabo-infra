@@ -55,10 +55,10 @@ function checar(corpo: string) {
 
 // O corpo do registro como a api o serve: `carregarRegistro()` devolve o YAML
 // parseado, sem transformação, e o Nest o serializa.
-const REGISTRO = JSON.stringify(parse(readFileSync(path.join(RAIZ, 'docs/gates.yml'), 'utf8')));
+const REGISTRO = JSON.stringify(parse(readFileSync(path.join(RAIZ, 'apps/api/config/gates.yml'), 'utf8')));
 
 describe('checar_registro_de_gates', () => {
-  it('aceita o registro real de docs/gates.yml', () => {
+  it('aceita o registro real de apps/api/config/gates.yml', () => {
     const r = checar(REGISTRO);
     expect(r.codigo).toBe(0);
     expect(r.saida).toBe('');
