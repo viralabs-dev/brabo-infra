@@ -124,7 +124,6 @@ PASTAS_REGENERAVEIS=(
   packages/shared/node_modules
   packages/shared/dist
   website/node_modules
-  website/build
 )
 
 corrigir_donos() {
