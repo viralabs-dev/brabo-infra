@@ -608,7 +608,9 @@ jobs:
           for t in users projects sessions session_events proposed_actions; do
             a="$(psqlx -d brabo -c "select count(*) from ${t}")"
             b="$(psqlx -d brabo_novo -c "select count(*) from ${t}")"
-            [ "${a}" = "${b}" ] && [ "${a}" -gt 0 ] || { echo "::error::${t}: origem=${a} restaurado=${b}"; exit 1; }
+            if [ "${a}" != "${b}" ] || [ "${a}" -le 0 ]; then
+              echo "::error::${t}: origem=${a} restaurado=${b}"; exit 1
+            fi
             echo "${t}: ${a} = ${b}"
           done
           # O banco agora está populado: o mesmo comando TEM de ser recusado.
