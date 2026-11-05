@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `make dev` / `pnpm dev`: sobe o dev a partir da pasta-mãe dos irmãos (preflight + `compose up`).
+- `preflight.mjs` confere que os repos irmãos do compose existem (recusa nomeando o que falta) e cria os pontos de volume (`node_modules`, `_build`, `deps`) DENTRO de cada irmão; `reset-total.sh` roda migrations/seed a partir de `brabo-api` e `mix ecto.migrate` em `brabo-engine` (`BRABO_IRMAOS`, padrão `..`); as recusas seguem.
+- `trivy-do-release.spec.ts` religado (sem `skip`): compara com os workflows que escaneiam hoje; sem nenhum, prova o release contra a régua constante do spec. `oferta-de-fonte-na-imagem.spec.ts` voltou, lendo os Dockerfiles dos irmãos; ACHADO: o `build-runner-binaries.yml` do `brabo-runner` não anexa mais `THIRD_PARTY_NOTICES.md` (fica para o repo do runner).
+- `imagens-do-compose.yml` (reutilizável) faz checkout explícito do `brabo-infra` em `infra/` no ref de `infra_ref` (o chamador passa o MESMO SHA do `uses:`); antes pegava o repo chamador. CI chama o reutilizável (`imagens`/`imagens-lidas`).
+
 ## 1.0.0
 
 Primeira versão, extraída do monorepo `daneiel/brabo` em `1586158973` (EP-033, AT-701, ADR 0252) com o histórico dos caminhos; `#NNN` nas mensagens virou `viralabs-dev/brabo-legacy#NNN`.
@@ -10,4 +17,4 @@ Primeira versão, extraída do monorepo `daneiel/brabo` em `1586158973` (EP-033,
 - CI próprio: política de PR (`brabo-ci@v1.0.0`), typecheck + vitest com os irmãos em checkout na `dev`, `docker compose config` dos composes e `make k8s-validate`.
 - Decisões: `docker/smoke.sh` ficou aqui (plano §2.9: é a prova de subida do compose; o `brabo-qa` o chama). `trivy-do-release` e `images-manifest` ficaram por pedido da lane, apesar de a release do produto morar no `brabo`.
 - Fora do CI, declarado: `install-*.spec.ts`, `assets-do-instalador`, `oferta-de-fonte-na-imagem`, `alarme-de-tag` (instalador/release, `brabo`); `scripts/ci/docs` e as checagens de política (`brabo-ci`/`brabo`); `diff-toca-imagem`, `ambiente-nas-actions`, `rotulos-dos-workflows`, `destinos-do-composer`, `testes-leem-so-o-proprio-app`, `vocabulario-de-eventos-dev`, `semgrep-do-engine` (dependem de `.github/` ou `docs/` do monorepo).
-- Lacunas: a prova de subir os seis serviços saudáveis a partir dos clones irmãos é da AT-707; `scripts/dev/bootstrap.sh`, `preflight.mjs`, `pontos-de-montagem.mjs`, `reset-total*` e `seed-prompts.ts` ainda assumem UM checkout (monorepo) e precisam ser adaptados à pasta-mãe; o bloco "mesma régua do ci.yml" de `trivy-do-release.spec.ts` está pulado (o portão do `ci.yml` do monorepo não existe mais).
+- Lacunas: a prova de subir os seis serviços saudáveis a partir dos clones irmãos é da AT-707; `scripts/dev/bootstrap.sh` e `seed-prompts.ts` ainda assumem UM checkout.

@@ -27,6 +27,7 @@ type Cenario = {
   mixCompileFalha?: boolean;
   mixDepsGetFalha?: boolean;
   semMix?: boolean;
+  semIrmaoEngine?: boolean;
   drizzleAusente?: boolean;
   // Estado do container neo4j ANTES do up: ausente, recusando a senha, ou
   // saudável com o NEO4J_AUTH dado.
@@ -53,10 +54,15 @@ function stub(bin: string, nome: string, corpo: string[]) {
 }
 
 function rodar(c: Cenario) {
-  const raiz = mkdtempSync(join(tmpdir(), 'reset-total-'));
-  pastas.push(raiz);
+  const pai = mkdtempSync(join(tmpdir(), 'reset-total-'));
+  pastas.push(pai);
+  const raiz = join(pai, 'infra');
+  const irmaos = pai;
+  mkdirSync(raiz);
   mkdirSync(join(raiz, 'scripts/dev'), { recursive: true });
-  mkdirSync(join(raiz, 'apps/engine'), { recursive: true });
+  // Layout de irmãos: o checkout de mentira é `<tmp>/infra`; os irmãos moram ao lado dele.
+  if (!c.semIrmaoEngine) mkdirSync(join(irmaos, 'brabo-engine'), { recursive: true });
+  mkdirSync(join(irmaos, 'brabo-api'), { recursive: true });
   for (const f of ['reset-total.sh', 'reset-total-lib.sh', 'perfil-ollama.sh']) {
     copyFileSync(join(aqui, f), join(raiz, 'scripts/dev', f));
   }
@@ -134,7 +140,7 @@ describe('reset-total.sh — pré-requisitos de host antes do primeiro efeito (A
     const build = chamadas.findIndex((l) => /^docker .* build$/.test(l));
     const stop = chamadas.findIndex((l) => /\sstop\s/.test(l));
     const drop = chamadas.findIndex((l) => l.includes('DROP SCHEMA'));
-    const migra = chamadas.indexOf('pnpm engine:migrate');
+    const migra = chamadas.indexOf('mix ecto.migrate');
     expect(deps).toBeGreaterThanOrEqual(0);
     expect(compile).toBeGreaterThan(deps);
     expect(build).toBeGreaterThan(compile);
@@ -153,7 +159,7 @@ describe('reset-total.sh — pré-requisitos de host antes do primeiro efeito (A
   });
 
   it('mix deps.get que falha e mix ausente também recusam antes de qualquer efeito', () => {
-    for (const c of [{ mixDepsGetFalha: true }, { semMix: true }]) {
+    for (const c of [{ mixDepsGetFalha: true }, { semMix: true }, { semIrmaoEngine: true }]) {
       const { codigo, saida, chamadas } = rodar(c);
       expect(codigo).not.toBe(0);
       expect(saida).toContain('RECUSADO antes de qualquer efeito');

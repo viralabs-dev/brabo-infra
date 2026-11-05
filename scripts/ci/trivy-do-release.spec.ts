@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { caminhoReal, existe, ler } from './irmaos.ts';
+import { IRMAOS, RAIZ as RAIZ_DO_INFRA, caminhoReal, existe, ler } from './irmaos.ts';
 import YAML from 'yaml';
 import { describe, expect, it } from 'vitest';
 import {
@@ -36,12 +36,22 @@ interface Workflow {
 }
 
 // O release do PRODUTO mora em `viralabs-dev/brabo` (irmão `brabo`); sem o clone, ou sem o
-// `release.yml` ainda, os blocos que o leem PULAM. O portão do Trivy do `ci.yml` do monorepo
-// não existe em lugar nenhum hoje: o bloco que o compara com o do release fica pulado (AT-704).
+// `release.yml` ainda, os blocos que o leem PULAM.
 const temRelease = existe('.github/workflows/release.yml');
 const vazio: Workflow = { env: {}, jobs: {} };
 const release = temRelease ? (YAML.parse(ler('.github/workflows/release.yml')) as Workflow) : vazio;
-const ci = vazio;
+
+// Os OUTROS workflows que escaneiam hoje (o `ci.yml` do monorepo não existe mais): os do próprio
+// infra e, por checkout irmão, os dos repos `brabo*`. Nenhum é o release. Se nenhum escanear, a
+// régua é a CONSTANTE abaixo (a única fonte), e o release é provado contra ela.
+const ESCANEIAM = [RAIZ_DO_INFRA, ...(existsSync(IRMAOS) ? readdirSync(IRMAOS).filter((d) => d.startsWith('brabo')).map((d) => path.join(IRMAOS, d)) : [])]
+  .flatMap((repo) => {
+    const dir = path.join(repo, '.github/workflows');
+    return existsSync(dir) ? readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).map((f) => path.join(dir, f)) : [];
+  })
+  .filter((f) => !f.endsWith(`${path.sep}release.yml`) && /\btrivy image\b/.test(readFileSync(f, 'utf8')));
+const REGUA_DO_PORTAO = ['--exit-code=1', '--ignore-unfixed', '--ignorefile=.trivyignore.yaml', '--scanners=vuln', '--severity=HIGH,CRITICAL', '--skip-db-update'];
+const ci: Workflow = ESCANEIAM[0] ? (YAML.parse(readFileSync(ESCANEIAM[0], 'utf8')) as Workflow) : vazio;
 const passos = release.jobs.release?.steps ?? [];
 
 const indice = (predicado: (p: Passo) => boolean, descricao: string): number => {
@@ -123,14 +133,17 @@ describe.skipIf(!temRelease)('release.yml — a ordem (ADR 0172)', () => {
   });
 });
 
-describe.skip('release.yml — a MESMA régua do ci.yml', () => {
-  const portaoDoCi = ci.jobs.images?.steps.find((p) => p.name === 'Trivy nas cinco imagens (em paralelo)');
-  const [flagsDoCi] = invocacoesDoTrivy(portaoDoCi?.run ?? '');
+describe('release.yml — a MESMA régua dos workflows que escaneiam', () => {
+  // Sem outro workflow que escaneie, o release se prova contra REGUA_DO_PORTAO (a constante única).
+  const outros = ESCANEIAM[0] ? Object.values(ci.jobs).flatMap((j) => j.steps) : [];
+  const flagsDoCi = ESCANEIAM[0]
+    ? invocacoesDoTrivy(outros.find((p) => /\btrivy image\b/.test(p.run ?? ''))?.run ?? '')[0]
+    : REGUA_DO_PORTAO;
   const [flagsDoPortao] = invocacoesDoTrivy(passos[porNome(PORTAO)]?.run ?? '');
   const [flagsDoRelatorio] = invocacoesDoTrivy(passos[porNome(RELATORIO)]?.run ?? '');
 
   it('o extrator enxerga as três invocações (senão o resto passaria cego)', () => {
-    expect(flagsDoCi?.length ?? 0).toBeGreaterThan(5);
+    expect(flagsDoCi?.length ?? 0).toBeGreaterThanOrEqual(5);
     expect(flagsDoPortao?.length ?? 0).toBeGreaterThan(5);
     expect(flagsDoRelatorio?.length ?? 0).toBeGreaterThan(5);
   });
@@ -170,8 +183,11 @@ describe.skip('release.yml — a MESMA régua do ci.yml', () => {
   });
 
   it('versão e sha256 do binário são os mesmos nos dois workflows', () => {
-    expect(release.env.TRIVY_VERSION).toBe(ci.env.TRIVY_VERSION);
-    expect(release.env.TRIVY_SHA256).toBe(ci.env.TRIVY_SHA256);
+    if (ESCANEIAM[0]) {
+      expect(release.env.TRIVY_VERSION).toBe(ci.env.TRIVY_VERSION);
+      expect(release.env.TRIVY_SHA256).toBe(ci.env.TRIVY_SHA256);
+    }
+    expect(release.env.TRIVY_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
     expect(release.env.TRIVY_SHA256).toMatch(/^[0-9a-f]{64}$/);
   });
 

@@ -24,6 +24,7 @@ IRMÃOS, na pasta-mãe deste (a do [`brabo-workspace`](https://github.com/virala
 `docker/`, o padrão é `../..`).
 
 ```sh
+make dev                                             # preflight (irmãos + pontos de montagem) + compose up
 docker compose -f docker/docker-compose.yml config   # resolve contextos e volumes
 make k8s-validate                                    # kustomize + kubeconform nos overlays
 pnpm install && pnpm typecheck && pnpm test          # aferições (leem os irmãos)

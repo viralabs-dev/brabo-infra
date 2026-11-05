@@ -26,8 +26,18 @@ name: Imagens de terceiro lidas do compose
 # chama este arquivo. A tabela output → serviço do compose mora em
 # `scripts/ci/imagens-do-compose.ts` (`IMAGENS_DOS_WORKFLOWS`), e o spec dele
 # reprova se as saídas abaixo divergirem dela.
+#
+# Chamado de OUTRO repositório (brabo-qa...), o `actions/checkout` sem `repository:` pegaria o
+# repo CHAMADOR, que não tem o compose nem o script. Por isso o checkout é explícito no
+# brabo-infra, num subdiretório, no ref de `infra_ref`. O chamador passa o MESMO SHA do `uses:`
+# (`github.workflow_sha` não serve a chamada externa). Chamada local usa `infra_ref: ${{ github.sha }}`.
 on:
   workflow_call:
+    inputs:
+      infra_ref:
+        description: Ref (de preferência o SHA do `uses:`) do brabo-infra de onde ler o compose.
+        type: string
+        default: dev
     outputs:
       pgvector:
         description: Imagem do serviço `postgres` de docker/docker-compose.yml.
@@ -52,6 +62,9 @@ jobs:
       # raiz vem junto no modo cone, e é ele que diz ao Node que é ESM).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          repository: viralabs-dev/brabo-infra
+          ref: ${{ inputs.infra_ref }}
+          path: infra
           persist-credentials: false
           sparse-checkout: |
             docker
@@ -64,4 +77,5 @@ jobs:
 
       - id: ler
         name: Ler do compose
+        working-directory: infra
         run: node scripts/ci/imagens-do-compose.ts
