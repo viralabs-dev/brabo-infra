@@ -677,6 +677,13 @@ origem (ADR 0152), e restaurar sobre um banco já populado é operação
 destrutiva que o instalador não toma sozinho. Os repositórios git locais, sim —
 eles são fonte de verdade que nasceria vazia.
 
+> **Revisado pelo ADR 0256 e pela RN-998 (repositório `brabo`, AT-738).** Desde o
+> instalador da linha multi-repo, a migração RESTAURA o dump sozinha, mas só
+> num banco recém-criado e VAZIO (`brabo-restore --banco-vazio`, que recusa se
+> houver qualquer tabela de aplicação), antes de subir a api e o engine. O que
+> este parágrafo dizia segue valendo para banco populado: o `brabo-restore` sem
+> argumento continua só validando numa database de teste.
+
 **Onde:** `install.sh`, `migrar_instalacao_anterior` e `restaurar_apos_migrar`.
 **Teste:** `scripts/dev/prova-de-restauracao-env.spec.ts` (neste repositório: o
 `.env` do instalador passa pelo Compose da prova) e, no repositório `brabo`,
