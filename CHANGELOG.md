@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Docs: `deploy/docs` (runbook, RNs do infra, observabilidade) passa a ter o inglês como fonte única, com `idioma_original: en`; as traduções de `deploy/docs/i18n/` saíram e o runbook reconciliou o que a tradução en tinha defasado (AT-745).
 - `brabo-restore --banco-vazio` (AT-738, ADR 0256): restaura o dump direto no banco do `DATABASE_URL`, numa transação, só se ele não tiver nenhuma tabela em `public`/`drizzle`/`engine` (senão recusa nomeando); valida estrutura e contagens contra o próprio dump. Runbook ganha o procedimento por compose; RN-530 deixa de citar um spec inexistente; job `restore-banco-vazio` no `propriedades.yml` e spec com mutação da recusa.
 - Backup: o serviço `backup` ganha `user: ${BRABO_BACKUP_USER:-70:70}` (install e prod; default inalterado) para escrever na pasta criada pelo instalador; `restore.sh`/`restore-git.sh` checam o destino só por LEITURA (`destino_esperar leitura`); a recusa do `restore-git.sh` manda rodar `--user <dono lido do volume>` no compose de instalação (root não serve com `cap_drop: ALL`); o cabeçalho do serviço cita o arquivo certo (AT-738, achados 1, 4 e 11).
 - `politica.yml` novo: `pr-police` e `escada` do `brabo-ci` pinados por SHA (AT-733) e o job `politica` saiu do `ci.yml`; inclui a dispensa da PR do bot (ADR 0255).
