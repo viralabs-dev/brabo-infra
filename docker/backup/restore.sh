@@ -109,7 +109,7 @@ fi
 # do backup.sh: o k3s programa a NetworkPolicy depois de o pod ganhar IP, e um
 # Job que fala na primeira instrução recebe `connection refused` de uma regra
 # que vai existir daqui a um segundo.
-destino_esperar \
+destino_esperar leitura \
   || { log "erro: destino inacessível ($(destino_descricao)): ${destino_saida}"; exit 1; }
 
 # O nome carrega o timestamp ISO, então ordem lexicográfica é ordem cronológica.

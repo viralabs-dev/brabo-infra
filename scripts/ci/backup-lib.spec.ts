@@ -249,3 +249,34 @@ describe('bare repos — o achado do ADR 0152', () => {
     expect(status(`git_conteudo '${arquivo}' > /dev/null`)).not.toBe(0);
   });
 });
+
+describe('destino em disco — modo leitura (AT-738)', () => {
+  it('destino só legível passa na leitura e reprova na escrita', () => {
+    // restore roda como o dono do volume, que não é o dono da pasta de backup.
+    const so_leitura = path.join(area, 'so-leitura');
+    mkdirSync(so_leitura, { mode: 0o500 });
+    try {
+      const env = { BACKUP_DIR: so_leitura };
+      expect(status(`destino_esperar leitura`, env)).toBe(0);
+      expect(status(`destino_esperar`, env)).not.toBe(0);
+    } finally {
+      execFileSync('chmod', ['0700', so_leitura]);
+    }
+  });
+
+  it('destino ilegível ou inexistente reprova na leitura, sem criar nada', () => {
+    const ausente = path.join(area, 'ausente');
+    expect(status(`destino_esperar leitura`, { BACKUP_DIR: ausente })).not.toBe(0);
+    expect(existsSync(ausente)).toBe(false);
+    const fechado = path.join(area, 'fechado');
+    mkdirSync(fechado, { mode: 0o000 });
+    try {
+      // root ignora a permissão; só afirma onde ela vale.
+      if (process.getuid?.() !== 0) {
+        expect(status(`destino_esperar leitura`, { BACKUP_DIR: fechado })).not.toBe(0);
+      }
+    } finally {
+      execFileSync('chmod', ['0700', fechado]);
+    }
+  });
+});

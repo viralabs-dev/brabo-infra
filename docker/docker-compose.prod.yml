@@ -457,6 +457,9 @@ services:
     profiles: ["backup"]
     <<: *app-hardening
     restart: "no"
+    # Escreve no destino com o dono da pasta de backup: o instalador a cria com o uid
+    # de quem roda, e o 70:70 padrão da imagem não escreve ali (AT-738). Padrão inalterado.
+    user: ${BRABO_BACKUP_USER:-70:70}
     tmpfs:
       # HOME e TMPDIR da imagem: o aws-cli escreve `~/.aws` e o pg_restore usa
       # temporários. É o que permite o rootfs subir read-only.
