@@ -1,8 +1,7 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { caminhoReal, existe, ler } from './irmaos.ts';
+import { IRMAOS, RAIZ as RAIZ_DO_INFRA, caminhoReal, existe } from './irmaos.ts';
 import YAML from 'yaml';
 import { describe, expect, it } from 'vitest';
 import {
@@ -15,15 +14,12 @@ import {
 } from './trivy-do-release.ts';
 
 /**
- * ADR 0172 (AT-179). O `release.yml` só roda em TAG final, então nenhum PR o
- * executa — a mesma situação do `install-e2e.yml`. O que se prova a cada PR é
- * ESTÁTICO: a ordem dos passos (scan antes de assinar), as flags do portão
- * iguais às do `ci.yml`, a mesma versão e o mesmo sha256 do binário, e nenhuma
- * allowlist nova. A lógica que não é "chamar o Trivy" (ler o manifesto, montar
- * o resumo) é testada como código.
+ * ADR 0172 (AT-179). Os `release.yml` só rodam em TAG final, então nenhum PR os executa. O que se
+ * prova a cada PR é ESTÁTICO, nos workflows de HOJE (o do infra e, por checkout irmão em
+ * `BRABO_IRMAOS`, os de `brabo` e dos quatro apps): os passos são achados pelo COMANDO
+ * (`trivy image`, `cosign sign`), nunca pelo nome; versão e sha256 do Trivy e as flags do portão são
+ * iguais em todos; o portão escaneia por DIGEST e vem ANTES de assinar; e não há allowlist nova.
  */
-
-const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 interface Passo {
   name?: string;
@@ -31,28 +27,13 @@ interface Passo {
   run?: string;
 }
 interface Workflow {
-  env: Record<string, string>;
-  jobs: Record<string, { steps: Passo[] }>;
+  env?: Record<string, string>;
+  jobs: Record<string, { steps?: Passo[] }>;
 }
 
-// O release do PRODUTO mora em `viralabs-dev/brabo` (irmão `brabo`); sem o clone, ou sem o
-// `release.yml` ainda, os blocos que o leem PULAM. O portão do Trivy do `ci.yml` do monorepo
-// não existe em lugar nenhum hoje: o bloco que o compara com o do release fica pulado (AT-704).
-const temRelease = existe('.github/workflows/release.yml');
-const vazio: Workflow = { env: {}, jobs: {} };
-const release = temRelease ? (YAML.parse(ler('.github/workflows/release.yml')) as Workflow) : vazio;
-const ci = vazio;
-const passos = release.jobs.release?.steps ?? [];
-
-const indice = (predicado: (p: Passo) => boolean, descricao: string): number => {
-  const i = passos.findIndex(predicado);
-  if (i < 0) throw new Error(`release.yml não tem mais o passo: ${descricao}`);
-  return i;
-};
-const porNome = (nome: string): number => indice((p) => p.name === nome, nome);
-
-const PORTAO = 'Trivy — HIGH/CRITICAL com correção reprova, antes de assinar';
-const RELATORIO = 'Trivy — relatório do que não tem correção';
+const REPOS = ['brabo-infra', 'brabo', 'brabo-api', 'brabo-engine', 'brabo-web', 'brabo-broker'];
+const ARQUIVO = '.github/workflows/release.yml';
+const caminhoDoRepo = (repo: string): string => (repo === 'brabo-infra' ? RAIZ_DO_INFRA : path.join(IRMAOS, repo));
 
 /**
  * As flags de TODA invocação `trivy image` de um `run:`, com as continuações
@@ -70,7 +51,7 @@ function invocacoesDoTrivy(run: string): string[][] {
       const comando = linha.slice(linha.indexOf('trivy image') + 'trivy image'.length).split(/\s(?:2>&1|\||;)|;/)[0] ?? '';
       const tokens = comando.trim().split(/\s+/);
       // O último token é a IMAGEM, posicional — nunca valor de flag.
-      const semImagem = tokens.slice(0, -1);
+      const semImagem = tokens.slice(0, -1).filter((t) => !t.startsWith('"${ignore')); // o array bash do ignorefile
       const flags: string[] = [];
       for (let i = 0; i < semImagem.length; i++) {
         const t = semImagem[i] as string;
@@ -87,102 +68,119 @@ function invocacoesDoTrivy(run: string): string[][] {
     });
 }
 
-/** Flags que dizem ONDE (cache, origem, formato, saída), não O QUE reprova. */
-const DE_LOGISTICA = /^--(cache-dir|image-src|format|output|no-progress)\b/;
+/** Flags que dizem ONDE/COMO (cache, origem, formato, saída, banco), não O QUE reprova. */
+const DE_LOGISTICA = /^--(cache-dir|image-src|format|output|no-progress|skip-db-update)\b/;
 const regua = (flags: string[]): string[] => flags.filter((f) => !DE_LOGISTICA.test(f)).sort();
+/** Allowlist: qualquer forma de dizer "ignore isto". `--skip-db-update` não é (é logística). */
+const ALLOWLIST = /^--(ignorefile|ignore-policy|skip-(?!db-update)|vex|ignore-status)/;
+const IGNOREFILE_OK = '.trivyignore.yaml';
+const REGUA_DO_PORTAO = ['--exit-code=1', '--ignore-unfixed', '--scanners=vuln', '--severity=HIGH,CRITICAL'];
 
-describe.skipIf(!temRelease)('release.yml — a ordem (ADR 0172)', () => {
-  it('o portão do Trivy roda DEPOIS de publicar e registrar os digests', () => {
-    expect(porNome(PORTAO)).toBeGreaterThan(porNome('Registrar as imagens publicadas'));
-    expect(porNome(RELATORIO)).toBeGreaterThan(porNome('Registrar as imagens publicadas'));
-  });
+/** O `--ignorefile` do passo inteiro (o dos apps vem de um array bash), pelo nome do arquivo. */
+const ignorefilesDoPasso = (run: string): string[] =>
+  [...run.matchAll(/--ignorefile[= ]+([^\s)"']+)/g)].map((m) => path.posix.basename(m[1] as string));
 
-  it('o portão roda ANTES de instalar o cosign e de assinar — imagem reprovada não é assinada', () => {
-    const cosign = indice((p) => (p.uses ?? '').startsWith('sigstore/cosign-installer@'), 'cosign-installer');
-    const assinar = indice((p) => /\bcosign sign\b/.test(p.run ?? ''), 'cosign sign');
-    expect(porNome(PORTAO)).toBeLessThan(cosign);
-    expect(porNome(PORTAO)).toBeLessThan(assinar);
-  });
+const ehCosignSign = (p: Passo): boolean => /\bcosign sign(-blob)?\b/.test(p.run ?? '');
+const ehPortao = (p: Passo): boolean =>
+  invocacoesDoTrivy(p.run ?? '').some((f) => f.includes('--exit-code=1'));
+/** Por digest: o alvo é `…@${DIGEST}`, vem do manifesto (`referencias`) ou da saída `ref` do passo que o resolveu. */
+const PORDIGEST = /@\$\{?DIGEST|trivy-do-release\.ts referencias|steps\.ref\.outputs\.ref/;
 
-  it('nenhum passo depois do portão o contorna com `continue-on-error` ou `if: always()`', () => {
-    const portao = passos[porNome(PORTAO)] as Record<string, unknown>;
-    expect(portao['continue-on-error']).toBeUndefined();
-    expect(portao.if).toBeUndefined();
-    for (const p of passos.slice(porNome(PORTAO) + 1) as Record<string, unknown>[]) {
-      expect(String(p.if ?? '')).not.toMatch(/always\(\)|failure\(\)/);
+/** Afere a régua em workflows (repo → YAML). Devolve as violações, nomeando o repo; vazio é verde. */
+function violacoes(workflows: Record<string, string>): string[] {
+  const v: string[] = [];
+  let versao: string | undefined;
+  let sha: string | undefined;
+  for (const [repo, texto] of Object.entries(workflows)) {
+    const wf = YAML.parse(texto) as Workflow;
+    const env = wf.env ?? {};
+    versao ??= env.TRIVY_VERSION;
+    sha ??= env.TRIVY_SHA256;
+    if (env.TRIVY_VERSION !== versao) v.push(`${repo}: TRIVY_VERSION diverge`);
+    if (env.TRIVY_SHA256 !== sha) v.push(`${repo}: TRIVY_SHA256 diverge`);
+    if (!/^[0-9a-f]{64}$/.test(env.TRIVY_SHA256 ?? '')) v.push(`${repo}: TRIVY_SHA256 inválido`);
+    let portoes = 0;
+    for (const job of Object.values(wf.jobs)) {
+      const passos = job.steps ?? [];
+      const assinar = passos.findIndex(ehCosignSign);
+      passos.forEach((p, i) => {
+        const run = p.run ?? '';
+        for (const flags of invocacoesDoTrivy(run)) {
+          if (flags.some((f) => ALLOWLIST.test(f) && !f.startsWith('--ignorefile'))) v.push(`${repo}: allowlist nova no Trivy`);
+        }
+        if (ignorefilesDoPasso(run).some((f) => f !== IGNOREFILE_OK)) v.push(`${repo}: ignorefile diferente de ${IGNOREFILE_OK}`);
+        if (!ehPortao(p)) return;
+        portoes++;
+        const [flags] = invocacoesDoTrivy(run).filter((f) => f.includes('--exit-code=1'));
+        if (JSON.stringify(regua(flags ?? []).filter((f) => !ALLOWLIST.test(f))) !== JSON.stringify([...REGUA_DO_PORTAO].sort()))
+          v.push(`${repo}: flags do portão divergem da régua`);
+        if (!PORDIGEST.test(run) && !PORDIGEST.test(JSON.stringify(passos))) v.push(`${repo}: o portão não escaneia por digest`);
+        if (assinar >= 0 && i > assinar) v.push(`${repo}: o portão do Trivy vem DEPOIS do cosign sign`);
+        if ((p as Record<string, unknown>)['continue-on-error'] !== undefined) v.push(`${repo}: portão com continue-on-error`);
+        if (assinar < 0) v.push(`${repo}: portão sem cosign sign no mesmo job`);
+      });
     }
+    if (portoes === 0) v.push(`${repo}: nenhum portão (trivy image --exit-code 1)`);
+  }
+  return v;
+}
+
+/** Lê os workflows reais; irmão ausente vira entrada vazia que REPROVA nomeando o repo. */
+function workflowsReais(): { lidos: Record<string, string>; ausentes: string[] } {
+  const lidos: Record<string, string> = {};
+  const ausentes: string[] = [];
+  for (const repo of REPOS) {
+    const f = path.join(caminhoDoRepo(repo), ARQUIVO);
+    if (existsSync(f)) lidos[repo] = readFileSync(f, 'utf8');
+    else ausentes.push(repo);
+  }
+  return { lidos, ausentes };
+}
+
+describe('Trivy — a régua nos workflows de release de hoje', () => {
+  const { lidos, ausentes } = workflowsReais();
+
+  it('todos os repositórios com release de imagem estão checados out (irmão ausente reprova, nomeando)', () => {
+    expect(ausentes, `sem ${ARQUIVO} em: ${ausentes.join(', ')} (BRABO_IRMAOS=${IRMAOS})`).toEqual([]);
   });
 
-  it('o relatório vem antes do portão, para o resumo existir mesmo quando ele reprova', () => {
-    expect(porNome(RELATORIO)).toBeLessThan(porNome(PORTAO));
+  it('versão, sha256, flags, digest, ordem antes do cosign e sem allowlist nova', () => {
+    expect(violacoes(lidos)).toEqual([]);
   });
 
-  it('a Release anexa o relatório do que não tem correção', () => {
-    const publicar = passos[porNome('Publicar a GitHub Release')]?.run ?? '';
-    expect(publicar).toMatch(/gh release create[\s\S]*trivy-sem-correcao\.md/);
-  });
-});
-
-describe.skip('release.yml — a MESMA régua do ci.yml', () => {
-  const portaoDoCi = ci.jobs.images?.steps.find((p) => p.name === 'Trivy nas cinco imagens (em paralelo)');
-  const [flagsDoCi] = invocacoesDoTrivy(portaoDoCi?.run ?? '');
-  const [flagsDoPortao] = invocacoesDoTrivy(passos[porNome(PORTAO)]?.run ?? '');
-  const [flagsDoRelatorio] = invocacoesDoTrivy(passos[porNome(RELATORIO)]?.run ?? '');
-
-  it('o extrator enxerga as três invocações (senão o resto passaria cego)', () => {
-    expect(flagsDoCi?.length ?? 0).toBeGreaterThan(5);
-    expect(flagsDoPortao?.length ?? 0).toBeGreaterThan(5);
-    expect(flagsDoRelatorio?.length ?? 0).toBeGreaterThan(5);
-  });
-
-  it('o portão do release tem exatamente as flags de régua do portão do ci.yml', () => {
-    expect(regua(flagsDoPortao ?? [])).toEqual(regua(flagsDoCi ?? []));
-  });
-
-  it('o portão reprova HIGH/CRITICAL com correção, e só isso', () => {
-    expect(flagsDoPortao).toEqual(
-      expect.arrayContaining(['--severity=HIGH,CRITICAL', '--ignore-unfixed', '--exit-code=1', '--scanners=vuln']),
-    );
-  });
-
-  it('o relatório NÃO ignora o que não tem correção e nunca reprova', () => {
-    expect(flagsDoRelatorio).not.toContain('--ignore-unfixed');
-    expect(flagsDoRelatorio).toContain('--exit-code=0');
-    expect(regua(flagsDoRelatorio ?? []).filter((f) => f !== '--exit-code=0')).toEqual(
-      regua(flagsDoPortao ?? []).filter((f) => f !== '--exit-code=1' && f !== '--ignore-unfixed'),
-    );
-  });
-
-  it('o release escaneia o que foi publicado: por DIGEST, do registry', () => {
-    for (const flags of [flagsDoPortao, flagsDoRelatorio]) {
-      expect(flags).toContain('--image-src=remote');
-    }
-    for (const nome of [PORTAO, RELATORIO]) {
-      expect(passos[porNome(nome)]?.run).toContain('trivy-do-release.ts referencias .release/images.json');
-    }
-  });
-
-  it('sem allowlist nova: o único arquivo de exceções é o `.trivyignore.yaml` do ci.yml', () => {
-    for (const flags of [flagsDoCi, flagsDoPortao, flagsDoRelatorio]) {
-      const ignores = (flags ?? []).filter((f) => /^--(ignorefile|ignore-policy|skip-files|skip-dirs|vex|ignore-status)/.test(f));
-      expect(ignores).toEqual(['--ignorefile=.trivyignore.yaml']);
-    }
-  });
-
-  it('versão e sha256 do binário são os mesmos nos dois workflows', () => {
-    expect(release.env.TRIVY_VERSION).toBe(ci.env.TRIVY_VERSION);
-    expect(release.env.TRIVY_SHA256).toBe(ci.env.TRIVY_SHA256);
-    expect(release.env.TRIVY_SHA256).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it('o binário baixado passa por `sha256sum -c` antes de ser extraído', () => {
-    const instalar = passos[porNome('Instalar o binário do trivy')]?.run ?? '';
-    const curl = instalar.indexOf('curl ');
-    const confere = instalar.indexOf('sha256sum -c');
-    const extrai = instalar.indexOf('tar -xzf');
-    expect(curl).toBeGreaterThanOrEqual(0);
-    expect(confere).toBeGreaterThan(curl);
-    expect(extrai).toBeGreaterThan(confere);
+  describe('mutação: o aferidor reprova o que deve', () => {
+    const base = lidos['brabo-api'] ?? lidos['brabo-infra'] ?? '';
+    const mut = (de: string | RegExp, para: string): Record<string, string> => {
+      const t = base.replace(de, para);
+      expect(t).not.toBe(base);
+      return { x: t };
+    };
+    it('base real passa', () => expect(violacoes({ x: base })).toEqual([]));
+    it('flag divergente', () => expect(violacoes(mut('--ignore-unfixed', ''))).toContain('x: flags do portão divergem da régua'));
+    it('severidade afrouxada', () => expect(violacoes(mut('HIGH,CRITICAL', 'CRITICAL')).join()).toMatch(/flags do portão/));
+    it('allowlist nova (--skip-files)', () =>
+      expect(violacoes(mut('--ignore-unfixed', '--ignore-unfixed --skip-files x'))).toContain('x: allowlist nova no Trivy'));
+    it('ignorefile diferente', () =>
+      expect(violacoes(mut('--ignorefile .trivyignore.yaml', '--ignorefile outro.yaml')).join()).toMatch(/ignorefile diferente/));
+    it('versão do Trivy diverge entre repositórios', () => {
+      const outra = base.replace(/TRIVY_VERSION: '[^']+'/, "TRIVY_VERSION: '0.0.1'");
+      expect(violacoes({ a: base, b: outra })).toContain('b: TRIVY_VERSION diverge');
+    });
+    it('Trivy depois do cosign sign', () => {
+      const wf = YAML.parse(base) as Workflow;
+      for (const job of Object.values(wf.jobs)) {
+        const passos = job.steps ?? [];
+        const i = passos.findIndex(ehPortao);
+        const j = passos.findIndex(ehCosignSign);
+        if (i >= 0 && j >= 0) [passos[i], passos[j]] = [passos[j] as Passo, passos[i] as Passo];
+      }
+      expect(violacoes({ x: YAML.stringify(wf) })).toContain('x: o portão do Trivy vem DEPOIS do cosign sign');
+    });
+    it('workflow sem portão', () => expect(violacoes({ x: base.replace(/--exit-code 1/g, '--exit-code 0') }).join()).toMatch(/nenhum portão/));
+    it('irmão ausente: a lista de ausentes nomeia o repo', () => {
+      const fora = REPOS.filter((r) => !existsSync(path.join(caminhoDoRepo(r), ARQUIVO)));
+      expect(fora).toEqual(ausentes);
+    });
   });
 });
 

@@ -1,11 +1,11 @@
 /**
- * Os pontos de montagem de `node_modules` que o compose de DEV pisa DENTRO do
- * bind-mount `..:/workspace` (AT-172).
+ * Os pontos de montagem de volume (`node_modules`, `_build`, `deps`) que o compose de DEV pisa
+ * DENTRO do bind-mount de cada repo irmão em `/workspace` (AT-172; layout de irmãos, AT-702).
  *
  * POR QUE O PREFLIGHT CRIA ISTO. Um volume nomeado montado sobre um caminho
  * que ainda não existe no checkout faz o Docker CRIAR esse caminho no HOST — e
  * o cria como `root:root`. Foi o que aconteceu com `packages/shared/
- * node_modules`: a pasta nasceu root dentro do repositório de quem
+ * node_modules` no monorepo: a pasta nasceu root dentro do repositório de quem
  * desenvolve, e o `pnpm install` dela dava EACCES. Nenhuma linha de Dockerfile
  * alcança isto (a imagem só governa o dono do que está DENTRO do volume, não o
  * ponto de montagem no bind-mount do host). Quem alcança é criar a pasta ANTES
@@ -18,13 +18,28 @@
 import { mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** `- <volume>:/workspace/<caminho>/node_modules` → `<caminho>/node_modules`. */
+const IRMAO = String.raw`\$\{BRABO_IRMAOS:-[^}]*\}/(brabo-[a-z-]+)`;
+
+/** Os repos irmãos que o compose usa (bind-mount ou contexto de build): `brabo-api`, `brabo-engine`... */
+export function irmaosDoCompose(textoDoCompose) {
+  return [...new Set([...textoDoCompose.matchAll(new RegExp(IRMAO, 'g'))].map((m) => m[1]))];
+}
+
+/**
+ * `- <irmão>:/workspace` seguido de `- <volume>:/workspace/<caminho>` (mesmo serviço) →
+ * `<irmão>/<caminho>`. O irmão vale até o próximo bind-mount de irmão.
+ */
 export function pontosDeMontagemDoCompose(textoDoCompose) {
   const achados = new Set();
+  let irmao = null;
   for (const linha of textoDoCompose.split('\n')) {
-    const m =
-      /^\s*-\s+[A-Za-z0-9_.-]+:\/workspace\/((?:[A-Za-z0-9_.-]+\/)*node_modules)\s*$/.exec(linha);
-    if (m) achados.add(m[1]);
+    const bind = new RegExp(`^\\s*-\\s+${IRMAO}:/workspace\\s*$`).exec(linha);
+    if (bind) {
+      irmao = bind[1];
+      continue;
+    }
+    const m = /^\s*-\s+[A-Za-z0-9_.-]+:\/workspace\/((?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+)\s*$/.exec(linha);
+    if (m && irmao) achados.add(`${irmao}/${m[1]}`);
   }
   return [...achados];
 }
@@ -32,8 +47,8 @@ export function pontosDeMontagemDoCompose(textoDoCompose) {
 /**
  * Cria o que falta, dono = quem roda o preflight. Devolve o que criou e o que
  * não conseguiu, para o script RELATAR — nunca lança: o `up` dirá o resto.
- * Só cria quando o PAI existe (ponto de montagem de app que não está neste
- * checkout não é motivo para inventar diretório).
+ * `raiz` é a pasta-mãe dos irmãos (BRABO_IRMAOS). Só cria quando o PAI existe
+ * (irmão ausente não é motivo para inventar diretório).
  */
 export function garantirPontosDeMontagem(raiz, pontos, fs = { mkdirSync, existsSync }) {
   const criados = [];

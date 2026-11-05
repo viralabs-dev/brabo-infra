@@ -1,0 +1,126 @@
+name: release
+
+# Publica a imagem de backup (ghcr.io/viralabs-dev/brabo-backup) numa tag FINAL.
+# `workflow_dispatch` sem tag é o ENSAIO: constrói e escaneia, não publica nem assina.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  pull_request:
+    paths: ['.github/workflows/release.yml', 'docker/backup/**', 'docker-bake.hcl']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag final a publicar (vazio = ensaio, não publica)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  TRIVY_VERSION: '0.70.0'
+  TRIVY_SHA256: '8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9'
+
+jobs:
+  backup:
+    name: Imagem de backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+    steps:
+      - name: A tag é final?
+        run: |
+          set -euo pipefail
+          if [ -n "$TAG" ] && ! printf '%s' "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$TAG' não é tag final (vX.Y.Z)."; exit 1
+          fi
+          [ -n "$TAG" ] && echo "publicar $TAG" || echo "ENSAIO: sem publicar nem assinar"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ env.TAG || github.sha }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+
+      - name: Login no GHCR
+        if: env.TAG != ''
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6  # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (e publicação, só com tag)
+        id: bake
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e  # v7.5.0
+        with:
+          files: docker-bake.hcl
+          targets: backup
+        env:
+          TAG: ${{ env.TAG != '' && env.TAG || 'ensaio' }}
+          REGISTRY: ghcr.io/${{ github.repository_owner }}/
+          OUTPUT: ${{ env.TAG != '' && 'type=registry' || 'type=docker' }}
+
+      - name: Instalar o trivy
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  /tmp/trivy.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+          trivy image --cache-dir /tmp/trivy-cache --no-progress --download-db-only
+
+      - name: Referência da imagem (por digest quando publicada)
+        id: ref
+        env:
+          METADATA: ${{ steps.bake.outputs.metadata }}
+        run: |
+          set -euo pipefail
+          if [ -n "$TAG" ]; then
+            digest="$(printf '%s' "$METADATA" | jq -r '.backup["containerimage.digest"]')"
+            printf '%s' "$digest" | grep -qE '^sha256:[0-9a-f]{64}$'
+            echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER}/brabo-backup@${digest}" >> "$GITHUB_OUTPUT"
+            echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+            echo "src=remote" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER}/brabo-backup:ensaio" >> "$GITHUB_OUTPUT"
+            echo "src=docker" >> "$GITHUB_OUTPUT"
+          fi
+
+      # As MESMAS flags do release do monorepo: HIGH/CRITICAL com correção reprova, antes de assinar.
+      - name: Trivy — HIGH/CRITICAL com correção reprova
+        run: |
+          trivy image --cache-dir /tmp/trivy-cache --image-src "${{ steps.ref.outputs.src }}" \
+            --no-progress --format table --scanners vuln --severity HIGH,CRITICAL \
+            --ignore-unfixed --ignorefile .trivyignore.yaml --skip-db-update --exit-code 1 \
+            "${{ steps.ref.outputs.ref }}"
+
+      - name: Instalar o cosign
+        if: env.TAG != ''
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+
+      - name: Assinar por digest e verificar no mesmo run
+        if: env.TAG != ''
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "$REF"
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@" \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            "$REF" > /dev/null
+
+      - name: Release com imagem.json
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.ref.outputs.digest }}
+        run: |
+          set -euo pipefail
+          jq -nc --arg tag "$TAG" --arg digest "$DIGEST" \
+            '{imagem:"ghcr.io/viralabs-dev/brabo-backup",tag:$tag,digest:$digest}' > imagem.json
+          gh release create "$TAG" --title "$TAG" --generate-notes imagem.json

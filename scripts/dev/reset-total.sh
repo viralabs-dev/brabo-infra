@@ -3,7 +3,7 @@
 # o compose de novo até tudo ficar saudável, migra (api + engine) e semeia —
 # incluindo as credenciais de provider já salvas em `.env`, pelas MESMAS
 # variáveis `<PROVIDER>_TEST_KEY` que os smokes de LLM já usam
-# (apps/api/test/infrastructure/llm/*.smoke.spec.ts). Uma convenção de nome
+# (brabo-api, test/infrastructure/llm/*.smoke.spec.ts). Uma convenção de nome
 # só, dois consumidores: testar o provider de verdade e, aqui, poupar quem
 # reseta o banco local de recadastrar a chave na UI toda vez.
 #
@@ -57,6 +57,12 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
+
+# Layout de irmãos (AT-702): as migrations e o seed rodam a partir dos clones `brabo-api` e
+# `brabo-engine`, na pasta-mãe deste repo (BRABO_IRMAOS, padrão `..`).
+IRMAOS="$(cd "${BRABO_IRMAOS:-${REPO_ROOT}/..}" && pwd)"
+IRMAO_API="${IRMAOS}/brabo-api"
+IRMAO_ENGINE="${IRMAOS}/brabo-engine"
 
 COMPOSE=(docker compose -f docker/docker-compose.yml --env-file .env)
 
@@ -236,8 +242,8 @@ echo "==> aplicando migrations (api + engine)…"
 # a interpolação do `docker compose up` logo abaixo, e a api dentro do
 # container receberia um `localhost` que, lá dentro, é ela mesma.
 DATABASE_URL_HOST="postgres://$(valor_do_env POSTGRES_USER brabo):$(valor_do_env POSTGRES_PASSWORD brabo)@$(endereco_publicado postgres 5432)/$(valor_do_env POSTGRES_DB brabo)"
-DATABASE_URL="${DATABASE_URL_HOST}" pnpm db:migrate
-DATABASE_URL="${DATABASE_URL_HOST}" pnpm engine:migrate
+(cd "${IRMAO_API}" && DATABASE_URL="${DATABASE_URL_HOST}" pnpm db:migrate)
+(cd "${IRMAO_ENGINE}" && DATABASE_URL="${DATABASE_URL_HOST}" mix ecto.migrate)
 
 PASSO="${PASSO_DO_UP}"
 echo "==> subindo tudo e esperando ficar saudável (--wait)…"
@@ -256,7 +262,7 @@ echo "==> semeando dados de demonstração…"
 # rodando pela primeira vez: `source .env` aqui quebrava com `getaddrinfo
 # EAI_AGAIN postgres`, mesmo depois de `db:migrate`/`engine:migrate` terem
 # rodado certinho ANTES desta linha, sem nada exportado). O seed
-# (apps/api/src/db/seed.ts) já sabe ler cada `*_TEST_KEY` e ativar como
+# (brabo-api, src/db/seed.ts) já sabe ler cada `*_TEST_KEY` e ativar como
 # credencial do owner; provider sem variável definida simplesmente não entra.
 while IFS='=' read -r chave valor; do
   [[ -n "${chave}" ]] || continue
@@ -266,9 +272,9 @@ done < <(grep -E '^[A-Z0-9_]+_TEST_KEY=' .env || true)
 # e ativar sessão é uma chamada api -> engine. Sem isto ele cai no
 # `http://localhost:4000` embutido no `ApiToEngineClient` — o engine DESTA
 # stack só por acaso, e o de outra pessoa se `ENGINE_PORT` estiver trocado.
-DATABASE_URL="${DATABASE_URL_HOST}" \
+(cd "${IRMAO_API}" && DATABASE_URL="${DATABASE_URL_HOST}" \
   ENGINE_URL="http://$(endereco_publicado engine 4000)" \
-  pnpm --filter api seed
+  pnpm seed)
 
 PASSO="verificando a saúde de api, engine e web"
 echo ""

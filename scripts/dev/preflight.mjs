@@ -48,7 +48,7 @@ import {
 } from './base-de-projetos.mjs';
 import { GID, avaliarDockerGid, mensagemDoDockerGid } from './docker-gid.mjs';
 import { PASTA, avaliarPastaGerenciada, mensagemDaPastaGerenciada } from './pasta-gerenciada.mjs';
-import { garantirPontosDeMontagem, pontosDeMontagemDoCompose } from './pontos-de-montagem.mjs';
+import { garantirPontosDeMontagem, irmaosDoCompose, pontosDeMontagemDoCompose } from './pontos-de-montagem.mjs';
 import {
   FORMATO_DE_CONTAINER,
   FORMATO_DE_VOLUME,
@@ -63,7 +63,8 @@ import {
   volumesDeDevOrfaos,
   volumesSoDeDev,
 } from './instalacao-na-maquina.mjs';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const COMPOSE = ['-f', 'docker/docker-compose.yml', '--env-file', '.env'];
@@ -432,21 +433,33 @@ function relatarPastaGerenciada() {
   else console.warn(mensagem);
 }
 
+/** Pasta-mãe dos repos irmãos (`brabo-api`, `brabo-engine`...): BRABO_IRMAOS, senão a pasta-mãe deste repo. */
+const raizDoInfra = fileURLToPath(new URL('../..', import.meta.url));
+const irmaos = resolve(raizDoInfra, process.env.BRABO_IRMAOS ?? '..');
+
 /**
- * Cria, como o usuário, os pontos de montagem de `node_modules` dentro do
- * checkout (AT-172): sem eles o Docker os cria no host como root. RELATA e
- * não bloqueia.
+ * Confere que os irmãos que o compose de dev monta/constrói existem (clone ausente faz o `up`
+ * falhar longe da causa) e cria, como o usuário, os pontos de montagem de volume DENTRO de cada
+ * um (AT-172): sem eles o Docker os cria no host como root. Irmão ausente RECUSA; o resto RELATA.
  */
-function garantirNodeModulesDoCheckout() {
+function prepararIrmaos() {
+  const compose = readFileSync(join(raizDoInfra, 'docker/docker-compose.yml'), 'utf8');
+  const faltam = irmaosDoCompose(compose).filter((r) => !existsSync(join(irmaos, r)));
+  if (faltam.length > 0) {
+    console.error(
+      `[preflight] RECUSADO: faltam os repos irmãos ${faltam.join(', ')} em ${irmaos}.\n` +
+        `            Clone-os ao lado deste (git clone https://github.com/viralabs-dev/<repo>.git) ou aponte BRABO_IRMAOS para a pasta que os contém.`,
+    );
+    return false;
+  }
   try {
-    const raiz = fileURLToPath(new URL('../..', import.meta.url));
-    const compose = readFileSync(fileURLToPath(new URL('../../docker/docker-compose.yml', import.meta.url)), 'utf8');
-    const { criados, falhas } = garantirPontosDeMontagem(raiz, pontosDeMontagemDoCompose(compose));
+    const { criados, falhas } = garantirPontosDeMontagem(irmaos, pontosDeMontagemDoCompose(compose));
     if (criados.length > 0) console.log(`[preflight] pontos de montagem criados: ${criados.join(', ')}`);
     for (const f of falhas) console.warn(`[preflight] não consegui criar ${f.ponto} (${f.motivo}).`);
   } catch (erro) {
-    console.warn(`[preflight] pontos de montagem de node_modules: ${String(erro.message).split('\n')[0]}`);
+    console.warn(`[preflight] pontos de montagem: ${String(erro.message).split('\n')[0]}`);
   }
+  return true;
 }
 
 async function main() {
@@ -463,7 +476,7 @@ async function main() {
   relatarBaseDeProjetos();
   relatarDockerGid();
   relatarPastaGerenciada();
-  garantirNodeModulesDoCheckout();
+  if (!prepararIrmaos()) process.exit(1);
 
   let compose;
   try {

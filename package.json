@@ -7,6 +7,7 @@
   "description": "Composes, Kubernetes, backup, observabilidade, scripts de ambiente e as aferições cruzadas do Brabo (AT-701).",
   "type": "module",
   "scripts": {
+    "dev": "node scripts/dev/preflight.mjs && docker compose -f docker/docker-compose.yml --env-file .env up",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

@@ -723,7 +723,7 @@ make deploy-local TAG=v0.2.0-qa.1
 ### 部署某个 release 的镜像 {#imagens-de-uma-release}
 
 自 [ADR 0119](adr/0119-imagens-publicadas-no-ghcr-por-digest.md) 起，每个最终 tag 都会把生产镜像发布到 GHCR
-（`ghcr.io/daneiel/brabo-{api,engine,web,backup,broker}`，公开——任何地方都没有
+（`ghcr.io/viralabs-dev/brabo-{api,engine,web,backup,broker}`，公开——任何地方都没有
 `imagePullSecret`），并**按 digest** 把发布内容记录在
 `.release/images.json` 中。第五个镜像，即容器 broker
 （[ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md)），是给安装用的——overlay 中没有 broker 的 Deployment，
@@ -2549,7 +2549,7 @@ gate 机制本身不会变化：不可变的顺序、在同一分支上返回、
 ## 安装 {#instalando}
 
 ```sh
-curl -fsSLO https://github.com/daneiel/brabo/releases/latest/download/install.sh && bash install.sh
+curl -fsSLO https://github.com/viralabs-dev/brabo/releases/latest/download/install.sh && bash install.sh
 ```
 
 **先下载文件，再用 `bash` 运行它。** 两种看起来等价的更短写法并不等价，脚本会在下载任何东西之前**按名称**拒绝两者，并打印上面那一行：
@@ -2644,7 +2644,7 @@ install.sh --source=local   # buildx bake; exige árvore limpa numa tag
 **容器**和**挂载目录**模式的项目在容器内运行，而启动这个容器的是 **broker**
 （[ADR 0144](adr/0144-a-segunda-raiz-do-broker.md)）。没有它，这两种模式都永远无法执行：`container_start` 以 `failed` 和 `BrokerIndisponivelError` 结束，dev agent 停留在 `dev.blocked_by_container`。**Runner** 模式不依赖它——在那里，本地 agent 使用你机器上的 Docker。
 
-自 [ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md) 起，broker 是**第五个发布的镜像**（`ghcr.io/daneiel/brabo-broker`，按 digest，与其他四个一样签名），安装用的 compose 中有这个服务——**默认关闭**，位于与验证用 compose 相同的 `container-broker` profile 之下。安装程序会**询问**（*"Ligar o broker de container?
+自 [ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md) 起，broker 是**第五个发布的镜像**（`ghcr.io/viralabs-dev/brabo-broker`，按 digest，与其他四个一样签名），安装用的 compose 中有这个服务——**默认关闭**，位于与验证用 compose 相同的 `container-broker` profile 之下。安装程序会**询问**（*"Ligar o broker de container?
 [s/N]"*），紧接在项目 base 之后，并用文字说明启用它会授予什么：broker 会拿到**这台机器的 Docker socket**，谁控制 broker 就控制你的 Docker。约束它的是
 [ADR 0130](adr/0130-broker-de-container.md) 的五层：没有发布端口、只有 api 能访问的网络（`internal: true`，没有互联网）、service token、针对**一个**项目容器的五个操作，以及 broker 根据 Arquiteto 的决定自行组装的 spec——没有任何请求能开启
 `privileged`、主机网络或任意的 `-v`。
@@ -2749,9 +2749,9 @@ DIGEST=$(gh release download vX.Y.Z --pattern images.json --output - \
   | jq -r '.imagens[] | select(.alvo == "api") | .digest')
 
 cosign verify \
-  --certificate-identity-regexp '^https://github.com/daneiel/brabo/\.github/workflows/release\.yml@' \
+  --certificate-identity-regexp '^https://github.com/viralabs-dev/brabo/\.github/workflows/release\.yml@' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  "ghcr.io/daneiel/brabo-api@${DIGEST}"
+  "ghcr.io/viralabs-dev/brabo-api@${DIGEST}"
 ```
 
 ### runner 的二进制文件 {#the-runner-binaries}
@@ -2760,11 +2760,11 @@ cosign verify \
 `npm install -g @brabo/runner`），所以验证分两步：先验证清单的签名，再对照清单验证二进制文件。
 
 ```bash
-gh release download vX.Y.Z --pattern 'checksums.txt*' --pattern 'brabo-runner-*'
+gh release download vX.Y.Z --repo viralabs-dev/brabo-runner --pattern 'checksums.txt*' --pattern 'brabo-runner-*'
 
 cosign verify-blob \
   --bundle checksums.txt.bundle \
-  --certificate-identity-regexp '^https://github.com/daneiel/brabo/\.github/workflows/build-runner-binaries\.yml@' \
+  --certificate-identity-regexp '^https://github.com/viralabs-dev/brabo-runner/\.github/workflows/build-runner-binaries\.yml@' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   checksums.txt
 
@@ -2790,7 +2790,7 @@ engine 镜像内嵌了 `git`、`busybox`、`libgcc`/`libstdc++` 以及另外 18 
 书面提供就是 `THIRD_PARTY_NOTICES.md`，它放在镜像**之内**，因为运行 `docker pull` 的人没有仓库：
 
 ```bash
-docker run --rm --entrypoint sh ghcr.io/daneiel/brabo-engine:vX.Y.Z \
+docker run --rm --entrypoint sh ghcr.io/viralabs-dev/brabo-engine:vX.Y.Z \
   -c 'cat /usr/share/doc/brabo/THIRD_PARTY_NOTICES.md'
 ```
 
@@ -2803,7 +2803,7 @@ docker run --rm --entrypoint sh ghcr.io/daneiel/brabo-engine:vX.Y.Z \
 `checksums.txt` 覆盖（RN-524）。这是维护者的决定，也是保守的决定：没有任何产物被声明为豁免。在上面的命令中把 `brabo-engine` 换成其他四个中的任何一个即可。在 AT-120 之前，这条命令在 engine 镜像上以 "Permission denied" 失败：BuildKit 把 `COPY --chmod=0644` 也应用到了 `COPY` 创建的目录上，所以 `/usr/share/doc/brabo` 没有执行位，镜像的非 root 用户无法进入它。现在每个 Dockerfile 都会先以 `0755` 创建该目录。对于 runner：
 
 ```bash
-gh release download vX.Y.Z --repo daneiel/brabo \
+gh release download vX.Y.Z --repo viralabs-dev/brabo \
   --pattern THIRD_PARTY_NOTICES.md --pattern checksums.txt
 sha256sum -c --ignore-missing checksums.txt
 ```

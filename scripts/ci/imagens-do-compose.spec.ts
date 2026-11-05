@@ -122,6 +122,14 @@ describe('o repositório', () => {
     const job = fluxo.jobs[nomeDoJob!]!;
     expect(Object.keys(job.outputs).sort()).toEqual(tabela);
 
+    // Chamado de outro repo, o checkout tem de ser do brabo-infra num subdiretório (não do chamador).
+    const checkout = (job.steps as Array<{ uses?: string; with?: Record<string, string> }>).find((x) =>
+      x.uses?.startsWith('actions/checkout@'),
+    );
+    expect(checkout?.with?.['repository']).toBe('viralabs-dev/brabo-infra');
+    expect(checkout?.with?.['ref']).toBe('${{ inputs.infra_ref }}');
+    expect(checkout?.with?.['path']).toBe('infra');
+
     const passo = job.steps.find(({ id }) => id !== undefined);
     expect(passo?.run?.trim()).toBe('node scripts/ci/imagens-do-compose.ts');
 

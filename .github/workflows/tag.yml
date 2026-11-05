@@ -1,0 +1,16 @@
+name: tag
+on:
+  push:
+    branches: [dev, main]
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+jobs:
+  carimbar:
+    uses: viralabs-dev/brabo-ci/.github/workflows/tag-release.yml@242598dff5b306bfc7c2f71f28317826538f887a  # feature/tag-por-workflow (repinar no merge)
+    with:
+      ci_ref: 242598dff5b306bfc7c2f71f28317826538f887a
+    secrets:
+      APP_ID: ${{ secrets.BRABO_APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.BRABO_APP_PRIVATE_KEY }}

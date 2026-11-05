@@ -156,11 +156,12 @@ describe('preflight.mjs — a guarda de ponta a ponta', () => {
     for (const p of pastas.splice(0)) rmSync(p, { recursive: true, force: true });
   });
 
-  function rodarPreflight({ containers = '', volumes = '', projeto = 'brabo-dev' } = {}) {
+  function rodarPreflight({ containers = '', volumes = '', projeto = 'brabo-dev', irmaos = ['brabo-api', 'brabo-engine', 'brabo-web', 'brabo-broker'] } = {}) {
     const raiz = mkdtempSync(join(tmpdir(), 'preflight-instalacao-'));
     pastas.push(raiz);
     const bin = join(raiz, 'bin');
     mkdirSync(bin);
+    for (const i of irmaos) mkdirSync(join(raiz, 'irmaos', i), { recursive: true });
     writeFileSync(join(raiz, '.env'), 'OLLAMA_MODE=host\n');
     writeFileSync(join(raiz, 'containers'), containers);
     writeFileSync(join(raiz, 'volumes'), volumes);
@@ -180,11 +181,18 @@ describe('preflight.mjs — a guarda de ponta a ponta', () => {
     chmodSync(docker, 0o755);
     const r = spawnSync(process.execPath, [join(RAIZ, 'scripts/dev/preflight.mjs')], {
       cwd: raiz,
-      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: raiz },
+      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: raiz, BRABO_IRMAOS: join(raiz, 'irmaos') },
       encoding: 'utf8',
     });
     return { codigo: r.status, saida: `${r.stdout}${r.stderr}` };
   }
+
+  it('repo irmão ausente: recusa nomeando-o, antes do `up`', () => {
+    const { codigo, saida } = rodarPreflight({ irmaos: ['brabo-api'] });
+    expect(codigo).toBe(1);
+    expect(saida).toContain('faltam os repos irmãos');
+    expect(saida).toContain('brabo-engine');
+  });
 
   it('recusa com container do compose de instalação (projeto descartável, parado), nomeando-o', () => {
     const { codigo, saida } = rodarPreflight({
