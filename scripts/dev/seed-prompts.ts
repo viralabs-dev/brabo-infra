@@ -38,7 +38,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
-export const PROMPTS_DIR = path.resolve(AQUI, '../../prompts');
+export const PROMPTS_DIR = path.resolve(AQUI, '../..', process.env.BRABO_IRMAOS ?? '..', 'brabo-engine/prompts');
 const CABECALHO_SERVICE_TOKEN = 'x-brabo-service-token';
 
 export interface TemplateParseado {

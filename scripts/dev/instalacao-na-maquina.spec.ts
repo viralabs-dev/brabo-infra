@@ -111,13 +111,13 @@ describe('volumes órfãos do dev antigo', () => {
     const dev = volumesDoTopo(composeDeDev);
     expect(dev).toContain('pgdata');
     expect(dev).toContain('engine_build');
-    expect(dev).toContain('api_root_node_modules');
+    expect(dev).toContain('api_node_modules');
     expect(volumesDoTopo(composeDeInstalacao)).toContain('backup_local');
   });
 
   it('volumesSoDeDev: os de build ficam, os que a instalação também declara saem', () => {
     const so = volumesSoDeDev(composeDeDev, composeDeInstalacao);
-    for (const v of ['api_root_node_modules', 'web_app_node_modules', 'broker_port_node_modules', 'engine_build', 'engine_deps', 'engine_mix', 'engine_hex']) {
+    for (const v of ['api_node_modules', 'web_node_modules', 'engine_build', 'engine_deps', 'engine_mix', 'engine_hex']) {
       expect(so).toContain(v);
     }
     for (const v of ['pgdata', 'neo4j_data', 'git_local_repos', 'project_workspaces', 'ollama_data', 'brabo_projects_base']) {

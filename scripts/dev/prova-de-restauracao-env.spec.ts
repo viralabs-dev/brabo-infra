@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { caminhoReal, existe } from '../ci/irmaos.ts';
 
 // AT-102. `test-restore-compose.sh` chamava o Compose sem `--env-file`, e o
 // Compose procura o `.env` ao lado do compose. Na instalação por Release o
@@ -19,7 +20,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 // config --format json`, e o teste lê o serviço `backup` que o script USARIA.
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const INSTALL = path.join(RAIZ, 'install.sh');
+// O install.sh mora no repo `brabo` (irmão); sem ele, a prova pula.
+const INSTALL = caminhoReal('install.sh');
 const PROVA = path.join(RAIZ, 'docker/backup/test-restore-compose.sh');
 const COMPOSE = path.join(RAIZ, 'docker/docker-compose.install.yml');
 
@@ -110,7 +112,7 @@ function rodarProva(i: ReturnType<typeof instalacao>, extra: Record<string, stri
   });
 }
 
-describe('a prova de restauração da migração enxerga o .env da instalação (AT-102)', () => {
+describe.skipIf(!existe('install.sh'))('a prova de restauração da migração enxerga o .env da instalação (AT-102)', () => {
   it('com BRABO_ENV_FILE, o valor do .env chega ao serviço backup INTEIRO', (ctx) => {
     if (PULAR) ctx.skip(PULAR);
     const i = instalacao();

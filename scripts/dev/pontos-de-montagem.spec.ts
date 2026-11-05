@@ -13,18 +13,11 @@ const composeDeDev = readFileSync(join(RAIZ, 'docker/docker-compose.yml'), 'utf8
  * Docker criá-lo no HOST como root. O preflight cria antes, como o usuário.
  */
 describe('pontosDeMontagemDoCompose', () => {
-  it('deriva do compose real os pontos de api, web e broker', () => {
+  it('deriva do compose real o ponto de node_modules dos apps', () => {
     const pontos = pontosDeMontagemDoCompose(composeDeDev);
-    for (const esperado of [
-      'node_modules',
-      'apps/api/node_modules',
-      'apps/web/node_modules',
-      'apps/broker/node_modules',
-      'packages/shared/node_modules',
-      'packages/docker-port/node_modules',
-    ]) {
-      expect(pontos).toContain(esperado);
-    }
+    // Cada app mora no repo dele (AT-696..700): o compose monta o repositório em /workspace e
+    // só o node_modules é volume.
+    expect(pontos).toContain('node_modules');
   });
 
   it('ignora linhas que não são volume de node_modules', () => {
