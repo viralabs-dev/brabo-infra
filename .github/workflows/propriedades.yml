@@ -535,3 +535,100 @@ jobs:
           alarmar 'compose de produção (o stack não subiu)' "${COMPOSE}" "${compose}"
           alarmar 'fixture do bare repo' "${FIXTURE}" "${compose}"
           alarmar 'make test-restore-compose' "${RESTORE_COMPOSE}" "${compose}"
+
+  # RESTORE EM BANCO VAZIO (AT-738, ADR 0256) — a metade da migração do
+  # instalador que `test-restore-compose` não prova: depois do `down -v` a
+  # instalação nova sobe SEM dado, e `brabo-restore --banco-vazio` restaura o
+  # dump direto nela. Sobe SÓ `postgres` e `backup` do compose de INSTALAÇÃO,
+  # num projeto descartável (sem porta publicada, `down -v` no fim), semeia,
+  # faz o backup numa pasta do HOST (o destino que a migração exige), restaura
+  # num banco novo e confere as contagens iguais, uma a uma, contra a origem.
+  # Também prova a recusa: o mesmo comando contra o banco já restaurado reprova.
+  restore-banco-vazio:
+    name: Restore em banco vazio (compose de instalação)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    env:
+      BRABO_API_IMAGE: nao-usada
+      BRABO_ENGINE_IMAGE: nao-usada
+      BRABO_WEB_IMAGE: nao-usada
+      BRABO_BROKER_IMAGE: nao-usada
+      BRABO_BACKUP_IMAGE: brabo-backup:ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build da imagem de backup
+        run: docker build -f docker/backup/Dockerfile.prod -t "${BRABO_BACKUP_IMAGE}" .
+
+      - name: Subir postgres e semear dado
+        id: semear
+        run: |
+          set -euo pipefail
+          echo "PROJETO=at738-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          echo "BRABO_BACKUP_HOST_DIR=${RUNNER_TEMP}/backups" >> "$GITHUB_ENV"
+          # uid 70 é o usuário da imagem de backup; pasta do host, como na migração.
+          mkdir -m 0777 "${RUNNER_TEMP}/backups"
+          export PROJETO="at738-${GITHUB_RUN_ID}"
+          docker compose -p "${PROJETO}" -f docker/docker-compose.install.yml up -d --wait postgres
+          docker compose -p "${PROJETO}" -f docker/docker-compose.install.yml exec -T postgres \
+            psql -U brabo -d brabo -v ON_ERROR_STOP=1 -q <<'SQL'
+          create table users(id serial primary key, created_at timestamptz default now());
+          create table projects(id serial primary key, created_at timestamptz default now());
+          create table sessions(id serial primary key, created_at timestamptz default now());
+          create table session_events(session_id int, seq int, created_at timestamptz default now(), unique(session_id, seq));
+          create table proposed_actions(id serial primary key, created_at timestamptz default now());
+          create table backup_runs(id serial primary key, started_at timestamptz, finished_at timestamptz, kind text, status text, object_key text, size_bytes bigint, error_message text);
+          insert into users select from generate_series(1,5);
+          insert into projects select from generate_series(1,2);
+          insert into sessions select from generate_series(1,3);
+          insert into session_events select s, g from generate_series(1,3) s, generate_series(1,4) g;
+          insert into proposed_actions select from generate_series(1,7);
+          SQL
+
+      - name: Backup para a pasta do host
+        if: ${{ !cancelled() && steps.semear.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          docker compose -p "${PROJETO}" -f docker/docker-compose.install.yml run --rm backup brabo-backup
+          ls "${BRABO_BACKUP_HOST_DIR}"/daily/*.dump
+
+      - name: Restore --banco-vazio num banco novo, contagens iguais, e a recusa
+        id: restore
+        if: ${{ !cancelled() && steps.semear.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          c() { docker compose -p "${PROJETO}" -f docker/docker-compose.install.yml "$@"; }
+          psqlx() { c exec -T postgres psql -U brabo -At -v ON_ERROR_STOP=1 "$@"; }
+          psqlx -d postgres -c 'create database brabo_novo'
+          novo=postgres://brabo:brabo@postgres:5432/brabo_novo
+          c run --rm -e DATABASE_URL="${novo}" backup brabo-restore --banco-vazio
+          for t in users projects sessions session_events proposed_actions; do
+            a="$(psqlx -d brabo -c "select count(*) from ${t}")"
+            b="$(psqlx -d brabo_novo -c "select count(*) from ${t}")"
+            if [ "${a}" != "${b}" ] || [ "${a}" -le 0 ]; then
+              echo "::error::${t}: origem=${a} restaurado=${b}"; exit 1
+            fi
+            echo "${t}: ${a} = ${b}"
+          done
+          # O banco agora está populado: o mesmo comando TEM de ser recusado.
+          if c run --rm -e DATABASE_URL="${novo}" backup brabo-restore --banco-vazio; then
+            echo "::error::--banco-vazio restaurou sobre um banco populado"; exit 1
+          fi
+
+      - name: Derrubar o projeto descartável
+        if: ${{ always() }}
+        run: docker compose -p "at738-${GITHUB_RUN_ID}" -f docker/docker-compose.install.yml down -v || true
+
+      - name: Abrir, atualizar ou fechar a issue do alvo
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          URL_DO_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESTORE: ${{ steps.restore.outcome }}
+        run: |
+          set -euo pipefail
+          source scripts/ci/alarmar-prova.sh
+          alarmar 'restore --banco-vazio (compose de instalação)' "${RESTORE}" 'o log do passo de restore'

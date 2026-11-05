@@ -585,7 +585,7 @@ event log. Ele verifica por default e só escreve com `--restaurar`; recusa
 extrair por cima de repos existentes (a mistura de dois estados não levanta erro
 nenhum e só aparece num `fetch` com história errada); e — achado da execução
 real — recusa ANTES do `tar` quando o volume não aceita escrita, nomeando
-`--user 0:0`. `git_local_repos` é compartilhado por três imagens com uids
+`--user <dono do volume>` (lido por `stat`; root não serve com `cap_drop: ALL`). `git_local_repos` é compartilhado por três imagens com uids
 diferentes e carrega o dono de quem o montou primeiro (medido: `1000:1000`,
 modo 0755) enquanto esta imagem roda como uid 70. Quando a extração roda como
 root, o que sai é devolvido ao dono do DIRETÓRIO e nunca deixado como root:
@@ -602,10 +602,10 @@ vive no pgvector e vem no dump. Desde a [RN-569](api.md#rn-569) ela existe
 
 - **Onde:** `docker/backup/lib.sh:28` (`destino_tipo`, a inferência que mantém o
   CronJob intacto), `:65` (`destino_esperar` perguntando por ESCRITA e não por
-  existência), `:105` (`destino_enviar`, escrita em `.parcial` e rename),
+  existência), `:116` (`destino_enviar`, escrita em `.parcial` e rename),
   `:181` (a garantia dos bare repos, escrita junto do código que a produz),
-  `:221` (`git_arquivar`, o status do `tar` num arquivo), `:259`
-  (`git_restaurar`, a devolução do dono) e `:273` (`git_raiz_gravavel`);
+  `:232` (`git_arquivar`, o status do `tar` num arquivo), `:272`
+  (`git_restaurar`, a devolução do dono) e `:286` (`git_raiz_gravavel`);
   `docker/backup/backup.sh:31` (`destino_preparar` — as cinco variáveis de S3
   deixando de ser obrigatórias), `:149` (os três desfechos do volume de repos,
   sem colapsar "não montado" com "vazio"), `:170` (a conferência do status do
@@ -678,9 +678,11 @@ destrutiva que o instalador não toma sozinho. Os repositórios git locais, sim 
 eles são fonte de verdade que nasceria vazia.
 
 **Onde:** `install.sh`, `migrar_instalacao_anterior` e `restaurar_apos_migrar`.
-**Teste:** `scripts/dev/install.spec.ts` — o plano declara
-`apagar-sem-backup-provado: nunca`, e um teste afere que a chamada da prova
-vem **antes** da chamada de deleção no código.
+**Teste:** `scripts/dev/prova-de-restauracao-env.spec.ts` (neste repositório: o
+`.env` do instalador passa pelo Compose da prova) e, no repositório `brabo`,
+`scripts/dev/install-arquivos-da-instalacao.spec.ts` (a prova viaja na Release e
+é conferida). A ordem "prova antes da deleção" não tem spec próprio hoje: o
+`scripts/dev/install.spec.ts` que esta regra citava não existe (AT-738, achado 10).
 **Origem:** FASE 29, sessão 6 ([ADR 0150](../adr/0150-instalador-de-uma-linha.md),
 [ADR 0152](../adr/0152-backup-de-volumes-contra-compose.md)).
 
