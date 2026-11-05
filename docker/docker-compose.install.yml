@@ -551,14 +551,17 @@ services:
   # subindo exatamente os mesmos serviços de antes. `docker compose run` liga o
   # profile do alvo sozinho, então nada precisa ser passado na linha:
   #
-  #   docker compose -f docker/docker-compose.prod.yml run --rm backup brabo-backup
-  #   docker compose -f docker/docker-compose.prod.yml run --rm backup brabo-restore
+  #   docker compose -f docker/docker-compose.install.yml run --rm backup brabo-backup
+  #   docker compose -f docker/docker-compose.install.yml run --rm backup brabo-restore
   #   bash docker/backup/test-restore-compose.sh   # os dois acima, com veredito
   backup:
     image: ${BRABO_BACKUP_IMAGE:?defina BRABO_BACKUP_IMAGE — o install.sh grava as cinco no .env}
     profiles: ["backup"]
     <<: *app-hardening
     restart: "no"
+    # Escreve no destino com o dono da pasta de backup: o instalador a cria com o uid
+    # de quem roda, e o 70:70 padrão da imagem não escreve ali (AT-738). Padrão inalterado.
+    user: ${BRABO_BACKUP_USER:-70:70}
     tmpfs:
       # HOME e TMPDIR da imagem: o aws-cli escreve `~/.aws` e o pg_restore usa
       # temporários. É o que permite o rootfs subir read-only.

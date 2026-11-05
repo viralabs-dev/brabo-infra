@@ -60,11 +60,22 @@ destino_preparar() {
 # e é read-only aceitaria `ls` e recusaria o dump — e o erro apareceria só
 # depois do `pg_dump`, com o diagnóstico apontando para o lugar errado.
 #
+# `destino_esperar leitura` (restore.sh e restore-git.sh) pergunta só se o disco é
+# LEGÍVEL (`-d`/`-r`/`-x`), sem criar nada nem escrever: restaurar roda como o dono
+# do VOLUME, que pode não ser o dono da pasta de backup.
+#
 # Ecoa o motivo em `destino_saida` (variável, não stdout) para o chamador
 # compor a mensagem, do mesmo jeito que o `esperar_destino` original fazia.
 destino_esperar() {
   destino_saida=""
   if [ "$(destino_tipo)" = local ]; then
+    if [ "${1:-}" = leitura ]; then
+      if [ -d "${BACKUP_DIR}" ] && [ -r "${BACKUP_DIR}" ] && [ -x "${BACKUP_DIR}" ]; then
+        return 0
+      fi
+      destino_saida="${BACKUP_DIR} não existe ou não é legível"
+      return 1
+    fi
     if ! mkdir -p "${BACKUP_DIR}" 2>/dev/null; then
       destino_saida="não foi possível criar ${BACKUP_DIR}"
       return 1
@@ -247,8 +258,10 @@ git_conteudo() {
 # Daí as duas metades abaixo, e nenhuma delas inventa privilégio:
 #
 #   * quem escreve tem que poder escrever. O chamador confere ANTES e recusa
-#     nomeando o conserto (`--user 0:0`), em vez de deixar o `tar` cuspir
-#     permissão negada por arquivo;
+#     nomeando o conserto (`--user <dono do volume>`, lido por `stat`), em vez
+#     de deixar o `tar` cuspir permissão negada por arquivo. NÃO é `--user 0:0`:
+#     o compose tem `cap_drop: ALL`, root sem CAP_DAC_OVERRIDE/CAP_CHOWN também
+#     não escreve em pasta alheia nem faz o `chown` (AT-738);
 #   * quando quem escreve É root, o que sai da extração é entregue ao dono do
 #     DIRETÓRIO — nunca a root. Sem isso o volume voltaria íntegro e inútil: a
 #     api e o engine, non-root, não conseguiriam escrever no que restauramos, e
