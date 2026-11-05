@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `tag.yml` carimba as tags (1ª = `v1.0.0`). `release.yml` publica `ghcr.io/viralabs-dev/brabo-backup` por tag final (build, Trivy antes de assinar, cosign por digest, verifica no mesmo run) e anexa `imagem.json` à Release; `workflow_dispatch` sem tag é o ensaio (não publica). O monorepo publicava a imagem de backup (`docker-bake.hcl`, alvo `backup`).
+- CI: job `actionlint`.
 - `make dev` / `pnpm dev`: sobe o dev a partir da pasta-mãe dos irmãos (preflight + `compose up`).
 - `preflight.mjs` confere que os repos irmãos do compose existem (recusa nomeando o que falta) e cria os pontos de volume (`node_modules`, `_build`, `deps`) DENTRO de cada irmão; `reset-total.sh` roda migrations/seed a partir de `brabo-api` e `mix ecto.migrate` em `brabo-engine` (`BRABO_IRMAOS`, padrão `..`); as recusas seguem.
 - `trivy-do-release.spec.ts` religado (sem `skip`): compara com os workflows que escaneiam hoje; sem nenhum, prova o release contra a régua constante do spec. `oferta-de-fonte-na-imagem.spec.ts` voltou, lendo os Dockerfiles dos irmãos; ACHADO: o `build-runner-binaries.yml` do `brabo-runner` não anexa mais `THIRD_PARTY_NOTICES.md` (fica para o repo do runner).
