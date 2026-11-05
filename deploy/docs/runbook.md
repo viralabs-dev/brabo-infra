@@ -2285,6 +2285,44 @@ reiniciar api e engine contra o banco recuperado — **nunca foi
 exercitado**: a prova apaga `brabo_restore_test` ao terminar e nunca
 aponta uma api rodando para ele.
 
+### Restaurando numa instalação compose (banco recém-criado) {#restore-compose-banco-vazio}
+
+Este é o caminho da **migração** do instalador (AT-738, ADR 0256): depois do
+`down -v` a instalação nova sobe com o Postgres vazio e o dump provado precisa
+voltar nele. Não há `kubectl`; o comando é o mesmo `brabo-restore`, com
+`--banco-vazio`:
+
+```bash
+# 1. Só o postgres de pé: api e engine PARADOS (eles migram o banco ao subir).
+docker compose -f docker/docker-compose.install.yml up -d --wait postgres
+
+# 2. Restaura o último dump da pasta do HOST (BRABO_BACKUP_HOST_DIR) no banco do DATABASE_URL.
+docker compose -f docker/docker-compose.install.yml run --rm backup brabo-restore --banco-vazio
+
+# 3. Só então suba o resto (api/engine) e restaure os bare repos git.
+docker compose -f docker/docker-compose.install.yml up -d
+docker compose -f docker/docker-compose.install.yml run --rm backup brabo-restore-git --restaurar
+```
+
+O que ele garante, e o que **não** faz:
+
+- **Recusa**, antes de baixar qualquer coisa, se o banco tiver QUALQUER tabela em
+  `public`, `drizzle` ou `engine` (inclusive a `__drizzle_migrations` de uma api
+  que já subiu): a mensagem diz `RECUSADO` e quantas tabelas achou. Banco com
+  dado nunca é sobrescrito — o ADR 0152 segue valendo, e o caminho de incidente
+  continua sendo o restore em banco NOVO acima.
+- Restaura numa única transação (falha não deixa meio banco) e roda as mesmas
+  validações do teste: lista de tabelas igual à do dump, contagem das tabelas
+  críticas igual à do dump (a origem não existe mais; o número vem das linhas do
+  `COPY`) e `seq` densa do event log. Zero linhas nas críticas reprova.
+- O destino do backup tem de ser a pasta do host: o volume `backup_local` é
+  apagado pelo `down -v`.
+
+Provado em `propriedades.yml`, job `restore-banco-vazio`: postgres e backup do
+compose de instalação num projeto descartável, dado semeado, backup em pasta do
+host, restore num banco novo com contagens iguais, e a recusa sobre o banco já
+restaurado.
+
 ### O que o restore NÃO cobre {#what-the-restore-does-not-cover}
 
 - **As credenciais de usuário ficam ilegíveis se `CREDENTIALS_MASTER_KEY` for

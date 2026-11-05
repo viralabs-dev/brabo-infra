@@ -678,9 +678,11 @@ destrutiva que o instalador não toma sozinho. Os repositórios git locais, sim 
 eles são fonte de verdade que nasceria vazia.
 
 **Onde:** `install.sh`, `migrar_instalacao_anterior` e `restaurar_apos_migrar`.
-**Teste:** `scripts/dev/install.spec.ts` — o plano declara
-`apagar-sem-backup-provado: nunca`, e um teste afere que a chamada da prova
-vem **antes** da chamada de deleção no código.
+**Teste:** `scripts/dev/prova-de-restauracao-env.spec.ts` (neste repositório: o
+`.env` do instalador passa pelo Compose da prova) e, no repositório `brabo`,
+`scripts/dev/install-arquivos-da-instalacao.spec.ts` (a prova viaja na Release e
+é conferida). A ordem "prova antes da deleção" não tem spec próprio hoje: o
+`scripts/dev/install.spec.ts` que esta regra citava não existe (AT-738, achado 10).
 **Origem:** FASE 29, sessão 6 ([ADR 0150](../adr/0150-instalador-de-uma-linha.md),
 [ADR 0152](../adr/0152-backup-de-volumes-contra-compose.md)).
 

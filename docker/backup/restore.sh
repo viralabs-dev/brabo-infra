@@ -14,7 +14,26 @@
 #
 # Não toca na database de origem em nenhum momento: cria `brabo_restore_test`,
 # restaura ali, valida e derruba.
+#
+# ## `--banco-vazio` (AT-738, ADR 0256)
+#
+# O outro modo: restaura DIRETO no banco do `DATABASE_URL`, que tem de estar
+# recém-criado e VAZIO. É o que a migração do instalador usa depois do `down -v`
+# (a instalação nova sobe sem dado). RECUSA, antes de baixar qualquer coisa, se
+# houver QUALQUER tabela em `public`, `drizzle` ou `engine`: o ADR 0152 segue
+# valendo para banco com dado — nunca se sobrescreve um banco populado. O
+# restore é uma transação só (falha não deixa meio banco, e o próximo
+# `--banco-vazio` não é recusado por resto). A origem não existe mais, então as
+# contagens saem do PRÓPRIO dump (linhas do COPY) e a estrutura, do índice dele;
+# o resto é igual.
 set -eu
+
+MODO=teste
+case "${1:-}" in
+  "") ;;
+  --banco-vazio) MODO=banco-vazio ;;
+  *) echo "uso: brabo-restore [--banco-vazio]" >&2; exit 2 ;;
+esac
 
 : "${DATABASE_URL:?DATABASE_URL é obrigatória}"
 
@@ -50,6 +69,7 @@ case "${DATABASE_URL}" in *\?*) query="?${DATABASE_URL#*\?}" ;; esac
 prefixo_conn="${sem_query%/*}"
 ADMIN_URL="${RESTORE_ADMIN_URL:-${prefixo_conn}/postgres${query}}"
 RESTORE_URL="${prefixo_conn}/${RESTORE_DB}${query}"
+[ "${MODO}" = banco-vazio ] && RESTORE_URL="${DATABASE_URL}"
 
 psql_origem()  { psql "${DATABASE_URL}" --quiet --no-align --tuples-only --set ON_ERROR_STOP=1 "$@"; }
 psql_destino() { psql "${RESTORE_URL}"  --quiet --no-align --tuples-only --set ON_ERROR_STOP=1 "$@"; }
@@ -57,6 +77,8 @@ psql_destino() { psql "${RESTORE_URL}"  --quiet --no-align --tuples-only --set O
 limpar() {
   rc=$?
   rm -f "${DUMP}" /tmp/restore.list
+  # No modo --banco-vazio o banco restaurado é o DESTINO final: nunca se derruba.
+  [ "${MODO}" = banco-vazio ] && exit "${rc}"
   # A database de teste some SEMPRE, inclusive quando a validação falha: deixá-la
   # para trás faz a próxima execução falhar no `createdb` por um motivo que não
   # tem nada a ver com o backup.
@@ -66,6 +88,21 @@ limpar() {
   exit "${rc}"
 }
 trap limpar EXIT
+
+# --- recusa: banco com tabela de aplicação ----------------------------------
+# Antes de qualquer download. Falha em perguntar NÃO é "vazio": recusa também.
+if [ "${MODO}" = banco-vazio ]; then
+  n_tabelas="$(psql_destino --command \
+    "select count(*) from information_schema.tables
+      where table_type = 'BASE TABLE' and table_schema in ('public','drizzle','engine')")" \
+    || { log "erro: não consegui perguntar ao banco se ele está vazio — nada foi restaurado"; exit 1; }
+  if [ "${n_tabelas}" -gt 0 ]; then
+    log "RECUSADO: o banco do DATABASE_URL já tem ${n_tabelas} tabela(s) em public/drizzle/engine."
+    log "--banco-vazio só restaura num banco recém-criado e vazio (ADR 0152: banco com dado nunca é sobrescrito)."
+    exit 1
+  fi
+  ok "banco vazio (nenhuma tabela em public/drizzle/engine)"
+fi
 
 # --- baixar o último objeto ------------------------------------------------
 # Saída do destino preservada na mensagem, e espera pelo destino — mesma razão
@@ -95,7 +132,8 @@ ok "dump íntegro ($(wc -c < "${DUMP}") bytes)"
 # instante do snapshot. É o que torna a comparação de contagens exata mesmo com
 # escrita concorrente: tudo criado até `started_at` TEM que estar no dump, nada
 # criado depois de `finished_at` pode estar.
-JANELA="$(psql_origem --command \
+JANELA=""
+[ "${MODO}" = teste ] && JANELA="$(psql_origem --command \
   "select coalesce(to_char(started_at,'YYYY-MM-DD\"T\"HH24:MI:SSOF'), '') || '|' ||
           coalesce(to_char(finished_at,'YYYY-MM-DD\"T\"HH24:MI:SSOF'), '')
      from backup_runs
@@ -105,11 +143,15 @@ INICIO="${JANELA%%|*}"
 FIM="${JANELA##*|}"
 
 # --- restaurar -------------------------------------------------------------
-psql "${ADMIN_URL}" --quiet --set ON_ERROR_STOP=1 \
-  --command "drop database if exists ${RESTORE_DB} with (force)" >/dev/null
-psql "${ADMIN_URL}" --quiet --set ON_ERROR_STOP=1 \
-  --command "create database ${RESTORE_DB}" >/dev/null
-log "restaurando em ${RESTORE_DB}"
+if [ "${MODO}" = banco-vazio ]; then
+  log "restaurando direto no banco do DATABASE_URL"
+else
+  psql "${ADMIN_URL}" --quiet --set ON_ERROR_STOP=1 \
+    --command "drop database if exists ${RESTORE_DB} with (force)" >/dev/null
+  psql "${ADMIN_URL}" --quiet --set ON_ERROR_STOP=1 \
+    --command "create database ${RESTORE_DB}" >/dev/null
+  log "restaurando em ${RESTORE_DB}"
+fi
 
 # O índice do dump SEM o comentário de extensão. `pg_dump` grava
 # `COMMENT ON EXTENSION vector`, e só o DONO da extensão pode comentá-la: onde o
@@ -125,7 +167,9 @@ pg_restore --list "${DUMP}" | grep -v ' COMMENT - EXTENSION ' > "${LISTA}"
 
 # `--no-owner --no-privileges` porque o dump foi gerado assim; `--exit-on-error`
 # para uma falha no meio não virar database meio restaurada com saída zero.
-pg_restore --dbname="${RESTORE_URL}" --no-owner --no-privileges --exit-on-error \
+SINGLE=""
+[ "${MODO}" = banco-vazio ] && SINGLE="--single-transaction"
+pg_restore --dbname="${RESTORE_URL}" --no-owner --no-privileges --exit-on-error ${SINGLE} \
   --use-list="${LISTA}" "${DUMP}" \
   || { log "erro: pg_restore falhou"; exit 1; }
 ok "pg_restore concluído"
@@ -145,7 +189,13 @@ listar_tabelas() {
       where table_schema = 'public' and table_type = 'BASE TABLE'"
 }
 
-tabelas_origem="$(listar_tabelas psql_origem)"
+if [ "${MODO}" = banco-vazio ]; then
+  # A "origem" é o índice do dump (TABLE public <nome>).
+  tabelas_origem="$(pg_restore --list "${DUMP}" \
+    | awk '$4 == "TABLE" && $5 == "public" { print $6 }' | sort | tr '\n' ' ' | sed 's/ $//')"
+else
+  tabelas_origem="$(listar_tabelas psql_origem)"
+fi
 tabelas_destino="$(listar_tabelas psql_destino)"
 
 if [ "${tabelas_origem}" = "${tabelas_destino}" ]; then
@@ -167,9 +217,17 @@ fi
 # fica "0 == 0" e o event log é trivialmente íntegro: o teste passaria inteiro
 # sem ter exercitado nada. Já aconteceu nesta sessão, num cluster recém-criado
 # antes do smoke — e a saída era verde.
+# Número esperado: no modo de teste vem da origem; em --banco-vazio, das linhas
+# do COPY da tabela dentro do dump (a origem não existe mais).
+contar_no_dump() {
+  pg_restore --data-only --table="$1" --file=- "${DUMP}" \
+    | awk '/^COPY /{d=1;next} /^\\\.$/{d=0} d{n++} END{print n+0}'
+}
+
 total_origem=0
 for tabela in ${CRITICAS}; do
-  n="$(psql_origem --command "select count(*) from ${tabela}")"
+  if [ "${MODO}" = banco-vazio ]; then n="$(contar_no_dump "${tabela}")"
+  else n="$(psql_origem --command "select count(*) from ${tabela}")"; fi
   total_origem=$((total_origem + n))
 done
 
@@ -178,7 +236,17 @@ if [ "${total_origem}" -eq 0 ]; then
          Rode 'make smoke-k8s' (ou use o sistema) para gerar dados antes."
 fi
 
-if [ -z "${INICIO}" ] || [ -z "${FIM}" ]; then
+if [ "${MODO}" = banco-vazio ]; then
+  for tabela in ${CRITICAS}; do
+    restaurado="$(psql_destino --command "select count(*) from ${tabela}")"
+    esperado="$(contar_no_dump "${tabela}")"
+    if [ "${restaurado}" -eq "${esperado}" ]; then
+      ok "${tabela}: ${restaurado} linhas (igual ao dump)"
+    else
+      falha "${tabela}: ${restaurado} linhas restauradas, o dump tem ${esperado}"
+    fi
+  done
+elif [ -z "${INICIO}" ] || [ -z "${FIM}" ]; then
   falha "não achei a execução de ${OBJETO} em backup_runs — sem janela, a contagem não é verificável"
 else
   for tabela in ${CRITICAS}; do
