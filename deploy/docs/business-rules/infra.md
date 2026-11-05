@@ -585,7 +585,7 @@ event log. Ele verifica por default e só escreve com `--restaurar`; recusa
 extrair por cima de repos existentes (a mistura de dois estados não levanta erro
 nenhum e só aparece num `fetch` com história errada); e — achado da execução
 real — recusa ANTES do `tar` quando o volume não aceita escrita, nomeando
-`--user 0:0`. `git_local_repos` é compartilhado por três imagens com uids
+`--user <dono do volume>` (lido por `stat`; root não serve com `cap_drop: ALL`). `git_local_repos` é compartilhado por três imagens com uids
 diferentes e carrega o dono de quem o montou primeiro (medido: `1000:1000`,
 modo 0755) enquanto esta imagem roda como uid 70. Quando a extração roda como
 root, o que sai é devolvido ao dono do DIRETÓRIO e nunca deixado como root:
