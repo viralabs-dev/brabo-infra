@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { caminhoReal } from './irmaos.ts';
 
 /**
  * O passo de gates do `docker/smoke.sh` rodando num bash de VERDADE (AT-109).
@@ -55,7 +56,7 @@ function checar(corpo: string) {
 
 // O corpo do registro como a api o serve: `carregarRegistro()` devolve o YAML
 // parseado, sem transformação, e o Nest o serializa.
-const REGISTRO = JSON.stringify(parse(readFileSync(path.join(RAIZ, 'apps/api/config/gates.yml'), 'utf8')));
+const REGISTRO = JSON.stringify(parse(readFileSync(caminhoReal('apps/api/config/gates.yml'), 'utf8')));
 
 describe('checar_registro_de_gates', () => {
   it('aceita o registro real de apps/api/config/gates.yml', () => {

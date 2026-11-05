@@ -1,6 +1,6 @@
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
-import { ler } from '../docs/fontes.mjs';
+import { ler } from './irmaos.ts';
 
 /**
  * O teto da conversa OCIOSA (RN-581, `SESSION_CONVERSATION_IDLE_TIMEOUT_MS`)

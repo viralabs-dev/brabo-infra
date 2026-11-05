@@ -407,8 +407,8 @@ describe('o repositório', () => {
     const expressoes = workflows.flatMap(({ conteudo }) =>
       conteudo.split('\n').filter((linha) => /^\s*image:\s*\$\{\{\s*needs\.imagens\.outputs\./.test(linha)),
     );
-    // ci.yml (test-api-shard, test-engine) e os dois golden-sets (pgvector + ollama).
-    expect(expressoes.length).toBeGreaterThanOrEqual(6);
+    // Os workflows de teste (ci/golden-sets) foram para os repos dos apps; aqui sobra o reutilizável.
+    expect(expressoes.length).toBeGreaterThanOrEqual(1);
     const semComentario = workflows.map(({ conteudo }) => conteudo.replace(/^\s*#.*$/gm, ''));
     expect(semComentario.filter((conteudo) => /^\s*image:.*@sha256:/m.test(conteudo))).toEqual([]);
   });

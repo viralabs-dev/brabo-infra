@@ -1,0 +1,19 @@
+{
+  "name": "brabo-infra",
+  "version": "1.0.0",
+  "license": "MIT",
+  "private": true,
+  "packageManager": "pnpm@11.3.0",
+  "description": "Composes, Kubernetes, backup, observabilidade, scripts de ambiente e as aferições cruzadas do Brabo (AT-701).",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.12",
+    "yaml": "^2.9.0"
+  }
+}

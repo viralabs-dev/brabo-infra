@@ -220,9 +220,11 @@ if [[ "${BRABO_SKIP_BUILD:-}" == "1" ]]; then
   info "BRABO_SKIP_BUILD=1 — usando as imagens já no daemon"
 else
   info "construindo as imagens de produção"
-  docker build -q -f "${REPO_ROOT}/docker/api/Dockerfile.prod"    -t brabo-api:prod    "${REPO_ROOT}" >/dev/null
-  docker build -q -f "${REPO_ROOT}/docker/engine/Dockerfile.prod" -t brabo-engine:prod "${REPO_ROOT}" >/dev/null
-  docker build -q -f "${REPO_ROOT}/docker/web/Dockerfile.prod"    -t brabo-web:prod    "${REPO_ROOT}" >/dev/null
+  # Os Dockerfiles moram nos repositórios dos apps (clones irmãos, AT-696..700).
+  IRMAOS="${BRABO_IRMAOS:-${REPO_ROOT}/..}"
+  docker build -q -t brabo-api:prod    "${IRMAOS}/brabo-api"    >/dev/null
+  docker build -q -t brabo-engine:prod "${IRMAOS}/brabo-engine" >/dev/null
+  docker build -q -t brabo-web:prod    "${IRMAOS}/brabo-web"    >/dev/null
   docker build -q -f "${REPO_ROOT}/docker/backup/Dockerfile.prod" -t brabo-backup:prod "${REPO_ROOT}" >/dev/null
   ok "quatro imagens construídas"
 fi

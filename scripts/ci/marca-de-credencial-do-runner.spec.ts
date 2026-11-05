@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { ler } from './irmaos.ts';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -21,11 +20,7 @@ import { describe, expect, it } from 'vitest';
  * arquivo que reprova.
  */
 
-const RAIZ = join(import.meta.dirname, '..', '..');
 
-function ler(caminho: string): string {
-  return readFileSync(join(RAIZ, caminho), 'utf8');
-}
 
 function extrair(texto: string, padrao: RegExp, oque: string): string {
   const achado = texto.match(padrao);

@@ -32,6 +32,14 @@
 # e de packages/shared). Um bake em docker/ precisaria de `context = ".."`, que
 # exige `--allow=fs.read=..` em toda invocação.
 
+# Pasta-mãe dos clones irmãos (`brabo-api`, `brabo-engine`, ...). Cada imagem
+# de app é construída com o contexto no repositório dela (o Dockerfile mora
+# lá, AT-696..700). Fora da pasta deste arquivo, o buildx exige
+# `--allow=fs.read=<pasta>` em toda invocação (ex.: `--allow=fs.read=..`).
+variable "IRMAOS" {
+  default = ".."
+}
+
 variable "TAG" {
   default = "prod"
 }
@@ -112,7 +120,8 @@ target "_comum" {
 
 target "api" {
   inherits   = ["_comum"]
-  dockerfile = "docker/api/Dockerfile.prod"
+  context    = "${IRMAOS}/brabo-api"
+  dockerfile = "Dockerfile"
   tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-api:${TAG}"] : ["${REGISTRY}brabo-api:${TAG}", "${REGISTRY}brabo-api:${TAG_EXTRA}"]
   args       = { BRABO_VERSION = VERSION, BRABO_AMBIENTE = AMBIENTE }
   cache-from = ["type=gha,scope=api"]
@@ -121,7 +130,8 @@ target "api" {
 
 target "engine" {
   inherits   = ["_comum"]
-  dockerfile = "docker/engine/Dockerfile.prod"
+  context    = "${IRMAOS}/brabo-engine"
+  dockerfile = "Dockerfile"
   tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-engine:${TAG}"] : ["${REGISTRY}brabo-engine:${TAG}", "${REGISTRY}brabo-engine:${TAG_EXTRA}"]
   cache-from = ["type=gha,scope=engine"]
   cache-to   = ["type=gha,scope=engine,mode=max"]
@@ -129,7 +139,8 @@ target "engine" {
 
 target "web" {
   inherits   = ["_comum"]
-  dockerfile = "docker/web/Dockerfile.prod"
+  context    = "${IRMAOS}/brabo-web"
+  dockerfile = "Dockerfile"
   tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-web:${TAG}"] : ["${REGISTRY}brabo-web:${TAG}", "${REGISTRY}brabo-web:${TAG_EXTRA}"]
   args       = { VITE_BRABO_VERSION = VERSION, VITE_BRABO_AMBIENTE = AMBIENTE }
   cache-from = ["type=gha,scope=web"]
@@ -159,7 +170,8 @@ target "backup" {
 # e sem o `args` ela sairia "dev" numa imagem publicada.
 target "broker" {
   inherits   = ["_comum"]
-  dockerfile = "docker/broker/Dockerfile.prod"
+  context    = "${IRMAOS}/brabo-broker"
+  dockerfile = "Dockerfile"
   tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-broker:${TAG}"] : ["${REGISTRY}brabo-broker:${TAG}", "${REGISTRY}brabo-broker:${TAG_EXTRA}"]
   args       = { BRABO_VERSION = VERSION }
   cache-from = ["type=gha,scope=broker"]

@@ -1,0 +1,21 @@
+name: Clones irmãos
+description: Faz checkout da `dev` de cada repositório do Brabo em ./irmaos/<repo> (BRABO_IRMAOS aponta para lá).
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with: { repository: viralabs-dev/brabo-api, ref: dev, path: irmaos/brabo-api }
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with: { repository: viralabs-dev/brabo-engine, ref: dev, path: irmaos/brabo-engine }
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with: { repository: viralabs-dev/brabo-web, ref: dev, path: irmaos/brabo-web }
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with: { repository: viralabs-dev/brabo-runner, ref: dev, path: irmaos/brabo-runner }
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with: { repository: viralabs-dev/brabo-broker, ref: dev, path: irmaos/brabo-broker }
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with: { repository: viralabs-dev/brabo-contracts, ref: v1.0.0, path: irmaos/brabo-contracts }
+    # O repositório do produto (install.sh, release) pode ainda não existir/estar público: as aferições que o leem pulam.
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      continue-on-error: true
+      with: { repository: viralabs-dev/brabo, ref: dev, path: irmaos/brabo }

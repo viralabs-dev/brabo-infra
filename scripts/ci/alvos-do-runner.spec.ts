@@ -1,8 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { describe, expect, it } from 'vitest';
+import { existe, ler } from './irmaos.ts';
 
 /**
  * Os alvos do binário standalone do runner moram em TRÊS lugares, em três
@@ -29,8 +27,6 @@ import { describe, expect, it } from 'vitest';
  * então nunca teve `win32-x64` no `case`; os outros lugares mudam.
  */
 
-const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const ler = (relativo: string) => readFileSync(path.join(RAIZ, relativo), 'utf8');
 
 const workflow = YAML.parse(ler('.github/workflows/build-runner-binaries.yml')) as {
   jobs: { build: { strategy: { matrix: { include: { target: string; os: string }[] } } } };
@@ -62,7 +58,7 @@ describe('os alvos do binário do runner (ADR 0174, ADR 0187)', () => {
     expect(fonte).toContain('npm install -g @brabo/runner');
   });
 
-  it('o instalador só baixa alvo que a matriz constrói, e manda o Mac Intel para o npm', () => {
+  it.skipIf(!existe('install.sh'))('o instalador só baixa alvo que a matriz constrói, e manda o Mac Intel para o npm', () => {
     const fonte = ler('install.sh');
     const inicio = fonte.indexOf('instalar_o_runner() {');
     const fim = fonte.indexOf('\n}\n', inicio);
@@ -77,6 +73,6 @@ describe('os alvos do binário do runner (ADR 0174, ADR 0187)', () => {
   });
 
   it('o navegador não enumera mais alvo nenhum: o fluxo do ADR 0118 saiu (ADR 0203)', () => {
-    expect(existsSync(path.join(RAIZ, 'apps/web/src/lib/runner-bootstrap.ts'))).toBe(false);
+    expect(existe('apps/web/src/lib/runner-bootstrap.ts')).toBe(false);
   });
 });

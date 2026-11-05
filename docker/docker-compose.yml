@@ -144,8 +144,8 @@ services:
 
   api:
     build:
-      context: ..
-      dockerfile: docker/api/Dockerfile
+      context: ${BRABO_IRMAOS:-../..}/brabo-api
+      dockerfile: Dockerfile.dev
       args:
         # UID/GID do usuário do container — casam com o dono do bind mount
         # no host, pra ele nunca escrever como root (ver .env.example e
@@ -292,10 +292,8 @@ services:
       - default
       - broker
     volumes:
-      - ..:/workspace
-      - api_root_node_modules:/workspace/node_modules
-      - api_app_node_modules:/workspace/apps/api/node_modules
-      - api_shared_node_modules:/workspace/packages/shared/node_modules
+      - ${BRABO_IRMAOS:-../..}/brabo-api:/workspace
+      - api_node_modules:/workspace/node_modules
       # As duas linhas abaixo aceitam pasta REAL do host, não só volume
       # Docker gerenciado — ver GIT_LOCAL_REPOS_HOST_DIR/PROJECT_WORKSPACES_HOST_DIR
       # em .env.example. Sem a variável definida, o lado esquerdo é o NOME de
@@ -362,12 +360,12 @@ services:
 
   engine:
     build:
-      context: ..
-      dockerfile: docker/engine/Dockerfile
+      context: ${BRABO_IRMAOS:-../..}/brabo-engine
+      dockerfile: Dockerfile.dev
       args:
         DEV_UID: ${DEV_UID:-1000}
         DEV_GID: ${DEV_GID:-1000}
-    working_dir: /workspace/apps/engine
+    working_dir: /workspace
     # Mesmo motivo do serviço `api`, acima: `host.docker.internal` não
     # resolve por padrão no Docker Engine nativo do Linux (só no Docker
     # Desktop).
@@ -478,9 +476,9 @@ services:
     ports:
       - "${ENGINE_PORT:-4000}:4000"
     volumes:
-      - ../apps/engine:/workspace/apps/engine
-      - engine_build:/workspace/apps/engine/_build
-      - engine_deps:/workspace/apps/engine/deps
+      - ${BRABO_IRMAOS:-../..}/brabo-engine:/workspace
+      - engine_build:/workspace/_build
+      - engine_deps:/workspace/deps
       - engine_mix:/root/.mix
       - engine_hex:/root/.hex
       # RW (era :ro): desde a Fase 4a o executor `git_push` roda NO ENGINE
@@ -561,12 +559,8 @@ services:
   # service" — o mesmo achado registrado no serviço `ollama`, acima.
   broker:
     build:
-      context: ..
-      dockerfile: docker/broker/Dockerfile
-      args:
-        DEV_UID: ${DEV_UID:-1000}
-        DEV_GID: ${DEV_GID:-1000}
-    working_dir: /workspace
+      context: ${BRABO_IRMAOS:-../..}/brabo-broker
+      dockerfile: Dockerfile.dev
     environment:
       BROKER_PORT: 8090
       # Mesmo segredo dos outros dois serviços — ver EngineServiceGuard,
@@ -605,10 +599,6 @@ services:
     networks:
       - broker
     volumes:
-      - ..:/workspace
-      - broker_root_node_modules:/workspace/node_modules
-      - broker_app_node_modules:/workspace/apps/broker/node_modules
-      - broker_port_node_modules:/workspace/packages/docker-port/node_modules
       # O socket. `:ro` é COSMÉTICO aqui e não vale nada como contenção — o
       # protocolo do Docker é HTTP sobre o socket, e escrever no socket é o que
       # toda operação faz. A contenção real é a de cima (sem porta), a
@@ -653,8 +643,8 @@ services:
 
   web:
     build:
-      context: ..
-      dockerfile: docker/web/Dockerfile
+      context: ${BRABO_IRMAOS:-../..}/brabo-web
+      dockerfile: Dockerfile.dev
       args:
         DEV_UID: ${DEV_UID:-1000}
         DEV_GID: ${DEV_GID:-1000}
@@ -667,10 +657,8 @@ services:
     ports:
       - "${BRABO_BIND:-127.0.0.1}:${WEB_PORT:-5173}:5173"
     volumes:
-      - ..:/workspace
-      - web_root_node_modules:/workspace/node_modules
-      - web_app_node_modules:/workspace/apps/web/node_modules
-      - web_shared_node_modules:/workspace/packages/shared/node_modules
+      - ${BRABO_IRMAOS:-../..}/brabo-web:/workspace
+      - web_node_modules:/workspace/node_modules
     depends_on:
       - api
       - engine
@@ -705,12 +693,8 @@ volumes:
   neo4j_logs:
   ollama_data:
   git_local_repos:
-  api_root_node_modules:
-  api_app_node_modules:
-  api_shared_node_modules:
-  web_root_node_modules:
-  web_app_node_modules:
-  web_shared_node_modules:
+  api_node_modules:
+  web_node_modules:
   engine_build:
   engine_deps:
   engine_mix:
@@ -721,6 +705,3 @@ volumes:
   # está definida — nada escreve dentro dele, e uma instalação sem base
   # configurada simplesmente não oferece o modo Pasta montada.
   brabo_projects_base:
-  broker_root_node_modules:
-  broker_app_node_modules:
-  broker_port_node_modules:

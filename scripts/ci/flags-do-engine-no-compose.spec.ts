@@ -1,6 +1,6 @@
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
-import { ler } from '../docs/fontes.mjs';
+import { ler } from './irmaos.ts';
 
 /**
  * As FLAGS BOOLEANAS que o `runtime.exs` do engine lê, contra o

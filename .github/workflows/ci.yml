@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+env:
+  KUSTOMIZE_VERSION: '5.8.1'
+  KUBECONFORM_VERSION: '0.7.0'
+  # SHA-256 dos binários baixados por `curl` (mesmos valores do ci.yml do monorepo, AT-701).
+  KUSTOMIZE_SHA256: '029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d'
+  KUBECONFORM_SHA256: 'c31518ddd122663b3f3aa874cfe8178cb0988de944f29c74a0b9260920d115d3'
+
+jobs:
+  # Política de PR do Brabo (forma do PR, família, destino) — reutilizável do brabo-ci.
+  politica:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: viralabs-dev/brabo-ci/.github/workflows/pr-police.yml@236dc29d9e64a95ba278bd2ec1109940ce3d6e20  # v1.0.0
+    with:
+      ci_ref: v1.0.0
+
+  # Typecheck e as aferições (inclusive as CRUZADAS, que leem os clones irmãos na `dev` deles).
+  afericoes:
+    name: Typecheck e aferições (com os irmãos)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BRABO_IRMAOS: ${{ github.workspace }}/irmaos
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Irmãos (dev de cada repositório)
+        uses: ./.github/actions/irmaos
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413  # v6.1.0
+        with:
+          version: '11.3.0'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '26.10.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  # `docker compose config` dos cinco composes, com os irmãos como contexto de build.
+  composes:
+    name: Composes resolvem
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BRABO_IRMAOS: ${{ github.workspace }}/irmaos
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Irmãos (dev de cada repositório)
+        uses: ./.github/actions/irmaos
+      - name: docker compose config
+        run: bash scripts/ci/composes-resolvem.sh
+
+  # `make k8s-validate`: kustomize build + kubeconform nos overlays.
+  manifests:
+    name: Manifests de Kubernetes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Instalar kustomize e kubeconform
+        run: |
+          set -euxo pipefail
+          curl -fsSL -o /tmp/kustomize.tar.gz \
+            "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          echo "${KUSTOMIZE_SHA256}  /tmp/kustomize.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/kustomize.tar.gz -C /usr/local/bin kustomize
+          curl -fsSL -o /tmp/kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  /tmp/kubeconform.tar.gz" | sha256sum -c -
+          sudo tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin kubeconform
+          sudo chmod 0755 /usr/local/bin/kustomize /usr/local/bin/kubeconform
+      - run: make k8s-validate
+      # O smoke assume as portas do overlay local; mudar um NodePort sem o bootstrap quebra o smoke longe da causa.
+      - name: Portas do overlay local
+        run: |
+          set -euo pipefail
+          out="$(kustomize build deploy/k8s/overlays/local)"
+          for port in 30300 30400 30088; do
+            grep -q "nodePort: ${port}" <<<"${out}" || { echo "NodePort ${port} sumiu do overlay local"; exit 1; }
+          done
+      # WEB_PORT e WEB_ORIGIN são a mesma informação (ADR 0037): derivar um do outro.
+      - name: WEB_ORIGIN deriva de WEB_PORT nos composes
+        run: |
+          set -euo pipefail
+          faltou=0
+          for arquivo in docker/docker-compose.yml docker/docker-compose.prod.yml; do
+            while IFS= read -r linha; do
+              case "${linha}" in
+                *'${WEB_PORT'*) ;;
+                *) echo "${arquivo}: WEB_ORIGIN não deriva de WEB_PORT -> ${linha}"; faltou=1 ;;
+              esac
+            done < <(grep -E '^[[:space:]]*WEB_ORIGIN:' "${arquivo}" || true)
+          done
+          exit "${faltou}"

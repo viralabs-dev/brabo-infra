@@ -1,6 +1,6 @@
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
-import { arquivos, ler } from '../docs/fontes.mjs';
+import { arquivos, ler } from './irmaos.ts';
 
 /**
  * As variáveis `*_PREVIOUS` que a api, o engine e o broker LEEM, contra o

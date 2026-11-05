@@ -101,8 +101,8 @@ services:
   migrate-api:
     image: brabo-api:prod
     build:
-      context: ..
-      dockerfile: docker/api/Dockerfile.prod
+      context: ${BRABO_IRMAOS:-../..}/brabo-api
+      dockerfile: Dockerfile
     <<: *app-hardening
     restart: "no"
     tmpfs:
@@ -120,8 +120,8 @@ services:
   migrate-engine:
     image: brabo-engine:prod
     build:
-      context: ..
-      dockerfile: docker/engine/Dockerfile.prod
+      context: ${BRABO_IRMAOS:-../..}/brabo-engine
+      dockerfile: Dockerfile
     <<: *app-hardening
     restart: "no"
     tmpfs:
@@ -153,8 +153,8 @@ services:
   api:
     image: brabo-api:prod
     build:
-      context: ..
-      dockerfile: docker/api/Dockerfile.prod
+      context: ${BRABO_IRMAOS:-../..}/brabo-api
+      dockerfile: Dockerfile
     <<: *app-hardening
     # /tmp é o único caminho gravável fora dos volumes (uploads temporários,
     # arquivos intermediários). O resto do rootfs é read-only.
@@ -280,8 +280,8 @@ services:
   engine:
     image: brabo-engine:prod
     build:
-      context: ..
-      dockerfile: docker/engine/Dockerfile.prod
+      context: ${BRABO_IRMAOS:-../..}/brabo-engine
+      dockerfile: Dockerfile
     <<: *app-hardening
     tmpfs:
       # /tmp: 4 detectors e a árvore temporária do InfraGateRunner escrevem lá.
@@ -391,8 +391,8 @@ services:
   broker:
     image: brabo-broker:prod
     build:
-      context: ..
-      dockerfile: docker/broker/Dockerfile.prod
+      context: ${BRABO_IRMAOS:-../..}/brabo-broker
+      dockerfile: Dockerfile
     profiles: ["container-broker"]
     <<: *app-hardening
     # O CLI do docker escreve arquivo temporário; o resto do rootfs é
@@ -498,8 +498,8 @@ services:
   web:
     image: brabo-web:prod
     build:
-      context: ..
-      dockerfile: docker/web/Dockerfile.prod
+      context: ${BRABO_IRMAOS:-../..}/brabo-web
+      dockerfile: Dockerfile
       # As VITE_* seguem sendo compile-time (o Vite as inlina no bundle), mas
       # deixaram de ser o mecanismo: viraram só o FALLBACK de `pnpm dev:web`.
       # A configuração de verdade vem em runtime por /config.js, gerado pelo
