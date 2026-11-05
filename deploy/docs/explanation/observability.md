@@ -1,55 +1,61 @@
 ---
 id: observability
-title: Como se segue uma ação pelo sistema
-sidebar_label: Observabilidade
+title: How an action is followed through the system
+sidebar_label: Observability
 sidebar_position: 3
-description: O modelo de observabilidade do Brabo — por que contexto é sempre ligado e exportação é condicional, o que é o caminho entre camadas, e por que trace_id é contrato.
-keywords: [observabilidade, trace, log, OpenTelemetry, correlação]
+description: Brabo's observability model — why context is always on and export is conditional, what the cross-layer path is, and why trace_id is a contract.
+keywords: [observability, trace, log, OpenTelemetry, correlation]
+idioma_original: en
 ---
 
-# Como se segue uma ação pelo sistema {#how-an-action-is-followed-through-the-system}
+# How an action is followed through the system {#how-an-action-is-followed-through-the-system}
 
-Uma ação do usuário no Brabo atravessa três processos e volta: o clique na web
-chama a api, a api comanda o engine por HTTP, o engine responde por HTTP e
-dispara trabalho assíncrono por Oban, e o resultado volta pela api até a tela.
-Quando algo dá errado no meio, a pergunta é sempre a mesma — **por onde isso
-passou, e onde parou?**
+A user action in Brabo crosses three processes and comes back: the click on
+the web app calls the api, the api commands the engine over HTTP, the engine
+responds over HTTP and fires async work via Oban, and the result travels back
+through the api to the screen. When something goes wrong in the middle, the
+question is always the same — **where did this go through, and where did it
+stop?**
 
-Esta página explica o mecanismo que responde isso. As decisões estão no
-[ADR 0026](../adr/0026-fase5-observabilidade-e-graceful-shutdown.md) (o modelo) e
-no [ADR 0035](../adr/0035-observabilidade-legivel-e-trace-sem-coletor.md) (o que
-mudou depois); o procedimento operacional está no
+This page explains the mechanism that answers that. The decisions are in
+[ADR 0026](../adr/0026-fase5-observabilidade-e-graceful-shutdown.md) (the
+model) and [ADR 0035](../adr/0035-observabilidade-legivel-e-trace-sem-coletor.md)
+(what changed afterward); the operational procedure is in the
 [runbook](../runbook.md#observabilidade).
 
-## As duas coisas que não se confundem {#the-two-things-that-dont-get-confused-with-each-other}
+## The two things that don't get confused with each other {#the-two-things-that-dont-get-confused-with-each-other}
 
-**Criar telemetria** e **entregar telemetria** são independentes, e essa é a
-escolha de desenho mais importante aqui.
+**Creating telemetry** and **delivering telemetry** are independent, and
+that's the most important design choice here.
 
-Span é sempre criada — em produção, em desenvolvimento e na suite. O que
-`OTEL_EXPORTER_OTLP_ENDPOINT` decide é se ela **sai do processo**:
+A span is always created — in production, in development and in the test
+suite. What `OTEL_EXPORTER_OTLP_ENDPOINT` decides is whether it **leaves the
+process**:
 
-| ambiente | span criada | `trace_id` no log | span vai ao Tempo |
+| environment | span created | `trace_id` in the log | span reaches Tempo |
 |---|---|---|---|
-| produção (com Collector) | sim | sim | sim |
-| `pnpm dev` | sim | sim | não |
-| suite de testes | sim | sim | não |
+| production (with Collector) | yes | yes | yes |
+| `pnpm dev` | yes | yes | no |
+| test suite | yes | yes | no |
 
-Isso importa porque **a correlação não depende do coletor**. O `trace_id` que
-aparece no log dos três serviços vem do contexto, não do exportador. Em
-desenvolvimento você não tem o desenho da árvore no Grafana, mas tem a coisa mais
-usada no dia a dia: as linhas dos três serviços marcadas com o mesmo id.
+This matters because **correlation doesn't depend on the collector**. The
+`trace_id` that shows up in all three services' logs comes from the context,
+not the exporter. In development you don't get the tree drawn in Grafana, but
+you do get the thing used most day to day: the three services' log lines
+tagged with the same id.
 
-Antes do ADR 0035 as duas coisas estavam atadas, e a consequência era que
-desenvolvimento — o ambiente onde mais se lê log — era o único sem correlação
-nenhuma. Se você encontrar documentação, comentário ou runbook dizendo que "sem a
-variável não há instrumentação", é texto anterior a essa correção.
+Before ADR 0035 the two things were tied together, and the consequence was
+that development — the environment where logs get read the most — was the
+only one with no correlation at all. If you find documentation, a comment, or
+a runbook saying "without the variable there's no instrumentation," that's
+text predating this correction.
 
-## Onde o `trace_id` nasce {#where-the-trace_id-is-born}
+## Where the `trace_id` is born {#where-the-trace_id-is-born}
 
-Na **web**, e não na api. O browser gera um `traceparent` W3C por requisição
-(`apps/web/src/lib/logger.ts`) e o manda no header; a api o adota como pai, o
-engine adota o da api. Por isso o id é o mesmo dos três lados.
+On the **web**, not the api. The browser generates a W3C `traceparent` per
+request (`apps/web/src/lib/logger.ts`) and sends it in the header; the api
+adopts it as the parent, and the engine adopts the api's. That's why the id
+is the same across all three sides.
 
 ```mermaid
 sequenceDiagram
@@ -68,35 +74,40 @@ sequenceDiagram
     O->>O: job com args.traceparent<br/>Span.with_session → trace_id = abc…
 ```
 
-A web **não** carrega SDK de browser: são ~90 kB, mais CORS no coletor e uma
-entrada no `connect-src` do CSP, para resolver algo que 20 linhas resolvem. A
-consequência aceita é que a linha de log do browser fica no console — o Alloy só
-lê stdout de pod — e serve para um humano casar com o span de servidor.
+The web app **doesn't** load a browser SDK: that's ~90 kB, plus CORS on the
+collector and an entry in the CSP's `connect-src`, to solve something 20
+lines already solve. The accepted consequence is that the browser's log line
+stays in the console — Alloy only reads pod stdout — and serves for a human
+to match against the server span.
 
-### A sessão é a raiz, e ela é persistida {#the-session-is-the-root-and-its-persisted}
+### The session is the root, and it's persisted {#the-session-is-the-root-and-its-persisted}
 
-Uma sessão dura minutos ou horas, e uma span só chega ao backend quando fecha.
-Manter a raiz aberta esse tempo todo tornaria a sessão invisível justamente
-enquanto acontece. Então `session.create` é curta e o `traceparent` dela é gravado
-em `sessions.trace_parent`; todo trabalho posterior o usa como **pai remoto**.
+A session lasts minutes or hours, and a span only reaches the backend when it
+closes. Keeping the root open that whole time would make the session
+invisible exactly while it's happening. So `session.create` is short and its
+`traceparent` is recorded in `sessions.trace_parent`; every later piece of
+work uses it as a **remote parent**.
 
-É isso que faz um tool call de agora aparecer na mesma árvore do `session.create`
-de ontem. Os três pontos de injeção são únicos de propósito — um funil cada:
+That's what makes a tool call happening right now show up in the same tree as
+yesterday's `session.create`. The three injection points are deliberately
+distinct — one funnel each:
 
-| caminho | ponto |
+| path | injection point |
 |---|---|
 | api → engine | `HttpApiToEngineClient.buildHeaders()` |
 | engine → api | `EngineApiClient.headers/0` |
 | outbox → Oban | `DrizzleOutboxRepository.append()` → `metadata` jsonb |
 
-## O caminho entre camadas {#the-cross-layer-path}
+## The cross-layer path {#the-cross-layer-path}
 
-O `trace_id` diz *que* a ação existiu. O caminho diz *por onde ela passou*.
+The `trace_id` says *that* the action happened. The path says *where it went
+through*.
 
-Na api, cada requisição carrega um contexto em `AsyncLocalStorage`
-(`infrastructure/observability/request-context.ts`) no qual as fronteiras se
-registram. Quem registra é o decorator `@Traced('<camada>')`, e a fronteira HTTP
-entra de graça pelo interceptor. O resultado é uma linha por requisição:
+In the api, each request carries a context in `AsyncLocalStorage`
+(`infrastructure/observability/request-context.ts`) where boundaries register
+themselves. The `@Traced('<layer>')` decorator is what registers, and the
+HTTP boundary comes in for free via the interceptor. The result is one line
+per request:
 
 ```
 14:02:11.418 INFO  POST /projects/…/sessions — 34.1ms trace=4bf92f35
@@ -108,74 +119,83 @@ entra de graça pelo interceptor. O resultado é uma linha por requisição:
           ↳ infrastructure  DrizzleOutboxRepository.append       2.1ms
 ```
 
-Em produção a mesma informação sai como o campo `path`, numa linha de JSON.
+In production the same information comes out as the `path` field, in a JSON
+line.
 
-Três coisas valem saber sobre esse mecanismo, porque explicam o que você vê:
+Three things worth knowing about this mechanism, because they explain what
+you see:
 
-- **O caminho não depende de span.** Ele vem do `AsyncLocalStorage`, e é por isso
-  que funciona sem coletor.
-- **Guard roda antes de interceptor.** Autenticação, rate limit e RBAC acontecem
-  antes de o contexto existir, então não aparecem no caminho. São ~1-3ms e já
-  aparecem como spans `pg` no Tempo.
-- **`@Traced` está nos caminhos críticos, não em tudo.** Sessões, ações, auth e a
-  ponte api↔engine. Um método sem decorator simplesmente não aparece na linha —
-  ausência ali não significa que não foi chamado.
+- **The path doesn't depend on the span.** It comes from
+  `AsyncLocalStorage`, which is why it works without a collector.
+- **The guard runs before the interceptor.** Authentication, rate limiting,
+  and RBAC happen before the context exists, so they don't show up in the
+  path. They're ~1-3ms and already show up as `pg` spans in Tempo.
+- **`@Traced` is on the critical paths, not on everything.** Sessions,
+  actions, auth, and the api↔engine bridge. A method with no decorator
+  simply doesn't show up in the line — its absence there doesn't mean it
+  wasn't called.
 
-### Por que nenhum controller tem `@Traced` {#why-no-controller-has-traced}
+### Why no controller has `@Traced` {#why-no-controller-has-traced}
 
-Porque seria perigoso, não porque seria inconveniente. O Nest grava metadata de
-rota (`@Public`, `@RequireRole`, `@ApiOperation`) **no objeto função** do método,
-e um decorator legacy que substitui `descriptor.value` descarta o que veio abaixo.
-Num controller isso é uma anotação de autorização que desaparece compilando e
-passando na suite.
+Because it would be dangerous, not because it would be inconvenient. Nest
+records route metadata (`@Public`, `@RequireRole`, `@ApiOperation`) **on the
+method's function object**, and a legacy decorator that replaces
+`descriptor.value` discards whatever came below it. On a controller that's
+an authorization annotation that disappears while still compiling and
+passing the suite.
 
-O interceptor lê `getClass()` e `getHandler()` do `ExecutionContext` e obtém o
-mesmo par classe/método sem tocar em arquivo nenhum de controller.
+The interceptor reads `getClass()` and `getHandler()` off the
+`ExecutionContext` and gets the same class/method pair without touching any
+controller file.
 
-Pela mesma razão técnica, `@Traced` também não vai em nada que devolva
-`Observable` nem em gerador: a heurística "é thenable?" os classificaria como
-síncronos e fecharia a span antes de o stream produzir.
+For the same technical reason, `@Traced` also doesn't go on anything that
+returns an `Observable` or a generator: the "is it thenable?" heuristic
+would classify them as synchronous and close the span before the stream
+produces anything.
 
-## Log: legível para gente, parseável para máquina {#logging-readable-for-people-parseable-for-machines}
+## Logging: readable for people, parseable for machines {#logging-readable-for-people-parseable-for-machines}
 
-O mesmo evento tem duas saídas, escolhidas por `NODE_ENV`:
+The same event has two outputs, chosen by `NODE_ENV`:
 
-- **desenvolvimento** — colorido, indentado, com a árvore de camadas. Na api o
-  `pino-pretty` roda em processo (não via `transport`, que impede passar função em
-  `customPrettifiers`); no engine, o `PrettyLogFormatter`.
-- **produção** — **uma linha** de JSON por evento. Não é preferência: o Alloy lê o
-  stdout do pod linha a linha, e JSON indentado quebraria o parser.
+- **development** — colored, indented, with the layer tree. In the api,
+  `pino-pretty` runs in-process (not via `transport`, which blocks passing a
+  function in `customPrettifiers`); in the engine, `PrettyLogFormatter`.
+- **production** — **one line** of JSON per event. This isn't a preference:
+  Alloy reads the pod's stdout line by line, and indented JSON would break
+  the parser.
 
-### `trace_id` é contrato {#trace_id-is-a-contract}
+### `trace_id` is a contract {#trace_id-is-a-contract}
 
-Com underscore, nos três serviços. O nome é lido por três coisas que não se
-enxergam entre si:
+With an underscore, across all three services. The name is read by three
+things that don't see each other:
 
-1. o `stage.json` do Alloy, que o promove a metadado estruturado;
-2. o `derivedFields` do datasource do Loki, que transforma a linha em link para o
-   Tempo;
-3. as consultas deste runbook.
+1. Alloy's `stage.json`, which promotes it to structured metadata;
+2. Loki's datasource `derivedFields`, which turns the line into a clickable
+   link to Tempo;
+3. this runbook's queries.
 
-Renomear para `traceId` compila, passa em toda a suite, e destrói a correlação
-clicável. Há teste em cada um dos três serviços protegendo especificamente o
-**nome**, não a formatação.
+Renaming it to `traceId` compiles, passes the whole suite, and destroys the
+clickable correlation. There's a test in each of the three services
+protecting specifically the **name**, not the formatting.
 
-### Segredo nunca entra no log {#secrets-never-enter-the-log}
+### Secrets never enter the log {#secrets-never-enter-the-log}
 
-A api tem lista de `redact` deliberadamente conservadora — um campo redigido a
-mais custa nada, um a menos é vazamento permanente no Loki. Cobre `Authorization`,
-cookie, chaves de API de LLM, tokens de acesso e refresh, senha, o token de
-serviço api↔engine e o material de DEK da envelope encryption.
+The api has a deliberately conservative `redact` list — one extra redacted
+field costs nothing, one missing field is a permanent leak in Loki. It
+covers `Authorization`, cookies, LLM API keys, access and refresh tokens,
+passwords, the api↔engine service token, and the envelope-encryption DEK
+material.
 
-## Onde olhar quando algo não aparece {#where-to-look-when-something-doesnt-show-up}
+## Where to look when something doesn't show up {#where-to-look-when-something-doesnt-show-up}
 
-O primeiro corte é sempre o mesmo, e o log responde sozinho:
+The first cut is always the same, and the log answers on its own:
 
-- **tem `trace_id` no log mas não tem trace no Grafana** → é exportação. Em
-  desenvolvimento isso é o esperado; em cluster, veja
-  [o runbook](../runbook.md#quando-nao-ha-trace-no-tempo).
-- **não tem `trace_id` no log** → é contexto, e é raro. Na api, `startTracing()`
-  tem que ser a primeira coisa do processo (`src/tracing-boot.ts`); no engine,
-  `Engine.Telemetry.Otel.setup/0` roda antes da árvore de supervisão.
-- **tem trace mas o caminho tem um passo só** → o método não tem `@Traced`, ou
-  está sob `interfaces/http/`, onde não pode ter.
+- **`trace_id` in the log but no trace in Grafana** → it's export. In
+  development this is expected; in a cluster, see
+  [the runbook](../runbook.md#quando-nao-ha-trace-no-tempo).
+- **no `trace_id` in the log** → it's context, and it's rare. In the api,
+  `startTracing()` has to be the very first thing in the process
+  (`src/tracing-boot.ts`); in the engine, `Engine.Telemetry.Otel.setup/0`
+  runs before the supervision tree.
+- **there's a trace but the path has only one step** → the method doesn't
+  have `@Traced`, or it's under `interfaces/http/`, where it can't have one.
