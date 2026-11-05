@@ -1143,7 +1143,7 @@ checkout в `deploy/k8s/bootstrap.sh` (и его отказ при грязно�
 
 Начиная с [ADR 0119](adr/0119-imagens-publicadas-no-ghcr-por-digest.md) каждый
 финальный тег публикует образы production в GHCR
-(`ghcr.io/daneiel/brabo-{api,engine,web,backup,broker}`, публичные — ни одного
+(`ghcr.io/viralabs-dev/brabo-{api,engine,web,backup,broker}`, публичные — ни одного
 `imagePullSecret` нигде) и регистрирует опубликованное **по digest**
 в `.release/images.json`. Пятый, broker контейнеров
 ([ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md)),
@@ -3979,7 +3979,7 @@ QA — роль, которая хуже всего укладывается в 
 ## Установка {#instalando}
 
 ```sh
-curl -fsSLO https://github.com/daneiel/brabo/releases/latest/download/install.sh && bash install.sh
+curl -fsSLO https://github.com/viralabs-dev/brabo/releases/latest/download/install.sh && bash install.sh
 ```
 
 **Скачайте файл, затем запустите его через `bash`.** Две более короткие формы, которые кажутся
@@ -4162,7 +4162,7 @@ engine, и только затем говорит, что установил.
 зависит — там локальный агент использует Docker вашей машины.
 
 Начиная с [ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md)
-broker — **пятый опубликованный образ** (`ghcr.io/daneiel/brabo-broker`, по
+broker — **пятый опубликованный образ** (`ghcr.io/viralabs-dev/brabo-broker`, по
 digest, подписанный, как и остальные четыре), и в compose установки есть
 сервис — **выключенный по умолчанию**, под тем же profile `container-broker`, что и
 compose проверки. Установщик **спрашивает** (*«Ligar o broker de container?
@@ -4314,9 +4314,9 @@ DIGEST=$(gh release download vX.Y.Z --pattern images.json --output - \
   | jq -r '.imagens[] | select(.alvo == "api") | .digest')
 
 cosign verify \
-  --certificate-identity-regexp '^https://github.com/daneiel/brabo/\.github/workflows/release\.yml@' \
+  --certificate-identity-regexp '^https://github.com/viralabs-dev/brabo/\.github/workflows/release\.yml@' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  "ghcr.io/daneiel/brabo-api@${DIGEST}"
+  "ghcr.io/viralabs-dev/brabo-api@${DIGEST}"
 ```
 
 ### Бинарники runner-а {#the-runner-binaries}
@@ -4327,11 +4327,11 @@ cosign verify \
 шага: подпись манифеста, затем бинарник против манифеста.
 
 ```bash
-gh release download vX.Y.Z --pattern 'checksums.txt*' --pattern 'brabo-runner-*'
+gh release download vX.Y.Z --repo viralabs-dev/brabo-runner --pattern 'checksums.txt*' --pattern 'brabo-runner-*'
 
 cosign verify-blob \
   --bundle checksums.txt.bundle \
-  --certificate-identity-regexp '^https://github.com/daneiel/brabo/\.github/workflows/build-runner-binaries\.yml@' \
+  --certificate-identity-regexp '^https://github.com/viralabs-dev/brabo-runner/\.github/workflows/build-runner-binaries\.yml@' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   checksums.txt
 
@@ -4372,7 +4372,7 @@ MIT, — но *распространение* образа требует, чт
 образа, потому что у того, кто запускает `docker pull`, нет репозитория:
 
 ```bash
-docker run --rm --entrypoint sh ghcr.io/daneiel/brabo-engine:vX.Y.Z \
+docker run --rm --entrypoint sh ghcr.io/viralabs-dev/brabo-engine:vX.Y.Z \
   -c 'cat /usr/share/doc/brabo/THIRD_PARTY_NOTICES.md'
 ```
 
@@ -4393,7 +4393,7 @@ docker run --rm --entrypoint sh ghcr.io/daneiel/brabo-engine:vX.Y.Z \
 Dockerfile теперь заранее создаёт каталог `0755`. Для runner-а:
 
 ```bash
-gh release download vX.Y.Z --repo daneiel/brabo \
+gh release download vX.Y.Z --repo viralabs-dev/brabo \
   --pattern THIRD_PARTY_NOTICES.md --pattern checksums.txt
 sha256sum -c --ignore-missing checksums.txt
 ```
