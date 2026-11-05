@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Docs: `THIRD_PARTY_NOTICES.md` is now in English (AT-745). It ships inside the image, so the `Dockerfile` copy and the notice contents that tests check (`ADR 0119`, the in-image path, `checksums.txt`) are unchanged.
 - Docs: `README.md` and the `deploy/k8s/base/{neo4j,ollama}/README.md` files are in English, the same as the rest of the repository's docs (AT-745).
 - Docs: `deploy/docs` (runbook, RNs do infra, observabilidade) passa a ter o inglês como fonte única, com `idioma_original: en`; as traduções de `deploy/docs/i18n/` saíram e o runbook reconciliou o que a tradução en tinha defasado (AT-745).
 - `brabo-restore --banco-vazio` (AT-738, ADR 0256): restaura o dump direto no banco do `DATABASE_URL`, numa transação, só se ele não tiver nenhuma tabela em `public`/`drizzle`/`engine` (senão recusa nomeando); valida estrutura e contagens contra o próprio dump. Runbook ganha o procedimento por compose; RN-530 deixa de citar um spec inexistente; job `restore-banco-vazio` no `propriedades.yml` e spec com mutação da recusa.
