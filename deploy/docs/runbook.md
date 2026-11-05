@@ -1,98 +1,99 @@
 ---
 id: runbook
-title: Runbook operacional
-sidebar_label: Manual de operação
+title: Operational Runbook
+sidebar_label: Runbook
 sidebar_position: 4
-description: Procedimentos operacionais do Brabo — deploy, rollout, restore, rotação de chaves, incidente de custo e observabilidade.
+description: Brabo operational procedures — deploy, rollout, restore, key rotation, cost incident, and observability.
 keywords: [runbook, operations, incident, restore, rollout, kubernetes]
+idioma_original: en
 ---
 
-# Runbook operacional
+# Operational Runbook
 
-Um documento só, porque às 3h da manhã ninguém abre um diretório para escolher
-um arquivo. Comece pela triagem. O que prova cada procedimento, e o que roda
-essa prova, está na tabela do fim:
-[Procedimentos e como cada um é verificado](#procedimentos-e-verificacao).
+One single document, because at 3am nobody opens a directory to pick a file.
+Start with triage. What proves each procedure, and what runs that proof, is in
+the table at the end:
+[Procedures and how each is verified](#procedimentos-e-verificacao).
 
-## Triagem — do sintoma ao procedimento {#triage--from-symptom-to-procedure}
+## Triage — from symptom to procedure {#triage--from-symptom-to-procedure}
 
-| o que você está vendo | vá para |
+| what you're seeing | go to |
 |---|---|
-| quero subir tudo do zero | [Deploy local](#deploy-local) |
-| pods presos, `ExternalSecret` nunca Ready, HPA em `<unknown>` | [Diagnóstico do deploy](#diagnostico-do-deploy) |
-| vou fazer rollout do engine | [Rollout do engine](#rollout-do-engine) |
-| sessão `active` sem processo, ou presa em `closing` | [Quando a sessão escapa](#quando-a-sessao-escapa) |
-| perdi dados / quero verificar o backup | [Restore](#restore) |
-| quero verificar ou restaurar um backup numa instalação **sem cluster** | [Restore](#restore) — `make test-restore-compose` |
-| um projeto do provider `local` perdeu o repositório, ou estou levando uma instalação para outra máquina | [Recuperando os bare repos](#restore-dos-bare-repos) |
-| o grafo está vazio depois de um restore ou de uma migração | [Perda do grafo](#perda-do-grafo) — `grafo:reprojetar` |
-| a pasta `docs/` de um projeto (os artefatos dos agentes) sumiu depois de um restore, de uma perda de volume ou de uma conversão de modo | [Perda da pasta de artefatos](#perda-da-pasta-de-artefatos) — `artefatos:reprojetar` |
-| credencial de LLM ou de git parou de decifrar | [Rotação da chave mestra](#rotacao-da-chave-mestra) |
-| todo mundo deslogado de uma vez, ou conta bloqueada no login | [Rotação das chaves do auth](#rotacao-das-chaves-do-auth) |
-| o custo por hora disparou | [Incidente de custo](#incidente-de-custo) |
-| painel vazio, sem trace, sem log | [Observabilidade](#observabilidade) |
-| não sei que versão está rodando | [Que versão está no ar](#que-versao-esta-no-ar) |
-| `blocked by CORS policy` no console do navegador | [Erro de CORS](#erro-de-cors) |
-| ativar uma sessão não faz nada, ou `transition` devolve `500` com `ECONNREFUSED` | [A sessão não sai de `created`](#sessao-nao-ativa) |
-| a api sai no boot reclamando de `GIT_OAUTH_STATE_SECRET` | [A api recusa subir por segredo de OAuth](#segredo-de-oauth-no-boot) |
-| "Entrar com GitHub/GitLab" volta do provider com erro de `redirect_uri` | [O provider recusa o callback do login social](#callback-login-social-nao-registrado) |
-| a api ou o engine saem no boot reclamando de `AUTH_JWT_SECRET`, `BRABO_SERVICE_TOKEN`, `CREDENTIALS_MASTER_KEY`, `SECRET_KEY_BASE`, ou `NEO4J_URI`/`NEO4J_USER`/`NEO4J_PASSWORD` | [Os quatro segredos irmãos também não sobem com o default](#segredos-irmaos-no-boot) |
-| quero ligar SMTP real, ou a api sai no boot reclamando de `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM` | [SMTP real no `MailSender`](#smtp-real) |
-| agente respondendo vazio, truncado ou muito devagar | [Ambiente de inferência](#ambiente-de-inferencia) |
-| agente parando com `iteration limit reached` sem entregar | [Ambiente de inferência](#ambiente-de-inferencia) |
-| quero acrescentar um provider de LLM compatível com OpenAI | [Acrescentando um provider compatível](#adicionando-um-provider-compativel) |
-| quero migrar meus workspaces do volume do Docker para uma pasta de verdade | [Migrar workspaces para pasta local](#migrar-workspaces-pasta-local) |
-| o assistente de projeto não oferece o modo **Pasta montada**, ou criar um projeto montado é recusado dizendo que o caminho tem de ficar dentro da base | [Projeto no modo Pasta montada: a base de projetos](#projeto-no-modo-local) |
-| aprovar `container_start` num projeto montado falha dizendo que a api não conseguiu criar ou alcançar a pasta | [Projeto no modo Pasta montada: a base de projetos](#projeto-no-modo-local) |
-| `pnpm dev` recusa subir, dizendo que `BRABO_PROJECTS_BASE` se sobrepõe ao checkout do Brabo | [Projeto no modo Pasta montada: a base de projetos](#projeto-no-modo-local) |
-| `brabo-runner` sai com `base de projetos recusada`, ou imprime `base de projetos: nenhuma configurada` quando eu esperava uma base | [A base de projetos do runner](#base-do-runner) |
-| `brabo-runner` fica imprimindo `nada a atender AINDA`, ou a unit de máquina está de pé mas nenhum projeto é atendido | [O agente de máquina](#agente-de-maquina) |
-| `systemctl --user status` diz `Loaded: bad-setting` / `WorkingDirectory= path is not absolute`, e o serviço do agente nunca inicia | [A unit está `bad-setting`](#unit-do-agente-nao-inicia) |
-| preciso de uma chave de dispositivo para a máquina e não há navegador (uma instalação nova, uma máquina sem tela) | [Chave de dispositivo pelo terminal](#chave-de-dispositivo-pelo-terminal) |
-| o instalador terminou com um bloco **"O que ficou pendente"**, ou uma instalação nova não tem conta, nem chave de máquina, nem serviço do agente | [Quando o instalador não fecha a instalação](#instalador-nao-fecha) |
-| a pasta do projeto nunca aparece na máquina do usuário, e o log do engine diz `workspace_create: o projeto <id> não criou pasta` | [A pasta do projeto nunca aparece](#pasta-do-projeto-nunca-aparece) |
-| um dev agent num projeto `runner` fica bloqueado preparando o worktree, nomeando `credencial-nao-atravessa-o-container`, com origem `politica` | [Clone autenticado no modo Runner](#credencial-nao-atravessa-o-container) |
-| `apps/api/dist`/`node_modules`, ou um arquivo que um agente escreveu numa pasta de projeto, pertence a `root` e não consigo editar sem `sudo` | [Os containers de dev escrevem como o seu usuário, não como root](#dev-containers-nao-root) |
-| quero subir o broker de containers, ou ele responde `permission denied` no socket do Docker | [O broker de containers](#broker-de-container) |
-| provisionar um repositório falha com `permission denied: /data/git-repos/<slug>.git`, ou o `permissions.json` não pode ser escrito | [Os containers de dev escrevem como o seu usuário, não como root](#dev-containers-nao-root) |
-| quero apagar o banco de dev e começar de novo, ou o `reset-total.sh` parou no meio | [Reset total do ambiente de dev](#reset-total) |
-| o web mostra **429 (rate limit)** sem motivo aparente, ou um projeto em modo `runner` parece "sem agente local" enquanto o `brabo-runner` está rodando | [O runner inunda a api com um ticket morto](#runner-com-ticket-morto) |
+| I want to bring everything up from scratch | [Local deploy](#deploy-local) |
+| pods stuck, `ExternalSecret` never Ready, HPA at `<unknown>` | [Deploy diagnosis](#diagnostico-do-deploy) |
+| I'm about to roll out the engine | [Engine rollout](#rollout-do-engine) |
+| session `active` with no process, or stuck in `closing` | [When a session escapes](#quando-a-sessao-escapa) |
+| I lost data / want to verify the backup | [Restore](#restore) |
+| I want to verify or restore a backup on an install that has **no cluster** | [Restore](#restore) — `make test-restore-compose` |
+| a `local`-provider project lost its repository, or I'm moving an installation to another machine | [Recovering the bare repos](#restore-dos-bare-repos) |
+| the graph is empty after a restore or a migration | [Losing the graph](#perda-do-grafo) — `grafo:reprojetar` |
+| a project's `docs/` folder (the agents' artifacts) is missing after a restore, a volume loss or a mode conversion | [Losing the artifact folder](#perda-da-pasta-de-artefatos) — `artefatos:reprojetar` |
+| LLM or git credential stopped decrypting | [Master key rotation](#rotacao-da-chave-mestra) |
+| everyone logged out at once, or account locked at login | [Auth key rotation](#rotacao-das-chaves-do-auth) |
+| cost per hour spiked | [Cost incident](#incidente-de-custo) |
+| empty panel, no trace, no log | [Observability](#observabilidade) |
+| I don't know what version is running | [What version is live](#que-versao-esta-no-ar) |
+| `blocked by CORS policy` in the browser console | [CORS error](#erro-de-cors) |
+| activating a session does nothing, or `transition` returns `500` with `ECONNREFUSED` | [The session doesn't leave `created`](#sessao-nao-ativa) |
+| the api exits on boot complaining about `GIT_OAUTH_STATE_SECRET` | [The api refuses to boot over an OAuth secret](#segredo-de-oauth-no-boot) |
+| "Sign in with GitHub/GitLab" comes back from the provider with a `redirect_uri` error | [The provider rejects the social-login callback](#callback-login-social-nao-registrado) |
+| the api or the engine exit on boot complaining about `AUTH_JWT_SECRET`, `BRABO_SERVICE_TOKEN`, `CREDENTIALS_MASTER_KEY`, `SECRET_KEY_BASE`, or `NEO4J_URI`/`NEO4J_USER`/`NEO4J_PASSWORD` | [The four sibling secrets also refuse the default](#segredos-irmaos-no-boot) |
+| I want to turn on real SMTP, or the api exits on boot complaining about `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM` | [Real SMTP in `MailSender`](#smtp-real) |
+| agent responding empty, truncated, or very slow | [Inference environment](#ambiente-de-inferencia) |
+| agent stopping with `iteration limit reached` without delivering | [Inference environment](#ambiente-de-inferencia) |
+| I want to add an OpenAI-compatible LLM provider | [Adding a compatible provider](#adicionando-um-provider-compativel) |
+| I want to migrate my workspaces from the Docker volume to a real folder | [Migrating workspaces to a local folder](#migrar-workspaces-pasta-local) |
+| the project wizard doesn't offer **Mounted** mode, or creating a mounted project refuses saying the path must sit inside the base | [Project in Mounted mode: the projects base](#projeto-no-modo-local) |
+| approving `container_start` on a mounted project fails saying the api couldn't create or reach the folder | [Project in Mounted mode: the projects base](#projeto-no-modo-local) |
+| `pnpm dev` refuses to start, saying `BRABO_PROJECTS_BASE` overlaps the Brabo checkout | [Project in Mounted mode: the projects base](#projeto-no-modo-local) |
+| `brabo-runner` exits with `base de projetos recusada`, or prints `base de projetos: nenhuma configurada` when I expected a base | [The runner's base of projects](#base-do-runner) |
+| `brabo-runner` sits printing `nada a atender AINDA`, or the machine unit is up but no project is being served | [The machine agent](#agente-de-maquina) |
+| `systemctl --user status` says `Loaded: bad-setting` / `WorkingDirectory= path is not absolute`, and the agent service never starts | [The unit is `bad-setting`](#unit-do-agente-nao-inicia) |
+| I need a device key for the machine and there is no browser (a fresh install, a headless box) | [Device key from the terminal](#chave-de-dispositivo-pelo-terminal) |
+| the installer finished with a **"O que ficou pendente"** block, or a fresh install has no account, no machine key, or no agent service | [When the installer does not close the installation](#instalador-nao-fecha) |
+| the project folder never appears on the user's machine, and the engine log says `workspace_create: o projeto <id> não criou pasta` | [The project folder never appears](#pasta-do-projeto-nunca-aparece) |
+| a dev agent in a `runner` project is blocked preparing its worktree, naming `credencial-nao-atravessa-o-container`, with origin `politica` | [Authenticated clone in Runner mode](#credencial-nao-atravessa-o-container) |
+| `apps/api/dist`/`node_modules`, or a file an agent wrote to a project folder, is owned by `root` and I can't edit it without `sudo` | [Dev containers write as your user, not root](#dev-containers-nao-root) |
+| I want to bring up the container broker, or it answers `permission denied` on the Docker socket | [The container broker](#broker-de-container) |
+| provisioning a repository fails with `permission denied: /data/git-repos/<slug>.git`, or `permissions.json` can't be written | [Dev containers write as your user, not root](#dev-containers-nao-root) |
+| I want to wipe the dev database and start over, or `reset-total.sh` stopped in the middle | [Total reset of the dev environment](#reset-total) |
+| the web shows **429 (rate limit)** for no apparent reason, or a project in `runner` mode looks "no local agent" while `brabo-runner` is running | [The runner floods the api with a dead ticket](#runner-com-ticket-morto) |
 
-Duas coisas que vale saber antes de qualquer procedimento:
+Two things worth knowing before any procedure:
 
-- **Silêncio não é saúde.** As regras de alerta moram no Grafana, não no Prometheus
+- **Silence isn't health.** Alert rules live in Grafana, not Prometheus
   ([ADR 0026](adr/0026-fase5-observabilidade-e-graceful-shutdown.md)):
-  Grafana fora do ar quer dizer nenhum aviso, não nenhum problema.
-- **Matar o pod não fecha uma sessão.** `kubectl delete pod` sem
-  drenar cria um órfão. O caminho é sempre a transição normal.
+  Grafana being down means no warning, not no problem.
+- **Killing the pod doesn't close a session.** `kubectl delete pod` without
+  draining creates an orphan. The path is always the normal transition.
 
-### O broker de containers {#broker-de-container}
+### The container broker {#broker-de-container}
 
-O broker ([ADR 0130](adr/0130-broker-de-container.md)) é o único processo do
-produto que fala com um daemon do Docker, e o único serviço com
-`/var/run/docker.sock` montado. **Não monte esse socket em nenhum outro lugar.**
+The broker ([ADR 0130](adr/0130-broker-de-container.md)) is the only process in
+the product that talks to a Docker daemon, and the only service with
+`/var/run/docker.sock` mounted. **Do not mount that socket anywhere else.**
 
-**Localmente ele sobe com `pnpm dev`; em produção, não.** Essa
-assimetria é uma decisão ([ADR 0146](adr/0146-base-consentida-no-bootstrap.md),
-ponto 3), não um descuido — não "uniformize" os dois arquivos de compose. Quem
-roda `pnpm dev` **já tem o socket do Docker** (está rodando
-`docker compose` contra o daemon do próprio host), então o broker recebê-lo
-não concede nada que o operador já não tenha. Em produção o socket é uma
-fronteira de privilégio de verdade e o operador não é o desenvolvedor, então ali ele
-fica sob `profiles: ["container-broker"]`.
+**Locally it comes up with `pnpm dev`; in production it does not.** That
+asymmetry is a decision ([ADR 0146](adr/0146-base-consentida-no-bootstrap.md),
+point 3), not an oversight — do not "uniformize" the two compose files. Whoever
+runs `pnpm dev` **already holds the Docker socket** (they are running
+`docker compose` against their own host's daemon), so the broker receiving it
+grants nothing the operator does not already have. In production the socket is
+a real privilege boundary and the operator is not the developer, so there it
+stays under `profiles: ["container-broker"]`.
 
-Até essa decisão o broker vinha desligado por padrão nos dois arquivos, com o
-argumento de que "nada o chama ainda". Isso deixou de ser verdade: ele tem quatro chamadores reais
+Until that decision the broker was off by default in both files, on the grounds
+that "nothing calls it yet". That stopped being true: it has four real callers
 ([ADR 0133](adr/0133-infra-elege-imagem-do-roteamento.md)/
-[0136](adr/0136-pagina-global-de-containers.md)), e o
-[ADR 0144](adr/0144-a-segunda-raiz-do-broker.md) fez o modo **Pasta montada** subir o
-container dele *pelo* broker — então, com o profile desligado, o modo local
-padrão terminava em `BrokerIndisponivelError`. Essa falha continua sendo o que você recebe quando
-o broker está de fato ausente: um `failed` NOMEADO, nunca uma queda, e nunca uma
-queda silenciosa para rodar fora de um container.
+[0136](adr/0136-pagina-global-de-containers.md)), and
+[ADR 0144](adr/0144-a-segunda-raiz-do-broker.md) made **Mounted** mode bring its
+container up *through* the broker — so with the profile off, the default local
+mode ended in `BrokerIndisponivelError`. That failure is still what you get when
+the broker is genuinely absent: a NAMED `failed`, never a crash, and never a
+silent fallback to running outside a container.
 
-O que você ainda precisa definir é o gid — e errá-lo **não** quebra o
-boot, quebra o uso:
+What you still have to set is the gid — and getting it wrong does **not** break
+the boot, it breaks the use:
 
 ```bash
 # o gid do grupo docker do seu host — o default do compose (999) é o mais
@@ -108,59 +109,59 @@ getent group docker | cut -d: -f3
 docker compose -f docker/docker-compose.yml --env-file .env up -d api engine broker
 ```
 
-`BROKER_URL` **não** está mais nessa lista: o compose de dev tem como default
-`http://broker:8090`, o serviço que ele sobe
-([RN-599](business-rules/infra.md#rn-599)). Antes desse default, a api respondia
-`brokerConfigurado: false` ao lado de um broker saudável e a criação de projeto só
-oferecia `runner`. Um valor no `.env` continua vencendo; os composes de produção e de
-instalação não têm default, de propósito.
+`BROKER_URL` is **not** on that list any more: the dev compose defaults it to
+`http://broker:8090`, the service it brings up
+([RN-599](business-rules/infra.md#rn-599)). Before that default, the api answered
+`brokerConfigurado: false` next to a healthy broker and project creation only
+offered `runner`. A value in `.env` still wins; the production and installation
+composes keep no default, on purpose.
 
-O container do projeto roda como o **dono da pasta do projeto** ([ADR 0180](adr/0180-container-com-o-dono-da-pasta.md), [RN-627](business-rules/contracts.md#rn-627)): a api lê o uid e o gid da pasta e o broker o inicia com `--user <uid>:<gid>` e `HOME=/tmp`. É isso que deixa um dev agent escrever em `/work` sob `--cap-drop ALL`. Duas coisas a saber quando não funciona: uma pasta de root, ilegível ou ausente cai no comportamento anterior (root dentro do container, sem escrita numa pasta de outro uid — `npm install` responde `EACCES`); e um container que já existe só muda quando é recriado (`container_remove`, depois `container_start`).
+The project container runs as the **owner of the project folder** ([ADR 0180](adr/0180-container-com-o-dono-da-pasta.md), [RN-627](business-rules/contracts.md#rn-627)): the api reads the folder's uid and gid and the broker starts it with `--user <uid>:<gid>` and `HOME=/tmp`. That is what lets a dev agent write to `/work` under `--cap-drop ALL`. Two things to know when it does not: a folder owned by root, unreadable or absent falls back to the previous behaviour (root inside the container, no write to a folder of another uid — `npm install` answers `EACCES`); and a container that already exists only changes when it is recreated (`container_remove`, then `container_start`).
 
-`pnpm dev` também **informa** a pasta gerenciada a cada execução (RN-599): com
-`PROJECT_WORKSPACES_HOST_DIR` não definida, `api`/`engine` usam o volume gerenciado, o
-broker não recebe `PROJECT_WORKSPACES_HOST_ROOT`, e `container_start` termina
-recusado — com a stack saudável. Ele informa também um `~` no caminho (o Compose
-o expande no bind mount, não na variável do broker) e um
-`PROJECT_WORKSPACES_HOST_ROOT` explícito que difere da pasta que a api monta.
-Como o aviso do gid, ele nunca bloqueia e nunca escreve no `.env`; trocar o
-volume por uma pasta não migra o conteúdo do volume — veja
-[migrar workspaces](#migrar-workspaces-pasta-local).
+`pnpm dev` also **reports** the managed folder on every run (RN-599): with
+`PROJECT_WORKSPACES_HOST_DIR` unset, `api`/`engine` use the managed volume, the
+broker gets no `PROJECT_WORKSPACES_HOST_ROOT`, and `container_start` ends
+refused — with the stack healthy. It also reports a `~` in the path (Compose
+expands it in the bind mount, not in the broker's variable) and an explicit
+`PROJECT_WORKSPACES_HOST_ROOT` that differs from the folder the api mounts.
+Like the gid report, it never blocks and never writes `.env`; switching from the
+volume to a folder does not migrate the volume's content — see
+[migrating workspaces](#migrar-workspaces-pasta-local).
 
-`pnpm dev` **informa** o estado de `DOCKER_GID` a cada execução
-([RN-512](business-rules/infra.md#rn-512)), comparando-o com o grupo real da sua
-máquina, justamente para que a divergência não seja descoberta muito depois — quando alguém
-propõe `container_start` e toda operação morre com `permission denied` no
-socket. O aviso nunca bloqueia, e numa máquina sem grupo `docker` nenhum
-(Docker Desktop, rootless) ele diz que a pergunta não se aplica em vez de
-acusar você de um defeito.
+`pnpm dev` **reports** the state of `DOCKER_GID` on every run
+([RN-512](business-rules/infra.md#rn-512)), comparing it against your machine's real
+group, precisely so the mismatch is not discovered much later — when someone
+proposes `container_start` and every operation dies with `permission denied` on
+the socket. The report never blocks, and on a machine with no `docker` group at
+all (Docker Desktop, rootless) it says the question does not apply rather than
+accusing you of a defect.
 
-Em produção, suba-o explicitamente:
+In production, bring it up explicitly:
 
 ```bash
 docker compose -f docker/docker-compose.prod.yml \
   --profile container-broker up -d broker
 ```
 
-Numa **instalação** feita pelo `install.sh` o broker é o mesmo serviço,
-da imagem publicada, e o instalador pergunta se deve ligá-lo — veja
-[o broker numa instalação](#broker-na-instalacao)
+In an **installation** made by `install.sh` the broker is the same service,
+from the published image, and the installer asks whether to turn it on — see
+[the broker in an installation](#broker-na-instalacao)
 ([ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md)).
 
-**O broker tem DUAS raízes, e nenhuma faz as vezes da outra**
+**The broker has TWO roots, and neither stands in for the other**
 ([RN-503](business-rules/api.md#rn-503),
 [ADR 0144](adr/0144-a-segunda-raiz-do-broker.md)).
-`PROJECT_WORKSPACES_HOST_ROOT` é onde moram os projetos do modo **Container**;
-`BRABO_PROJECTS_HOST_BASE` é onde moram os projetos do modo **Pasta montada**, e o
-compose a deriva de `BRABO_PROJECTS_BASE`, então definir a base é normalmente
-tudo o que você faz. Qualquer que falte, a recusa a nomeia e não toca em nenhum
-container. Cair na outra raiz montaria a pasta do projeto errado
-— a raiz gerenciada é nomeada por `workspace_dir_name`, a base é nomeada por você,
-e o mesmo nome quer dizer pastas diferentes em cada uma.
+`PROJECT_WORKSPACES_HOST_ROOT` is where **Container**-mode projects live;
+`BRABO_PROJECTS_HOST_BASE` is where **Mounted**-mode projects live, and the
+compose derives it from `BRABO_PROJECTS_BASE`, so setting the base is normally
+all you do. Whichever is missing, the refusal names it and touches no
+container. A fallback to the other root would mount the wrong project's folder
+— the managed root is named by `workspace_dir_name`, the base is named by you,
+and the same name means different folders in each.
 
-Para conferir que ele está de pé — a partir da api, que é o ÚNICO serviço que o
-alcança (a rede `broker` é `internal: true` e o serviço não publica porta nenhuma,
-então `curl` do seu host não vai funcionar, e é essa a ideia):
+To check that it is up — from the api, which is the ONLY service that reaches
+it (the `broker` network is `internal: true` and the service publishes no port,
+so `curl` from your host will not work, and that is the point):
 
 ```bash
 docker compose -f docker/docker-compose.yml --env-file .env exec -T api \
@@ -168,74 +169,74 @@ docker compose -f docker/docker-compose.yml --env-file .env exec -T api \
 # esperado: {"status":"ok","servico":"broker"}
 ```
 
-`/health` fala do PROCESSO, nunca do daemon. Reiniciar o
-broker não conserta um Docker fora do ar, e um healthcheck que falhasse por
-esse motivo produziria um laço de reinício que não resolve nada.
+`/health` speaks about the PROCESS, never about the daemon. Restarting the
+broker does not fix a Docker that is down, and a healthcheck that failed for
+that reason would produce a restart loop that resolves nothing.
 
-**A imagem local instala as dependências no BUILD, e isso não é uma
-otimização.** A única rede do broker é `internal: true`, então não há registry
-alcançável em runtime: uma imagem que rodava `corepack`/`pnpm install` ao
-iniciar morria com `getaddrinfo EAI_AGAIN registry.npmjs.org` e saía com 1. A
-correção tirou o registry do caminho de runtime (`pnpm install` como passo de build)
-em vez de abrir a rede — a rede é a primeira das cinco
-camadas de contenção. Desde a AT-360 nenhuma imagem usa corepack (o Node 25+ não
-o traz mais): todo Dockerfile instala o pnpm a partir do tarball do registry, conferido
-contra um sha512 gravado no Dockerfile (`PNPM_SHA512`), em
-`/usr/local/bin`. A versão dele bate com `packageManager` no `package.json`, então
-o pnpm nunca tenta baixar nada em runtime — medido com a imagem de dev
-sob `--network none`: `pnpm --version` imprime `11.3.0` e `/health`
-responde. Subir o pnpm quer dizer mudar `packageManager`, `PNPM_VERSION` e
-`PNPM_SHA512` (`npm view pnpm@<v> dist.integrity`, em hex) juntos.
+**The local image installs its dependencies at BUILD time, and that is not an
+optimization.** The broker's only network is `internal: true`, so there is no
+reachable registry at runtime: an image that ran `corepack`/`pnpm install` on
+start died with `getaddrinfo EAI_AGAIN registry.npmjs.org` and exited 1. The
+fix took the registry out of the runtime path (`pnpm install` as a build step)
+rather than opening the network — the network is the first of the five
+containment layers. Since AT-360 no image uses corepack (Node 25+ no longer
+ships it): every Dockerfile installs pnpm from the registry tarball, checked
+against a sha512 recorded in the Dockerfile (`PNPM_SHA512`), into
+`/usr/local/bin`. Its version matches `packageManager` in `package.json`, so
+pnpm never tries to download anything at runtime — measured with the dev image
+under `--network none`: `pnpm --version` prints `11.3.0` and `/health`
+answers. Bumping pnpm means changing `packageManager`, `PNPM_VERSION` and
+`PNPM_SHA512` (`npm view pnpm@<v> dist.integrity`, in hex) together.
 
-Duas consequências que você vai encontrar:
+Two consequences you will meet:
 
-- **Os três `node_modules` são volumes nomeados montados sobre o que a imagem
-  instalou**, e o Docker só semeia um volume a partir da imagem quando o volume está
-  VAZIO. Por isso `docker/broker/entrypoint.sh` os reconcilia contra uma cópia
-  guardada fora de `/workspace`, carimbada com o sha256 do `pnpm-lock.yaml`
-  com que a imagem foi construída. O primeiro boot depois de um `--build` registra
-  `sincronizando…` e leva alguns segundos; os seguintes não registram nada.
-- **Mudar uma dependência do broker exige `up -d --build broker`.** O
-  entrypoint compara o carimbo dele com o lockfile da árvore de trabalho e AVISA quando
-  diferem. Ele avisa em vez de recusar o boot: o broker não tem dependência de
-  runtime além do link de workspace para `@brabo/docker-port`, e trocar um
-  aviso por uma indisponibilidade seria pior.
+- **The three `node_modules` are named volumes mounted over what the image
+  installed**, and Docker only seeds a volume from the image when the volume is
+  EMPTY. `docker/broker/entrypoint.sh` therefore reconciles them against a copy
+  kept outside `/workspace`, stamped with the sha256 of the `pnpm-lock.yaml`
+  the image was built from. First boot after a `--build` logs
+  `sincronizando…` and takes a few seconds; the ones after log nothing.
+- **Changing a broker dependency requires `up -d --build broker`.** The
+  entrypoint compares its stamp with the working tree's lockfile and WARNS when
+  they differ. It warns instead of refusing to boot: the broker has no runtime
+  dependency beyond the workspace link to `@brabo/docker-port`, and trading a
+  warning for an outage would be worse.
 
-O serviço também tem **healthcheck** (`wget` contra `127.0.0.1:8090/health`
-de dentro do container — ele não publica porta, e o `node:26-alpine` não tem
-`curl`). Sem ele, `up --wait` informava `Healthy` no instante em que o container
-iniciava, então o `scripts/dev/reset-total.sh` anunciava "reset completo" com um
-broker que tinha morrido cinco segundos antes.
+The service also has a **healthcheck** (`wget` against `127.0.0.1:8090/health`
+from inside the container — it publishes no port, and `node:26-alpine` has no
+`curl`). Without it `up --wait` reported `Healthy` the moment the container
+started, so `scripts/dev/reset-total.sh` announced "reset complete" with a
+broker that had died five seconds earlier.
 
-**Sintomas e o que cada um quer dizer:**
+**Symptoms and what each one means:**
 
-| o que você vê | o que é |
+| what you see | what it is |
 |---|---|
-| `permission denied` em `/var/run/docker.sock` | `DOCKER_GID` errado. O socket é `root:docker` e o broker roda não-root; refaça o passo 1 acima e recrie o container (`up -d --force-recreate broker`) |
-| `não encontrei o executável docker no PATH` | a imagem foi construída sem `docker-cli`. Reconstrua-a (`--build`). Este erro é SEPARADO de "daemon fora do ar" de propósito: instalar e iniciar são correções diferentes |
-| `getaddrinfo EAI_AGAIN registry.npmjs.org` e o container sai com 1 | uma imagem do broker construída antes de as dependências irem para o build. Reconstrua-a (`up -d --build broker`). NÃO dê saída de rede ao serviço: a rede `internal: true` é a contenção, e o registry é o que tem de sair do caminho de runtime |
-| `AVISO — pnpm-lock.yaml mudou desde o build desta imagem` | a imagem é mais velha que o lockfile da árvore de trabalho. Ela continua rodando (o broker não tem dependência de runtime além do link de workspace); reconstrua quando você de fato mudou uma dependência do broker |
-| `PROJECT_WORKSPACES_HOST_ROOT não está definida` no `start` | esperado, e a recusa é o comportamento correto. O `-v` é resolvido pelo DAEMON contra o sistema de arquivos do HOST; adivinhar montaria uma pasta VAZIA e o dev agent trabalharia num diretório sem código. As outras quatro operações continuam funcionando sem ela |
-| a rota do ciclo de vida diz `naoObservado: "broker-nao-configurado"` | `BROKER_URL` está vazia na **api**. É um estado normal, não uma falha — a leitura declara que não olhou em vez de herdar o estado registrado ([RN-486](business-rules/api.md#rn-486)) |
-| a rota do ciclo de vida diz `naoObservado: "broker-sem-resposta"` | `BROKER_URL` está definida e nada respondeu: o profile provavelmente está desligado, ou a api não está na rede `broker`. Se `detalhe` diz ``não respondeu `inspect` dentro do teto desta operação (5000ms)``, o broker É alcançável e está lento — olhe o daemon, não a rede ([RN-604](business-rules/api.md#rn-604)) |
-| um comando de terminal ou `container_start` falha com ``não respondeu `exec` dentro do teto desta operação`` (ou `start`/`stop`/`remove`) | a api parou de esperar no teto próprio daquela operação, não porque o broker está fora do ar ([RN-604](business-rules/api.md#rn-604)). No `exec` o comando pode ainda estar rodando dentro do container; no `start`/`stop`/`remove` o efeito pode ter acontecido — confira `/containers` antes de repetir. Um `start` cujo pull de imagem leva mais de 30s é cortado pelo próprio broker — esse tem linha própria abaixo |
-| o resultado de terminal de um dev agent diz ``o comando passou do teto de execução de terminal (120s, TERMINAL_ACTION_TIMEOUT_MS)`` | o comando rodou mais que `TERMINAL_ACTION_TIMEOUT_MS` (default de 120 s desde a [RN-757](business-rules/engine.md#rn-757); era 15 s) e o engine parou de esperar; o processo pode ainda estar rodando no container. O agente é orientado a rodá-lo de novo sob `nohup … &`. Subir a variável é possível, mas acima de ~180 s a espera externa do engine (valor + 120 s) passa do limite de 300 s de cabeçalhos do `fetch` do Node da api e o corte volta |
-| `container_start` falha com ``o `docker pull <imagem>` não terminou dentro do teto de 30000ms e foi cancelado`` (o broker responde `504`, `origem: infra`) | a imagem não está no daemon e o pull dela não cabe no teto de controle de 30s. Matar o CLI cancela o pull, então a imagem continua ausente — repetir não ajuda. Faça o pull no host que roda os containers (`docker pull <imagem>`; no modo `runner`, na máquina do usuário) e aprove o start de novo. Imagens grandes não sobem por este caminho na primeira tentativa, por decisão do mantenedor ([RN-605](business-rules/contracts.md#rn-605)) |
-| `BRABO_PROJECTS_HOST_BASE não está definida` no `start` de um projeto **Pasta montada** | mesma forma da linha acima, outra raiz. Defina `BRABO_PROJECTS_BASE` no `.env` e recrie o broker; o compose deriva esta dela ([RN-503](business-rules/api.md#rn-503)) |
-| o broker responde `409` para um projeto em modo `runner` | esperado. Aquela pasta mora na máquina do usuário e este host não a enxerga — lá, quem sobe container é o runner ([ADR 0137](adr/0137-o-runner-sobe-o-container-do-projeto.md)) |
-| o broker responde `409` dizendo que não sabe onde está a pasta do projeto | um projeto **Pasta montada** LEGADO, criado antes de a base existir e morando fora dela. A correção é mover a pasta para dentro de `BRABO_PROJECTS_BASE`, não mudar o modo do projeto — a mensagem nomeia a base e o caminho que viu ([RN-503](business-rules/api.md#rn-503)) |
+| `permission denied` on `/var/run/docker.sock` | wrong `DOCKER_GID`. The socket is `root:docker` and the broker runs non-root; redo step 1 above and recreate the container (`up -d --force-recreate broker`) |
+| `não encontrei o executável docker no PATH` | the image was built without `docker-cli`. Rebuild it (`--build`). This error is deliberately SEPARATE from "daemon down": installing and starting are different fixes |
+| `getaddrinfo EAI_AGAIN registry.npmjs.org` and the container exits 1 | a broker image built before the dependencies moved to build time. Rebuild it (`up -d --build broker`). Do NOT give the service egress: the `internal: true` network is the containment, and the registry is what has to leave the runtime path |
+| `AVISO — pnpm-lock.yaml mudou desde o build desta imagem` | the image is older than the working tree's lockfile. It keeps running (the broker has no runtime dependency beyond the workspace link); rebuild when you actually changed a broker dependency |
+| `PROJECT_WORKSPACES_HOST_ROOT não está definida` on `start` | expected, and the refusal is the correct behaviour. `-v` is resolved by the DAEMON against the HOST filesystem; guessing would mount an EMPTY folder and the dev agent would work in a directory with no code. The other four operations keep working without it |
+| the lifecycle route says `naoObservado: "broker-nao-configurado"` | `BROKER_URL` is empty on the **api**. That is a normal state, not a failure — the read declares that it did not look instead of inheriting the recorded state ([RN-486](business-rules/api.md#rn-486)) |
+| the lifecycle route says `naoObservado: "broker-sem-resposta"` | `BROKER_URL` is set and nothing answered: the profile is probably off, or the api is not on the `broker` network. If `detalhe` says ``não respondeu `inspect` dentro do teto desta operação (5000ms)``, the broker IS reachable and slow — look at the daemon, not the network ([RN-604](business-rules/api.md#rn-604)) |
+| a terminal command or `container_start` fails with ``não respondeu `exec` dentro do teto desta operação`` (or `start`/`stop`/`remove`) | the api stopped waiting at that operation's own ceiling, not because the broker is down ([RN-604](business-rules/api.md#rn-604)). For `exec` the command may still be running inside the container; for `start`/`stop`/`remove` the effect may have happened — check `/containers` before repeating. A `start` whose image pull takes more than 30s is cut by the broker itself — that one has its own row below |
+| a dev agent's terminal result says ``o comando passou do teto de execução de terminal (120s, TERMINAL_ACTION_TIMEOUT_MS)`` | the command ran longer than `TERMINAL_ACTION_TIMEOUT_MS` (default 120 s since [RN-757](business-rules/engine.md#rn-757); it was 15 s) and the engine stopped waiting; the process may still be running in the container. The agent is told to rerun it under `nohup … &`. Raising the variable is possible, but above ~180 s the engine's outer wait (value + 120 s) passes the 300 s header limit of the api's Node `fetch` and the cut comes back |
+| `container_start` fails with ``o `docker pull <imagem>` não terminou dentro do teto de 30000ms e foi cancelado`` (broker answers `504`, `origem: infra`) | the image is not on the daemon and its pull does not fit the 30s control ceiling. Killing the CLI cancels the pull, so the image is still absent — repeating does not help. Pull it on the host that runs the containers (`docker pull <imagem>`; in `runner` mode, on the user's machine) and approve the start again. Large images do not come up through this path on the first try, by the maintainer's decision ([RN-605](business-rules/contracts.md#rn-605)) |
+| `BRABO_PROJECTS_HOST_BASE não está definida` on `start` of a **Mounted** project | same shape as the row above, other root. Set `BRABO_PROJECTS_BASE` in `.env` and recreate the broker; the compose derives this one from it ([RN-503](business-rules/api.md#rn-503)) |
+| the broker answers `409` for a project in `runner` mode | expected. That folder lives on the user's machine and this host cannot see it — there, the runner is what brings a container up ([ADR 0137](adr/0137-o-runner-sobe-o-container-do-projeto.md)) |
+| the broker answers `409` saying it doesn't know where the project folder is | a LEGACY **Mounted** project, created before the base existed and living outside it. The fix is to move the folder under `BRABO_PROJECTS_BASE`, not to change the project's mode — the message names the base and the path it saw ([RN-503](business-rules/api.md#rn-503)) |
 
-**O broker nunca sobe um container sozinho.** Não há laço nem
-fila: ele age quando chamado, e toda chamada de escrita nasce de uma
-`proposed_action` que um humano aprovou.
+**The broker never brings a container up on its own.** There is no loop and no
+queue: it acts when called, and every write call originates from a
+`proposed_action` a human approved.
 
-### Migrar workspaces para pasta local {#migrar-workspaces-pasta-local}
+### Migrating workspaces to a local folder {#migrar-workspaces-pasta-local}
 
-Definir `PROJECT_WORKSPACES_HOST_DIR`/`GIT_LOCAL_REPOS_HOST_DIR`
-([Primeiros passos](getting-started.md#local-folder-for-workspaces)) troca o
-volume do Docker pela pasta indicada — mas **não copia** o que já
-existia no volume antigo. Quem já tem projetos criados e não
-quer perder o trabalho precisa copiar o conteúdo antes de trocar:
+Setting `PROJECT_WORKSPACES_HOST_DIR`/`GIT_LOCAL_REPOS_HOST_DIR`
+([Getting started](getting-started.md#local-folder-for-workspaces)) swaps the
+Docker volume for the given folder — but it does **not copy** what already
+existed in the old volume. Anyone with projects already created who doesn't
+want to lose the work needs to copy the content before switching:
 
 ```bash
 pnpm dev:down
@@ -251,44 +252,44 @@ docker run --rm \
 pnpm dev
 ```
 
-O nome do volume (`brabo-dev_project_workspaces`) leva o prefixo do projeto
-Compose (`name: brabo-dev` em `docker/docker-compose.yml`, [ADR
-0170](adr/0170-compose-de-dev-brabo-dev.md)) — confira com `docker volume ls`.
-Um ambiente de dev de antes do ADR 0170 ainda tem os dados sob `brabo_*`: veja
-[Levando um ambiente de dev para brabo-dev](#dev-para-brabo-dev) antes. O volume antigo continua existindo
-depois (o Compose não apaga um volume que saiu de uso); remova-o
-com `docker volume rm` quando tiver certeza de que a cópia funcionou.
+The volume name (`brabo-dev_project_workspaces`) carries the Compose project's
+prefix (`name: brabo-dev` in `docker/docker-compose.yml`, [ADR
+0170](adr/0170-compose-de-dev-brabo-dev.md)) — check with `docker volume ls`.
+A dev environment from before ADR 0170 still has its data under `brabo_*`: see
+[Moving a dev environment to brabo-dev](#dev-para-brabo-dev) first. The old volume keeps existing
+afterward (Compose doesn't delete a volume that fell out of use); remove it
+with `docker volume rm` once you're sure the copy worked.
 
-### Projeto no modo Pasta montada: a base de projetos {#projeto-no-modo-local}
+### Project in Mounted mode: the projects base {#projeto-no-modo-local}
 
-**Sintoma:** o assistente de projeto nem oferece **Pasta montada**; ou
-oferece, e a api responde `400` dizendo que a pasta *não existe de
-dentro da api*.
+**Symptom:** the project wizard doesn't offer **Mounted** at all; or it
+does, and the api responds `400` saying the folder *doesn't exist from
+inside the api*.
 
-Os dois vêm do mesmo fato: um projeto no modo Pasta montada guarda o código numa
-pasta **sua**, e a api e o engine só a alcançam se ela estiver
-montada nos containers deles. O que mudou
+Both come from the same fact: a project in Mounted mode keeps its code in a
+folder of **yours**, and the api and the engine can only reach it if it is
+mounted into their containers. What changed
 ([ADR 0141](adr/0141-base-unica-dos-projetos-montados.md),
-[RN-500](business-rules/api.md#rn-500)) é quem arranja isso, e com que frequência:
-agora há **uma base**, configurada uma vez pelo operador, e todo
-projeto montado mora dentro dela. Você nunca mais edita o compose por
-projeto.
+[RN-500](business-rules/api.md#rn-500)) is who arranges that, and how often:
+there is now **one base**, configured once by the operator, and every
+mounted project lives underneath it. You never edit compose per project
+again.
 
-**O que fazer — uma vez, para a instalação inteira.** O caminho suportado é o
-passo de consentimento ([ADR 0146](adr/0146-base-consentida-no-bootstrap.md)), que
-propõe uma pasta, recusa uma que se sobreponha ao checkout do Brabo ou a
-`PROJECT_WORKSPACES_HOST_DIR`, prova no macOS/Windows que o Docker a enxerga,
-a cria e escreve a variável:
+**What to do — once, for the whole installation.** The supported path is the
+consent step ([ADR 0146](adr/0146-base-consentida-no-bootstrap.md)), which
+proposes a folder, refuses one that overlaps the Brabo checkout or
+`PROJECT_WORKSPACES_HOST_DIR`, proves on macOS/Windows that Docker can see it,
+creates it and writes the variable:
 
 ```bash
 node scripts/dev/consentir-base.mjs
 ```
 
-Rode-o no **seu** terminal. `pnpm bootstrap` → *Docker › Base de projetos*
-roda o mesmo script mas só consegue **informar**: todo item do menu roda com stdin
-vindo de `/dev/null` de propósito, então ele não consegue fazer pergunta.
+Run it in **your** terminal. `pnpm bootstrap` → *Docker › Base de projetos*
+runs the same script but can only **report**: every menu item runs with stdin
+from `/dev/null` on purpose, so it cannot ask a question.
 
-Escrever a linha à mão continua funcionando:
+Writing the line by hand still works:
 
 ```bash
 # .env — caminho ABSOLUTO. O `~` NÃO é expandido pelo Compose.
@@ -299,228 +300,228 @@ BRABO_PROJECTS_BASE=/home/voce/projetos-brabo
 docker compose -f docker/docker-compose.yml --env-file .env up -d api engine
 ```
 
-É isso. Daqui em diante, um projeto no modo Pasta montada vai para algum lugar sob
-`/home/voce/brabo` e não precisa de mais configuração.
+That's it. From here on, a project in Mounted mode goes somewhere under
+`/home/voce/brabo` and needs no further setup.
 
-**A pasta em si ainda não precisa existir**
+**The folder itself does not need to exist yet**
 ([ADR 0142](adr/0142-validacao-de-workspace-montado-adiada.md),
-[RN-501](business-rules/api.md#rn-501)). Criar um projeto Pasta montada valida
-só o FORMATO do caminho mais "está sob a base"; a pasta é criada
-depois, quando a Infra sobe o container do projeto — que é o que permite ao
-assistente SUGERIR `<base>/<slug do projeto>` para começo de conversa. Entre
-esses dois momentos `workspacePath` aponta para uma pasta que ainda não está lá,
-e o `workspaceVerifiedAt` do projeto é `null`; converter um projeto existente
-para Pasta montada é a única exceção e cria a pasta na hora,
-porque move o `permissions.json` para dentro dela.
+[RN-501](business-rules/api.md#rn-501)). Creating a Mounted project validates
+only the path FORMAT plus "is it under the base"; the folder is created
+later, when Infra starts the project's container — which is what makes the
+wizard able to SUGGEST `<base>/<project slug>` in the first place. Between
+those two moments `workspacePath` points at a folder that isn't there yet,
+and the project's `workspaceVerifiedAt` is `null`; converting an existing
+project to Mounted is the one exception and creates the folder right away,
+because it moves `permissions.json` into it.
 
-Então um `400` na criação agora quer dizer só uma de duas coisas, e as duas nomeiam o que
-querem dizer: o caminho não está sob a base (a mensagem nomeia a base e
-sugere `<base>/<nome>`), ou `BRABO_PROJECTS_BASE` nem está configurada
-(a mensagem diz que o MODO não está disponível nesta instalação). Uma pasta
-que a api não consegue criar ou alcançar aparece depois, como um `failed` NOMEADO
-na ação `container_start` — nunca um 500, e o ciclo de vida do container
-não é marcado `provisioning` quando isso acontece.
+So a `400` at creation now means one of two things only, and both name what
+they mean: the path is not under the base (the message names the base and
+suggests `<base>/<name>`), or `BRABO_PROJECTS_BASE` isn't configured at all
+(the message says the MODE is unavailable on this installation). A folder
+the api cannot create or reach shows up later instead, as a NAMED `failed`
+on the `container_start` action — never a 500, and the container lifecycle
+is not marked `provisioning` when that happens.
 
-**Projetos montados ganham um container de verdade, e ele roda no SERVIDOR**
+**Mounted projects get a real container, and it runs on the SERVER**
 ([RN-503](business-rules/api.md#rn-503),
-[ADR 0144](adr/0144-a-segunda-raiz-do-broker.md)). Como a base é
-alcançável pelo daemon do Docker do host, `container_start` de um projeto Pasta montada
-vai para o [broker](#broker-de-container), exatamente como o modo Container — ele
-deixou de exigir um `brabo-runner` conectado. Só o modo **Runner** ainda vai para
-o runner, na própria máquina do usuário, porque aquela pasta está num lugar que este
-servidor não enxerga. Localmente o broker já está de pé — ele vem com o `pnpm dev`
-desde o [ADR 0146](adr/0146-base-consentida-no-bootstrap.md), justamente porque
-este é o caminho do modo padrão; em produção ainda precisa de
-`--profile container-broker`. Esse mesmo passo é quando a pasta acima é
-criada, nessa ordem: o daemon só faz bind-mount de uma pasta que já
-existe.
+[ADR 0144](adr/0144-a-segunda-raiz-do-broker.md)). Because the base is
+reachable by the host's Docker daemon, `container_start` for a Mounted project
+goes to the [broker](#broker-de-container), exactly like Container mode — it no
+longer requires a `brabo-runner` connected. Only **Runner** mode still goes to
+the runner, on the user's own machine, because that folder is somewhere this
+server cannot see. Locally the broker is already up — it comes with `pnpm dev`
+since [ADR 0146](adr/0146-base-consentida-no-bootstrap.md), precisely because
+this is the default mode's path; in production it still needs
+`--profile container-broker`. That same step is when the folder above gets
+created, in that order: the daemon can only bind-mount a folder that already
+exists.
 
-**Por que o assistente esconde o modo Pasta montada.** Sem `BRABO_PROJECTS_BASE`, a
-api informa `projectsBase: null` e a opção nem é oferecida. Isso
-é deliberado: oferecer um modo que a instalação não consegue honrar produz um
-projeto que trava depois, na primeira ferramenta do primeiro agente, longe
-da tela onde a decisão foi tomada. O modo Container (o padrão)
-e o modo Runner não são afetados e continuam funcionando sem esta variável.
+**Why the wizard hides Mounted mode.** Without `BRABO_PROJECTS_BASE`, the
+api reports `projectsBase: null` and the option is not offered at all. That
+is deliberate: offering a mode the installation cannot honor produces a
+project that gets stuck later, on the first tool of the first agent, far
+from the screen where the decision was made. Container mode (the default)
+and Runner mode are unaffected and keep working without this variable.
 
-**Por que o mesmo caminho dos dois lados.** A base é montada por **identidade** —
-`/home/voce/brabo:/home/voce/brabo` — em `api` e `engine` igualmente. O caminho
-é escrito UMA vez em `projects.workspace_path` e lido pelos dois processos
-([RN-169](business-rules/api.md#rn-169)); é também a string
-que a tela mostra de volta para você. Montá-la em outro lugar faria o
-engine escrever onde a api não lê, e faria a tela mostrar um
-caminho que não existe nem na sua máquina nem na deles.
+**Why the same path on both sides.** The base is mounted by **identity** —
+`/home/voce/brabo:/home/voce/brabo` — in `api` and `engine` alike. The path
+is written ONCE to `projects.workspace_path` and read by both processes
+([RN-169](business-rules/api.md#rn-169)); it is also the string
+the screen shows back to you. Mounting it somewhere else would make the
+engine write where the api doesn't read, and would make the screen show a
+path that exists on neither your machine nor theirs.
 
-**Confira o que os containers de fato enxergam:**
+**Check what the containers actually see:**
 
 ```bash
 docker compose -f docker/docker-compose.yml exec api    ls -la /home/voce/brabo
 docker compose -f docker/docker-compose.yml exec engine ls -la /home/voce/brabo
 ```
 
-**Não aponte a base para o próprio checkout do Brabo.** `pnpm dev` recusa
-subir a stack quando `BRABO_PROJECTS_BASE` contém, ou está contida em,
-o repositório que você clonou — ele nomeia os dois caminhos e para. Essa checagem mora
-no preflight e em nenhum outro lugar de propósito: a api compara um caminho de projeto
-com `process.cwd()`, que dentro do container dela é `/workspace`,
-então ela não tem como enxergar o seu checkout real. Sem a guarda do preflight,
-clonar o Brabo em `$HOME/brabo` e definir a base para a mesma pasta
-passa em toda validação e põe dev agents rodando dentro da própria
-árvore do produto — a falha que o
-[ADR 0055](adr/0055-escopo-de-caminho-na-politica-de-terminal.md) existe para
-evitar.
+**Don't point the base at Brabo's own checkout.** `pnpm dev` refuses to
+bring the stack up when `BRABO_PROJECTS_BASE` contains, or is contained by,
+the repository you cloned — it names both paths and stops. This check lives
+in the preflight and nowhere else on purpose: the api compares a project
+path against `process.cwd()`, which inside its container is `/workspace`,
+so it has no way to see your real checkout. Without the preflight guard,
+cloning Brabo into `$HOME/brabo` and setting the base to the same folder
+passes every validation and has dev agents running inside the product's own
+tree — the failure
+[ADR 0055](adr/0055-escopo-de-caminho-na-politica-de-terminal.md) exists to
+prevent.
 
-**Escolha uma pasta dedicada.** Tudo sob a base é alcançável de
-dentro dos containers do produto. Não a aponte para o seu `$HOME` inteiro, e
-não a aponte para uma pasta que guarde outros segredos seus.
+**Pick a dedicated folder.** Everything under the base is reachable from
+inside the product's containers. Don't point it at your whole `$HOME`, and
+don't point it at a folder that holds other secrets of yours.
 
-**Outros modos de recusa, e o que cada um quer dizer:**
+**Other refusal modes, and what each one means:**
 
-| a mensagem diz | o que fazer |
+| the message says | what to do |
 |---|---|
-| o modo Pasta montada nem é oferecido | `BRABO_PROJECTS_BASE` não está definida — defina-a e `up -d api engine` |
-| *o modo Pasta montada não está disponível nesta instalação* (na criação) | mesma causa, dita pela api: `BRABO_PROJECTS_BASE` não está definida (RN-501) |
-| *a pasta tem de ficar dentro de `<base>`* (na criação) | o caminho está fora da base; use o `<base>/<nome>` que a mensagem sugere, ou mude a base e `up -d api engine` |
-| *não consegui criar/alcançar `<caminho>` de dentro da api* (no `container_start`) | a base não está montada de fato, ou o dono da pasta no host a bloqueia. Confira com o `exec ls` acima, corrija, e aprove `container_start` de novo (RN-501) |
-| *não existe de dentro da api* | a base não está montada nos containers; confira com o `exec ls` acima |
-| *existe mas não é uma pasta* | o caminho aponta para um arquivo; use uma pasta |
-| *o processo não consegue escrever nela* | dono/permissão da pasta no host. As imagens rodam não-root ([ADR 0024](adr/0024-fase5-imagens-producao-ci.md)); ajuste o dono ou o modo da pasta |
-| *Caminho inválido para um projeto Local* | é a raiz de um sistema de arquivos, uma pasta de sistema, relativo, tem `..`, ou se sobrepõe ao próprio checkout do Brabo — escolha uma pasta sua, fora desses ([ADR 0072](adr/0072-projeto-local-ou-container.md)) |
+| Mounted mode isn't offered at all | `BRABO_PROJECTS_BASE` isn't set — set it and `up -d api engine` |
+| *Mounted mode is not available on this installation* (at creation) | same cause, said by the api: `BRABO_PROJECTS_BASE` isn't set (RN-501) |
+| *the folder must sit inside `<base>`* (at creation) | the path is outside the base; use the `<base>/<name>` the message suggests, or change the base and `up -d api engine` |
+| *I couldn't create/reach `<path>` from inside the api* (on `container_start`) | the base isn't actually mounted, or the folder's owner on the host blocks it. Check with the `exec ls` above, fix it, and approve `container_start` again (RN-501) |
+| *doesn't exist from inside the api* | the base isn't mounted into the containers; check with the `exec ls` above |
+| *exists but isn't a folder* | the path points to a file; use a folder |
+| *the process can't write to it* | owner/permission of the folder on the host. Images run non-root ([ADR 0024](adr/0024-fase5-imagens-producao-ci.md)); adjust the folder's owner or mode |
+| *Invalid path for a Local project* | it's a filesystem root, a system folder, relative, has `..`, or overlaps Brabo's own checkout — pick your own folder, outside those ([ADR 0072](adr/0072-projeto-local-ou-container.md)) |
 
-**Limites conhecidos, declarados em vez de escondidos.** Um symlink sob a base
-apontando para fora dela resolve diferente dentro dos containers, já que o
-alvo não está montado — o navegador de pastas recusa descer em symlinks,
-e a checagem de disco pega a divergência como falha nomeada. E esta
-versão suporta **uma** base: código que mora em outro lugar tem de ser movido
-para dentro dela.
+**Known limits, stated rather than hidden.** A symlink under the base
+pointing outside it resolves differently inside the containers, since the
+target isn't mounted — the folder browser refuses to descend into symlinks,
+and the disk check catches the divergence as a named failure. And this
+version supports **one** base: code living somewhere else has to be moved
+under it.
 
-**Migrando das montagens antigas por projeto.** Se você tem linhas escritas à mão
-`- /home/voce/projetos/loja:/home/voce/projetos/loja` em `api` e
-`engine`, elas continuam funcionando e nada as remove — projetos existentes
-não são quebrados por esta mudança. O caminho suportado daqui em diante é a base;
-mova essas pastas para dentro dela e tire as linhas escritas à mão quando tiver
-oportunidade.
+**Migrating from the old per-project mounts.** If you have hand-written
+`- /home/voce/projetos/loja:/home/voce/projetos/loja` lines in `api` and
+`engine`, they keep working and nothing removes them — existing projects
+are not broken by this change. The supported path from here on is the base;
+move those folders under it and drop the hand-written lines when you get
+the chance.
 
-**Não confunda isto com o modo Container.** Um projeto no modo Container
-(o padrão) continua usando `PROJECT_WORKSPACES_ROOT` e o procedimento de
-migração acima; o modo Pasta montada nunca toca essa raiz, e a base
-nunca é a mesma pasta que essa raiz ([ADR 0141](adr/0141-base-unica-dos-projetos-montados.md)
-explica por que confundi-las deixaria dois projetos caírem numa pasta só).
+**Don't confuse this with Container mode.** A project in Container mode
+(the default) keeps using `PROJECT_WORKSPACES_ROOT` and the migration
+procedure above; Mounted mode never touches that root, and the base is
+never the same folder as that root ([ADR 0141](adr/0141-base-unica-dos-projetos-montados.md)
+explains why conflating them would let two projects land in one folder).
 
-### A base de projetos do runner {#base-do-runner}
+### The runner's base of projects {#base-do-runner}
 
-**Sintoma:** `brabo-runner` sai com código 2 dizendo
-`base de projetos recusada (…)`, ou começa imprimindo
-`base de projetos: nenhuma configurada` quando você esperava uma base, ou diz
-que está `Seguindo SEM base`.
+**Symptom:** `brabo-runner` exits with code 2 saying
+`base de projetos recusada (…)`, or it starts printing
+`base de projetos: nenhuma configurada` when you expected a base, or it says
+it is `Seguindo SEM base`.
 
-Esta é uma **base diferente** da de
-[Projeto no modo Pasta montada](#projeto-no-modo-local). Aquela
-(`BRABO_PROJECTS_BASE`) pertence ao SERVIDOR e é a única pasta que os
-containers enxergam; esta pertence à **máquina do usuário** e é onde
-o agente local cria a pasta de cada projeto
+This is a **different base** from the one in
+[Project in Mounted mode](#projeto-no-modo-local). That one
+(`BRABO_PROJECTS_BASE`) belongs to the SERVER and is the only folder the
+containers can see; this one belongs to the **user's machine** and is where
+the local agent creates the folder of each project
 ([ADR 0151](adr/0151-base-consentida-no-runner.md),
-[RN-529](business-rules/runner.md#rn-529)). Elas nunca são a mesma variável, nunca
-o mesmo arquivo, e nunca são validadas uma contra a outra.
+[RN-529](business-rules/runner.md#rn-529)). They are never the same variable, never
+the same file, and never validated against each other.
 
-De onde o runner a lê, em ordem:
+Where the runner reads it from, in order:
 
-1. `--base <caminho absoluto>` na linha de comando;
-2. `$XDG_CONFIG_HOME/brabo/runner.json` — caindo para
-   `~/.config/brabo/runner.json` — com a forma `{"base": "/abs/path"}`.
+1. `--base <absolute path>` on the command line;
+2. `$XDG_CONFIG_HOME/brabo/runner.json` — falling back to
+   `~/.config/brabo/runner.json` — with the shape `{"base": "/abs/path"}`.
 
 ```bash
 cat "${XDG_CONFIG_HOME:-$HOME/.config}/brabo/runner.json"
 # {"base":"/home/you/projetos-brabo"}
 ```
 
-**Nenhuma base é normal.** Um runner sem base continua atendendo o projeto dele
-exatamente como sempre fez; o que ele não consegue é hospedar uma pasta de projeto criada
-depois. A linha de início diz em qual dos dois estados você está, sempre.
+**No base at all is normal.** A runner without one keeps serving its project
+exactly as it always did; what it can't do is host a project folder created
+later. The startup line says which of the two states you're in, always.
 
-Essa pasta deixou de ser só configuração: desde a
-[RN-551](business-rules/runner.md#rn-551) é também onde
-`brabo-runner device-key create` põe a chave de dispositivo **privada** da máquina
-(`brabo-runner-device-key.jwk.json`, modo 600) — veja
-[Chave de dispositivo pelo terminal](#chave-de-dispositivo-pelo-terminal). Faça backup
-dela como faria de um segredo, ou não faça backup nenhum e pareie de novo: a chave
-é revogável e substituível, e nada mais no produto consegue lê-la.
+That folder is no longer configuration only: since
+[RN-551](business-rules/runner.md#rn-551) it is also where
+`brabo-runner device-key create` puts the machine's **private** device key
+(`brabo-runner-device-key.jwk.json`, mode 600) — see
+[Device key from the terminal](#chave-de-dispositivo-pelo-terminal). Back it up
+the way you'd back up a secret, or don't back it up at all and re-pair: the key
+is revocable and replaceable, and nothing else in the product can read it.
 
-**Recusas, e por que a disposição difere.** A base é recusada quando é
-relativa, tem `..`, é `/`, aponta para um arquivo existente, fica fora do `$HOME`
-no Linux (a mesma regra que o `--dir` tem desde a
-[RN-434](business-rules/runner.md#rn-434)), ou fica **dentro** da pasta do projeto
-corrente (ou é igual a ela) — essa última faria todo projeto novo nascer
-dentro deste. Vindo de `--base`, isso encerra o processo com código 2;
-vindo do arquivo, é impresso no `stderr` e o runner **segue
-sem base**, porque matar um agente que atende um projeto por causa de uma
-configuração que ele ainda nem usa seria desproporcional. Um arquivo que existe e
-não declara `base` é ausência, não recusa.
+**Refusals, and why the disposition differs.** The base is refused when it is
+relative, has `..`, is `/`, points at an existing file, sits outside `$HOME`
+on Linux (the same rule `--dir` has had since
+[RN-434](business-rules/runner.md#rn-434)), or is **inside** the current project's
+folder (or equal to it) — that last one would make every new project be born
+inside this one. Coming from `--base`, that ends the process with code 2;
+coming from the file, it is printed on `stderr` and the runner **carries on
+without a base**, because killing an agent that is serving a project over a
+setting it doesn't use yet would be out of proportion. A file that exists and
+declares no `base` is absence, not a refusal.
 
-**Um projeto fora da base não é problema.** O `--dir` é validado exatamente
-como sempre foi e a base não entra nisso: a base é regra de
-CRIAÇÃO. Não "conserte" um projeto legado movendo-o para dentro da base para silenciar
-algo — nada está reclamando.
+**A project outside the base is not a problem.** `--dir` is validated exactly
+as it always was and the base plays no part in it: the base is a rule of
+CREATION. Do not "fix" a legacy project by moving it under the base to silence
+something — nothing is complaining.
 
-### O agente de máquina: uma conexão por projeto {#agente-de-maquina}
+### The machine agent: one connection per project {#agente-de-maquina}
 
-**Sintoma:** `brabo-runner` foi iniciado sem `--project` e ou imprimiu
-o bloco de uso, ou disse `nenhum projeto em modo "runner" para esta conta`, ou
-atendeu alguns projetos e recusou outros.
+**Symptom:** `brabo-runner` was started without `--project` and either printed
+the usage block, said `nenhum projeto em modo "runner" para esta conta`, or
+served some projects and refused others.
 
-Desde a [RN-544](business-rules/runner.md#rn-544)
-([ADR 0154](adr/0154-chave-de-dispositivo-de-maquina.md)) rodar sem
-`--project` é um modo de verdade: o agente pergunta `GET /runner/projects` e abre
-**uma conexão por projeto**, enraizada em `<base>/<workspaceDirName>`. O modo
-com `--project` não mudou nada. Lendo a saída:
+Since [RN-544](business-rules/runner.md#rn-544)
+([ADR 0154](adr/0154-chave-de-dispositivo-de-maquina.md)) running without
+`--project` is a real mode: the agent asks `GET /runner/projects` and opens
+**one connection per project**, rooted at `<base>/<workspaceDirName>`. The mode
+with `--project` did not change at all. Reading the output:
 
-- **`Sem --project, este runner só roda como agente de MÁQUINA…`** — não há
-  base consentida. As duas condições são exigidas, e por motivos diferentes:
-  a credencial de máquina é o que a rota aceita, a base é de onde vem a pasta de cada
-  projeto. Veja [a base acima](#base-do-runner).
+- **`Sem --project, este runner só roda como agente de MÁQUINA…`** — there is
+  no consented base. Both conditions are required and for different reasons:
+  the machine credential is what the route accepts, the base is where each
+  project's folder comes from. See [the base above](#base-do-runner).
 - **`a api recusou a descoberta de projetos: esta credencial está presa a um
-  PROJETO`** — um 403. A credencial em uso (um PAT, ou uma chave de dispositivo do
-  fluxo do navegador) nomeia um projeto e não tem nada a descobrir. Rode-o com
-  `--project <projectId>` em vez disso, ou pareie uma chave de máquina — o material da chave é
-  feito aqui mesmo (`brabo-runner device-key create`, veja
-  [abaixo](#chave-de-dispositivo-pelo-terminal)), e registrar a metade
-  pública é o que o instalador faz. Em disco as duas espécies são o mesmo arquivo,
-  então o runner não adivinha: o servidor é a autoridade e a mensagem dele é
-  repassada literalmente.
+  PROJETO`** — a 403. The credential in use (a PAT, or a device key from the
+  browser flow) names one project and has nothing to discover. Run it with
+  `--project <projectId>` instead, or pair a machine key — the key material is
+  made right here (`brabo-runner device-key create`, see
+  [below](#chave-de-dispositivo-pelo-terminal)), and registering the public
+  half is what the installer does. On disk the two species are the same file,
+  so the runner does not guess: the server is the authority and its message is
+  relayed verbatim.
 - **`nenhum projeto em modo "runner" para esta conta — nada a atender AINDA`** —
-  este é o estado **normal** de uma instalação nova, e desde a
-  [RN-550](business-rules/runner.md#rn-550) o processo **fica de pé e continua perguntando**:
-  15s, depois 30s, depois 60s entre chamadas, repetindo para sempre, até o primeiro
-  projeto aparecer. Ninguém precisa voltar ao terminal — crie o
-  projeto no modo Runner no web e o agente o pega. A consulta
-  **para** no instante em que a primeira conexão está viva: daí em diante a lista é
-  lida só no início, porque uma lista que volta *menor* é ambígua e
-  derrubar uma conexão viva por essa ambiguidade trocaria um estado conhecido por
-  um palpite. Esperar não tem teto; **falhar tem** — dez chamadas falhas
-  consecutivas e o processo sai com 1 nomeando a contagem (qualquer resposta, vazia inclusive,
-  zera o contador). A cada 30 respostas vazias ele imprime um batimento dizendo quantas
-  chamadas houve, para que "esperando" nunca pareça "travado" no
-  `journalctl`. `Restart=on-abnormal` não mudou nas duas espécies de unit — ela
-  nunca olhou o código de saída, para começo de conversa; o que muda é que a unit de máquina
-  agora está genuinamente `active (running)`, e `brabo-runner service status
-  --machine` responde `rodando` (0) numa instalação nova onde antes respondia
+  this is the **normal** state of a fresh install, and since
+  [RN-550](business-rules/runner.md#rn-550) the process **stays up and keeps asking**:
+  15s, then 30s, then 60s between calls, repeating forever, until the first
+  project shows up. Nobody has to come back to the terminal — create the
+  project in Runner mode on the web and the agent picks it up. The polling
+  **stops** the moment the first connection is live: from then on the list is
+  read only at start, because a list that comes back *smaller* is ambiguous and
+  dropping a live connection over that ambiguity would trade a known state for
+  a guess. Waiting has no ceiling; **failing does** — ten consecutive failed
+  calls and the process exits 1 naming the count (any answer, empty included,
+  resets the counter). Every 30 empty answers it prints a heartbeat saying how
+  many calls there have been, so "waiting" never looks like "stuck" in
+  `journalctl`. `Restart=on-abnormal` is unchanged in both unit species — it
+  never looked at the exit code to begin with; what changes is that the machine
+  unit is now genuinely `active (running)`, and `brabo-runner service status
+  --machine` answers `rodando` (0) on a fresh install where it used to answer
   `parado` (3).
-- **`[<projeto>] NÃO será atendido`** — a pasta daquele projeto foi recusada (o
-  segmento escapou da base, ou o alvo existe e não é diretório). Os
-  outros seguem. Só se NENHUM sobrar o processo sai com 1.
+- **`[<projeto>] NÃO será atendido`** — that project's folder was refused (the
+  segment escaped the base, or the target exists and is not a directory). The
+  others keep going. Only if NONE is left does the process exit 1.
 - **`[<projeto>] este projeto deixa de ser atendido — os demais continuam`** —
-  o join foi recusado (em geral um segundo runner já conectado àquele
-  projeto) ou o teto de novas tentativas acabou. Os dois são por PROJETO agora, não por
-  processo: um projeto falhando não derruba mais o agente para todos os outros.
-  Quando todo projeto terminou assim o processo imprime o desfecho de cada um
-  e sai com 1.
+  the join was refused (usually a second runner already connected to that
+  project) or the retry ceiling ran out. Both are per PROJECT now, not per
+  process: one project failing no longer kills the agent for all the others.
+  When every project has ended this way the process prints the outcome of each
+  and exits 1.
 
-Toda linha do laço de conexão leva o nome do projeto como prefixo. Se uma
-mensagem não tem prefixo, ela veio do modo de projeto único.
+Every line of the connection loop is prefixed with the project name. If a
+message has no prefix, it came from the single-project mode.
 
-### A unit está `bad-setting` e nunca inicia {#unit-do-agente-nao-inicia}
+### The unit is `bad-setting` and never starts {#unit-do-agente-nao-inicia}
 
-**Sintoma:** `service install` informou sucesso, o arquivo da unit está em disco, e
-mesmo assim nada roda:
+**Symptom:** `service install` reported success, the unit file is on disk, and
+yet nothing runs:
 
 ```
 $ systemctl --user status brabo-runner.service
@@ -529,17 +530,17 @@ $ systemctl --user status brabo-runner.service
 brabo-runner.service:16: WorkingDirectory= path is not absolute: "/home/<you>/.config/brabo"
 ```
 
-**Causa.** Units escritas **antes** desta correção punham o diretório de trabalho entre aspas
-(`WorkingDirectory="/home/…"`). As duas metades de um arquivo de unit não compartilham uma
-sintaxe: `ExecStart=` é interpretado tirando aspas e separando palavras, então cada
-argumento vai entre aspas; `WorkingDirectory=` **não** — o systemd toma o resto da
-linha como o caminho. Com as aspas o valor deixa de começar com `/`, a
-unit é recusada no carregamento, e **nunca inicia** — em qualquer das espécies
-(por projeto e por máquina igualmente, [RN-518](business-rules/runner.md#rn-518) e
+**Cause.** Units written **before** this fix quoted the working directory
+(`WorkingDirectory="/home/…"`). The two halves of a unit file do not share one
+syntax: `ExecStart=` is parsed with unquoting and word splitting, so each
+argument is quoted; `WorkingDirectory=` is **not** — systemd takes the rest of
+the line as the path. With the quotes the value no longer begins with `/`, the
+unit is refused at load time, and it **never starts** — in either species
+(per project and per machine alike, [RN-518](business-rules/runner.md#rn-518) and
 [RN-545](business-rules/runner.md#rn-545)).
 
-**Correção: reinstale.** `service install` sobrescreve o arquivo inteiro, então não há
-passo de reparo nem nada para editar à mão:
+**Fix: reinstall.** `service install` overwrites the whole file, so there is no
+repair step and nothing to edit by hand:
 
 ```bash
 brabo-runner service install --machine \
@@ -549,43 +550,43 @@ brabo-runner service install --machine \
 brabo-runner service install
 ```
 
-`status` e `uninstall` continuam funcionando numa unit no estado quebrado —
-a pasta é lida de volta de qualquer das formas —, então nada fica preso se você
-preferir removê-la primeiro.
+`status` and `uninstall` keep working on a unit that is in the broken state —
+the folder is read back from either form — so nothing is stranded if you would
+rather remove it first.
 
-**Relacionado, e diferente:** uma unit que carrega mas sobe na pasta errada.
-`WorkingDirectory=` passa por **expansão de especificadores**, então um `%` literal
-no caminho tem de ser escrito `%%`; o CLI o escapa agora, mas uma unit editada à mão
-com `/home/you/50%off` vai iniciar em silêncio em `/home/you/50<os-id>ff` —
-absoluto, aceito, e errado. Confira o valor resolvido, nunca o arquivo:
+**Related, and different:** a unit that loads but comes up in the wrong folder.
+`WorkingDirectory=` goes through **specifier expansion**, so a literal `%` in
+the path has to be written `%%`; the CLI escapes it now, but a hand-edited unit
+with `/home/you/50%off` will silently start in `/home/you/50<os-id>ff` —
+absolute, accepted, and wrong. Check the resolved value, never the file:
 
 ```bash
 systemctl --user show -p WorkingDirectory brabo-runner.service
 ```
 
-O mesmo vale para o **ambiente** que a unit congela (AT-095). Units escritas
-antes dessa correção levavam `Environment=XDG_CONFIG_HOME=<pasta>` e
-`Environment=PATH=<caminho>` sem aspas, e `Environment=` tanto separa em espaços
-quanto expande especificadores: com `XDG_CONFIG_HOME=/home/you/50%off com espaco` o
-serviço recebia `/home/you/50<os-id>ff` — carrega, inicia, e o
-agente de máquina procura a base e a chave de dispositivo numa pasta que não
-existe, sem dizer nada. O CLI agora escreve a atribuição inteira entre aspas
-(`Environment="XDG_CONFIG_HOME=…"`, com `\`, `"` e `%` escapados). **Correção:
-reinstale**, como acima. Confira o que o systemd resolveu:
+The same holds for the **environment** the unit freezes (AT-095). Units written
+before that fix carried `Environment=XDG_CONFIG_HOME=<folder>` and
+`Environment=PATH=<path>` unquoted, and `Environment=` both splits on spaces
+and expands specifiers: with `XDG_CONFIG_HOME=/home/you/50%off com espaco` the
+service received `/home/you/50<os-id>ff` — it loads, it starts, and the
+per-machine agent looks for its base and device key in a folder that does not
+exist, without a word. The CLI now writes the whole assignment quoted
+(`Environment="XDG_CONFIG_HOME=…"`, with `\`, `"` and `%` escaped). **Fix:
+reinstall**, as above. Check what systemd resolved:
 
 ```bash
 systemctl --user show -p Environment brabo-runner.service
 ```
 
-### Chave de dispositivo pelo terminal {#chave-de-dispositivo-pelo-terminal}
+### Device key from the terminal {#chave-de-dispositivo-pelo-terminal}
 
-**Sintoma:** uma máquina precisa de uma chave de dispositivo e não há navegador para rodar a
-configuração automática da tela do projeto — uma instalação nova, uma máquina sem tela, ou o
-agente de máquina acima recusando com `esta credencial está presa a um PROJETO`.
+**Symptom:** a machine needs a device key and there is no browser to run the
+project screen's automatic setup — a fresh install, a headless box, or the
+machine agent above refusing with `esta credencial está presa a um PROJETO`.
 
-Desde a [RN-551](business-rules/runner.md#rn-551)
-([ADR 0155](adr/0155-a-primeira-conta-nasce-no-terminal.md) ponto 4) o par
-é gerado **na máquina**, em dois passos:
+Since [RN-551](business-rules/runner.md#rn-551)
+([ADR 0155](adr/0155-a-primeira-conta-nasce-no-terminal.md) point 4) the pair
+is generated **on the machine**, in two steps:
 
 ```bash
 # 1) gere aqui; a JWK PÚBLICA é a única coisa no stdout
@@ -599,287 +600,287 @@ ID=$(… POST {"name":"…","publicKeyJwk":'"$PUB"'} … | jq -r .id)
 brabo-runner device-key finish --id "$ID"
 ```
 
-- **Dois passos, por causa do `kid`.** Ele É o id do registro no servidor
-  ([RN-475](business-rules/web.md#rn-475)) e só existe depois que a metade pública é
-  registrada; uma chave privada escrita antes dele é inútil e o CLI a recusa
-  para sempre. Então `create` escreve `brabo-runner-device-key.jwk.json.parcial`, um
-  nome que o leitor ignora, e `finish` escreve o de verdade. **O arquivo que o
-  runner lê nunca existe sem `kid`** — uma interrupção entre os dois
-  deixa um `.parcial` que o runner ignora e que o próximo `create` nomeia.
-- **Onde:** `$XDG_CONFIG_HOME/brabo/` (senão `~/.config/brabo/`), ao lado de
-  `runner.json`, no modo 600; `--dir <pasta>` escreve em outro lugar (uma pasta de
-  projeto, digamos). Essa pasta é para onde o `--dir` da unit de máquina deve apontar
-  (`brabo-runner service install --machine --dir <pasta>`,
-  [RN-545](business-rules/runner.md#rn-545)) — o runner lê a chave da
-  pasta em que RODA, nunca de um caminho global que ele adivinhe.
-- **stdout é para scripts, stderr é para pessoas.** `create` imprime só a
-  JWK pública; `finish`, só o caminho do arquivo terminado.
-- **Recusas:** `finish` sem um `create` (nada a carimbar), sem `--id`,
-  com um `--id` que ainda tem a resposta JSON inteira dentro, um `.parcial`
-  que não é uma JWK privada Ed25519, e — nos dois comandos — uma chave COMPLETA
-  já no lugar. Essa última não tem `--force`: substituir a chave de uma
-  máquina já pareada em silêncio deixaria um agente assinando com uma chave que o
-  servidor não conhece. Revogue a chave atual
-  ([RN-519](business-rules/api.md#rn-519)), apague o arquivo, depois `create` de novo.
-- O CLI **não** afirma de que espécie é a chave. Em disco uma chave de máquina
-  e uma chave de projeto são o mesmo arquivo; quem decide é a rota que registrou a metade
-  pública.
+- **Two steps, because of the `kid`.** It IS the registration id on the server
+  ([RN-475](business-rules/web.md#rn-475)) and only exists after the public half is
+  registered; a private key written before it is useless and the CLI refuses it
+  forever. So `create` writes `brabo-runner-device-key.jwk.json.parcial`, a
+  name the reader ignores, and `finish` writes the real one. **The file the
+  runner reads never exists without a `kid`** — an interruption between the two
+  leaves a `.parcial` the runner ignores and the next `create` names.
+- **Where:** `$XDG_CONFIG_HOME/brabo/` (else `~/.config/brabo/`), next to
+  `runner.json`, at mode 600; `--dir <folder>` writes somewhere else (a project
+  folder, say). That folder is what the machine unit's `--dir` should point at
+  (`brabo-runner service install --machine --dir <folder>`,
+  [RN-545](business-rules/runner.md#rn-545)) — the runner reads the key from the
+  folder it RUNS in, never from a global path it guesses.
+- **stdout is for scripts, stderr is for people.** `create` prints only the
+  public JWK; `finish`, only the path of the finished file.
+- **Refusals:** `finish` without a `create` (nothing to stamp), without `--id`,
+  with an `--id` that still has the whole JSON response in it, a `.parcial`
+  that isn't a private Ed25519 JWK, and — in both commands — a COMPLETE key
+  already in place. That last one has no `--force`: replacing the key of an
+  already-paired machine silently would leave an agent signing with a key the
+  server doesn't know. Revoke the current key
+  ([RN-519](business-rules/api.md#rn-519)), delete the file, then `create` again.
+- The CLI does **not** claim which species the key is. On disk a machine key
+  and a project key are the same file; the route that registered the public
+  half is what decides.
 
-### Quando o instalador não fecha a instalação {#instalador-nao-fecha}
+### When the installer does not close the installation {#instalador-nao-fecha}
 
-**Sintoma:** o `install.sh` terminou com um bloco **"O que ficou pendente"**, ou uma
-instalação nova tem um login pelo qual ninguém consegue passar, nenhuma chave de dispositivo de máquina, ou nenhum
-serviço do agente rodando.
+**Symptom:** `install.sh` ended with a **"O que ficou pendente"** block, or a
+fresh install has a login nobody can get through, no machine device key, or no
+agent service running.
 
-Desde a [RN-547](business-rules/produto.md#rn-547)
-([ADR 0155](adr/0155-a-primeira-conta-nasce-no-terminal.md)) o instalador
-**fecha** a instalação: ele cria a primeira conta, registra a chave de dispositivo desta
-máquina e instala a unit de máquina. A corrente é
+Since [RN-547](business-rules/produto.md#rn-547)
+([ADR 0155](adr/0155-a-primeira-conta-nasce-no-terminal.md)) the installer
+**closes** the installation: it creates the first account, registers this
+machine's device key and installs the machine unit. The chain is
 
-1. `POST /internal/first-account` ([RN-546](business-rules/produto.md#rn-546)) — a
-   conta nasce **já verificada**, porque `MAIL_TRANSPORT` é `log` e
-   o instalador não liga SMTP;
-2. `brabo-runner device-key create` ([RN-551](business-rules/runner.md#rn-551)) — o
-   par Ed25519 é gerado **na máquina**; só a metade pública viaja;
+1. `POST /internal/first-account` ([RN-546](business-rules/produto.md#rn-546)) — the
+   account is born **already verified**, because `MAIL_TRANSPORT` is `log` and
+   the installer does not turn SMTP on;
+2. `brabo-runner device-key create` ([RN-551](business-rules/runner.md#rn-551)) — the
+   Ed25519 pair is generated **on the machine**; only the public half travels;
 3. `POST /internal/machine-device-keys` ([RN-552](business-rules/api.md#rn-552)) —
-   o `id` devolvido é o que vira o `kid` da JWK privada
+   the returned `id` is what becomes the private JWK's `kid`
    ([RN-475](business-rules/web.md#rn-475));
 4. `brabo-runner device-key finish --id <id>`;
 5. `brabo-runner service install --machine` ([RN-545](business-rules/runner.md#rn-545)).
 
-**Nada é desfeito, nunca, e toda falha é nomeada.** O instalador sempre
-sai com 0: o compose está de pé, e os elos já completados são úteis por si
-sós. O que falhou é impresso no fim com o comando exato para repetir.
+**Nothing is ever undone, and every failure is named.** The installer always
+exits 0: the compose is up, and the links already completed are useful on their
+own. What failed is printed at the end with the exact command to repeat.
 
-- **`service install --machine` recusou.** Este é o caso **comum** numa
-  máquina de desenvolvedor, não um caso de borda: ele recusa quando uma unit **por projeto** já está
-  instalada, e não há `--force` — dois processos brigariam pelo
-  mesmo projeto e o servidor negaria um deles. A recusa nomeia o
-  `uninstall` de cada unit que encontrou. Remova-as, depois rode de novo o último passo, que
-  o instalador imprimiu:
+- **`service install --machine` refused.** This is the **common** case on a
+  developer machine, not an edge one: it refuses when a **per-project** unit is
+  already installed, and there is no `--force` — two processes would fight over
+  the same project and the server would deny one of them. The refusal names the
+  `uninstall` of each unit it found. Remove them, then rerun the last step, which
+  the installer printed:
 
   ```bash
-  brabo-runner service uninstall --project <projectId>   # para cada uma nomeada
+  brabo-runner service uninstall --project <projectId>   # for each one named
   brabo-runner service install --machine \
     --dir "${XDG_CONFIG_HOME:-$HOME/.config}/brabo" \
     --api-url http://localhost:3000
   ```
 
-  A pasta em `--dir` é onde a chave foi escrita — nunca uma pasta de projeto,
-  que levaria um `brabo-runner.config.json` e faria a unit subir no modo
-  **projeto**, atendendo em silêncio um projeto enquanto se diz o
-  agente de máquina.
+  The folder in `--dir` is where the key was written — never a project folder,
+  which would carry a `brabo-runner.config.json` and make the unit come up in
+  **project** mode, silently serving one project while calling itself the
+  machine agent.
 
-- **Registrar a chave falhou.** Um `…jwk.json.parcial` fica para trás de
-  propósito. Ele é inerte — o runner não lê esse nome — e o instalador
-  **não** o apaga: um timeout depois de a api commitar é indistinguível
-  de um antes, então esse arquivo pode ser a única cópia da metade privada de uma
-  chave que já está registrada. Rode o instalador de novo, ou termine à mão se
-  você sabe o id do registro (`brabo-runner device-key finish --id <id>`). O
-  próximo `device-key create` o nomeia e o substitui.
+- **Registering the key failed.** A `…jwk.json.parcial` is left behind on
+  purpose. It is inert — the runner does not read that name — and the installer
+  does **not** delete it: a timeout after the api committed is indistinguishable
+  from one before it, so that file may be the only copy of the private half of a
+  key that is already registered. Rerun the installer, or finish it by hand if
+  you know the registration id (`brabo-runner device-key finish --id <id>`). The
+  next `device-key create` names it and replaces it.
 
-- **O passo da conta disse que a instalação já tem um usuário.** É um
-  `409`, e é o desfecho **esperado**, não uma falha — uma segunda execução, ou uma
-  migração ([RN-530](business-rules/infra.md#rn-530)) cujo restore trouxe os
-  usuários de volta. Entre com a conta que existe. Os passos da chave de máquina e do serviço
-  são pulados nesse caso por desenho: cunhar uma credencial durável para
-  alguém que não a pediu nesta execução não cabe ao instalador.
+- **The account step said the installation already has a user.** That is a
+  `409`, and it is the **expected** outcome, not a failure — a second run, or a
+  migration ([RN-530](business-rules/infra.md#rn-530)) whose restore brought the
+  users back. Log in with the account that exists. The machine-key and service
+  steps are skipped in that case by design: minting a durable credential for
+  someone who did not ask for it in this run is not the installer's call.
 
-- **A senha foi recusada.** A política é a do domínio, a mesma que o
-  registro usa, e só se sabe dela depois do POST — então o instalador pergunta
-  de novo, até três vezes, e transforma um teto esgotado numa linha pendente
-  em vez de abortar uma instalação que já está de pé. Ele nunca escreve a
-  senha em lugar nenhum: nem no `.env`, nem no marcador, nem num log. Só o
-  **e-mail** vai para o marcador (`ownerEmail`, `schemaVersion: 3`).
+- **The password was refused.** The policy is the domain one, the same
+  registration uses, and it is only known after the POST — so the installer asks
+  again, up to three times, and turns an exhausted ceiling into a pending line
+  rather than aborting an installation that is already up. It never writes the
+  password anywhere: not the `.env`, not the marker, not a log. Only the
+  **e-mail** goes into the marker (`ownerEmail`, `schemaVersion: 3`).
 
-- **Sem TTY.** O instalador informa e sai com **0** antes de escrever qualquer coisa.
-  Rode-o de um terminal, como arquivo baixado —
-  `curl -fsSLO …/install.sh && bash install.sh` — nunca `curl … | sh` (o
-  download vira o stdin do processo e mata toda pergunta) e nunca
-  `sh -c "$(curl …)"`, que não consegue verificar o próprio hash. Os dois são recusados pelo
-  nome; veja [Instalando](#instalando).
+- **No TTY.** The installer reports and exits **0** before writing anything.
+  Run it from a terminal, as a downloaded file —
+  `curl -fsSLO …/install.sh && bash install.sh` — never `curl … | sh` (the
+  download becomes the process's stdin and kills every prompt) and never
+  `sh -c "$(curl …)"`, which cannot verify its own hash. Both are refused by
+  name; see [Installing](#instalando).
 
-- **O agente está de pé mas não atende nada.** É o estado normal de uma instalação
-  nova: ele espera e consulta de novo até o primeiro projeto no modo `runner` existir
-  ([RN-550](business-rules/runner.md#rn-550)). Veja
-  [O agente de máquina](#agente-de-maquina).
+- **The agent is up but serving nothing.** That is the normal state of a fresh
+  install: it waits and re-queries until the first `runner`-mode project exists
+  ([RN-550](business-rules/runner.md#rn-550)). See
+  [The machine agent](#agente-de-maquina).
 
-### A pasta do projeto nunca aparece na máquina do usuário {#pasta-do-projeto-nunca-aparece}
+### The project folder never appears on the user's machine {#pasta-do-projeto-nunca-aparece}
 
-**Sintoma:** esperava-se que uma pasta de projeto aparecesse sob a base do runner
-e ela não apareceu. O log do engine tem uma linha começando com
-`workspace_create: o projeto <id> não criou pasta —`, e a pasta está
-ausente.
+**Symptom:** a project folder was expected to show up under the runner's base
+and it didn't. The engine log has a line starting with
+`workspace_create: o projeto <id> não criou pasta —`, and the folder is
+missing.
 
-A mensagem nomeia qual das duas pré-condições falhou
+The message names which of the two pre-conditions failed
 ([RN-532](business-rules/runner.md#rn-532),
-[ADR 0151](adr/0151-base-consentida-no-runner.md) pontos 3 a 6), e elas são
-as únicas duas — **nenhum container é exigido**, deliberadamente: exigir um seria
-circular, já que um projeto `runner` só chega a um container `running` registrado
-depois que o runner o sobe sobre a própria pasta que esta mensagem
-existe para criar.
+[ADR 0151](adr/0151-base-consentida-no-runner.md) points 3 to 6), and they are
+the only two — **no container is required**, deliberately: requiring one would
+be circular, since a `runner` project only reaches a registered `running`
+container after the runner brings it up over the very folder this message
+exists to create.
 
-- **`nenhum brabo-runner está conectado a este projeto agora`** — inicie o
-  agente para aquele projeto; veja [a base acima](#base-do-runner) para as flags.
-- **`não declarou a capacidade `workspace` no join`** — o binário conectado
-  ou é anterior a esta versão, ou está rodando **sem base consentida**.
-  As duas correções estão na seção anterior: rode o instalador, ou inicie o
-  runner com `--base`. A recusa é nomeada de propósito porque as duas causas
-  têm correções diferentes; o join em si NÃO é recusado, então o runner continua
-  atendendo o projeto dele normalmente.
-- **`o brabo-runner recusou criar a pasta`** — a mensagem leva o
-  motivo do próprio runner: `segmento` (o segmento escapou da base — a guarda
-  recusou, nada foi criado), `nao-e-pasta` (o alvo já existe como
-  arquivo; este CLI nunca sobrescreve um), `mkdir` (permissão ou disco) ou `git`
-  (o `git init`/clone falhou — a pasta EXISTE e nenhum plano B foi
-  tentado, de propósito).
-- **`não respondeu ... a tempo`** — um clone grande pode passar do teto.
-  Confira a máquina do runner; nada fica escrito pela metade do lado do servidor,
-  porque a escrita só acontece por `workspace_confirm`.
+- **`nenhum brabo-runner está conectado a este projeto agora`** — start the
+  agent for that project; see [the base above](#base-do-runner) for the flags.
+- **`não declarou a capacidade `workspace` no join`** — the connected binary
+  either predates this version, or is running **without a consented base**.
+  Both fixes are in the previous section: run the installer, or start the
+  runner with `--base`. The refusal is named on purpose because the two causes
+  have different fixes; the join itself is NOT refused, so the runner keeps
+  serving its project normally.
+- **`o brabo-runner recusou criar a pasta`** — the message carries the
+  runner's own reason: `segmento` (the segment escaped the base — the guard
+  refused, nothing was created), `nao-e-pasta` (the target already exists as a
+  file; this CLI never overwrites one), `mkdir` (permission or disk) or `git`
+  (the `git init`/clone failed — the folder DOES exist and no plan B was
+  attempted, on purpose).
+- **`não respondeu ... a tempo`** — a large clone can exceed the ceiling.
+  Check the runner's machine; nothing is left half-written on the server side,
+  because the write only happens through `workspace_confirm`.
 
-Uma pasta que já existe como repositório git é **sucesso**, não
-erro: a operação é idempotente e informa `ja-era-repositorio` no
-log do runner.
+A folder that already exists as a git repository is a **success**, not an
+error: the operation is idempotent and reports `ja-era-repositorio` in the
+runner's log.
 
-### Clone autenticado no modo Runner é recusado enquanto o container está de pé {#credencial-nao-atravessa-o-container}
+### Authenticated clone in Runner mode is refused while the container is up {#credencial-nao-atravessa-o-container}
 
-**Sintoma:** um dev agent num projeto `runner` fica bloqueado preparando o
-worktree, e o diagnóstico diz que a credencial não pôde ser entregue, nomeando
-`credencial-nao-atravessa-o-container`. A origem da tarefa bloqueada é
-`politica`, não `codigo`.
+**Symptom:** a dev agent in a `runner` project is blocked preparing its
+worktree, and the diagnosis says the credential could not be delivered, naming
+`credencial-nao-atravessa-o-container`. The blocked task's origin is
+`politica`, not `codigo`.
 
-**Isto não é um bug a caçar, e é exatamente isso que a origem está dizendo
-a você** ([RN-558](business-rules/runner.md#rn-558)). A credencial de um remoto
-autenticado (`ADR 0056`) só consegue viajar no campo `env` da mensagem `exec`,
-e esse campo vale só para o caminho do **host**: a porta do Docker do produto não tem
-campo `env`, deliberadamente ([ADR 0130](adr/0130-broker-de-container.md), sem
-`-e` livre). Quando o runner subiu o container do projeto, ele roteia
-todo comando para dentro dele — então a credencial não tem para onde ir.
+**This is not a bug to chase, and that is exactly what the origin is telling
+you** ([RN-558](business-rules/runner.md#rn-558)). The credential for an authenticated
+remote (`ADR 0056`) can only travel in the `env` field of the `exec` message,
+and that field applies to the **host** path only: the product's Docker port has
+no `env` field, deliberately ([ADR 0130](adr/0130-broker-de-container.md), no
+free `-e`). When the runner has brought the project's container up, it routes
+every command into it — so the credential has nowhere to go.
 
-Antes da RN-558 o comando rodava assim mesmo, com as variáveis vazias, e você via uma
-falha de autenticação comum. Agora ele é recusado antes de executar, e nada
-roda. A recusa nunca imprime nomes nem valores de variáveis, só a contagem.
+Before RN-558 the command ran anyway, with the variables empty, and you saw a
+plain authentication failure. Now it is refused before executing, and nothing
+runs. The refusal never prints variable names or values, only the count.
 
-**Desde o [ADR 0193](adr/0193-git-credenciado-no-host-do-runner.md)
-([RN-676](business-rules/runner.md#rn-676)) esta recusa não acontece mais no
-caminho comum:** o engine marca o `fetch` autenticado (`gitCredenciado`)
-e um runner atual o roda no **host** mesmo com o container de pé — a
-mesma pasta, montada em `/work`. Se você ainda a vê, o
-`brabo-runner` conectado é mais velho que essa mudança e não lê a marca.
+**Since [ADR 0193](adr/0193-git-credenciado-no-host-do-runner.md)
+([RN-676](business-rules/runner.md#rn-676)) this refusal no longer happens on the
+common path:** the engine marks the authenticated `fetch` (`gitCredenciado`)
+and a current runner runs it on the **host** even with the container up — the
+same folder, mounted at `/work`. If you still see it, the connected
+`brabo-runner` is older than that change and does not read the mark.
 
-**O que fazer:**
+**What to do:**
 
-1. Atualize o `brabo-runner` na máquina do usuário e reinicie-o (ou o
-   serviço dele). Essa é a correção.
-2. Se não dá para atualizar agora: pare o container do projeto (a
-   página `/containers`, "Parar") e deixe o worktree se materializar — no caminho do host
-   a credencial é entregue normalmente, e o `fetch` inicial
-   dá certo. Depois suba o container de novo; o clone é idempotente e não é
-   repetido.
+1. Update the `brabo-runner` on the user's machine and restart it (or its
+   service). That is the fix.
+2. If you cannot update right now: stop the project's container (the
+   `/containers` page, "Parar") and let the worktree materialise — on the host
+   path the credential is delivered normally, and the initial `fetch`
+   succeeds. Then bring the container back up; the clone is idempotent and is
+   not repeated.
 
-Um repositório **local** (sem token) não é afetado, e nem os projetos `container` e
-`mounted` — eles nunca passam por este caminho. Nem o
-`workspace_create`, que roda no host.
+A **local** repository (no token) is unaffected, and so are `container` and
+`mounted` projects — they never go through this path. So is
+`workspace_create`, which runs on the host.
 
-**O que segue aberto, declarado:** a credencial continua não atravessando o
-`docker exec`. Fechar isso significa decidir como uma operação com credencial fala
-com um `docker exec` sem campo `env`, e toda opção conhecida toca a
-fronteira de contenção — um ADR, não uma correção de passagem.
+**What is still open, declared:** the credential continues not to cross the
+`docker exec`. Closing that means deciding how a credentialed operation talks
+to a `docker exec` with no `env` field, and every known option touches the
+containment boundary — an ADR, not a fix in passing.
 
-### Os containers de dev escrevem como o seu usuário, não como root {#dev-containers-nao-root}
+### Dev containers write as your user, not root {#dev-containers-nao-root}
 
-**Sintoma:** algo que o container de dev `api`, `web` ou `engine` escreveu num
-bind mount — `apps/api/dist`, `node_modules`, um arquivo que um agente gerou
-dentro de um projeto no modo de execução `mounted` — pertence a `root` no seu
-disco, e editá-lo ou apagá-lo sem `sudo` falha.
+**Symptom:** something the `api`, `web` or `engine` dev container wrote to a
+bind mount — `apps/api/dist`, `node_modules`, a file an agent generated
+inside a project in `mounted` execution mode — is owned by `root` on your
+disk, and editing or deleting it without `sudo` fails.
 
-Isso era esperado: as imagens de dev (`docker/api/Dockerfile`,
-`docker/web/Dockerfile`, `docker/engine/Dockerfile` — ao contrário do `Dockerfile.prod`,
-já não-root desde o [ADR 0024](adr/0024-fase5-imagens-producao-ci.md)) não tinham
-diretiva `USER` e rodavam como root. Agora elas rodam com o **mesmo UID/GID do
-seu usuário do host**, via os build args `DEV_UID`/`DEV_GID`
-([Configuração](reference/configuration.md#dev-container-user-build-time)),
-então essa classe de problema não deveria voltar.
+This used to be expected: the dev images (`docker/api/Dockerfile`,
+`docker/web/Dockerfile`, `docker/engine/Dockerfile` — unlike `Dockerfile.prod`,
+already non-root since [ADR 0024](adr/0024-fase5-imagens-producao-ci.md)) had
+no `USER` directive and ran as root. They now run as the **same UID/GID as
+your host user**, via `DEV_UID`/`DEV_GID` build args
+([Configuration](reference/configuration.md#dev-container-user-build-time)),
+so this class of problem shouldn't recur.
 
-**Se você ainda está vendo isso:**
+**If you're still seeing it:**
 
-1. Confirme o seu par com `id -u`/`id -g`. Se não for `1000`/`1000`, defina
-   `DEV_UID`/`DEV_GID` no `.env` (veja `.env.example`) e reconstrua:
+1. Confirm your pair with `id -u`/`id -g`. If it isn't `1000`/`1000`, set
+   `DEV_UID`/`DEV_GID` in `.env` (see `.env.example`) and rebuild:
    `docker compose -f docker/docker-compose.yml build api web engine`.
-2. **Ambiente anterior a esta correção.** Os volumes nomeados
+2. **Environment that predates this fix.** The named volumes
    (`*_node_modules`, `engine_build`, `engine_deps`, `engine_mix`,
-   `engine_hex`) ainda guardam conteúdo escrito pelos containers antigos como root — um
-   volume nomeado novinho herda o dono certo na primeira montagem, mas um
-   existente não é corrigido retroativamente. Zere-o uma vez, ou
-   apagando os volumes (`docker compose -f docker/docker-compose.yml down
-   -v` — seguro para estes, são artefatos de build reproduzíveis, nunca fonte
-   da verdade) ou dando `chown` neles no lugar:
+   `engine_hex`) still hold content written by the old root containers — a
+   brand-new named volume inherits the right owner on first mount, but an
+   existing one doesn't get fixed retroactively. Reset it once, either by
+   dropping the volumes (`docker compose -f docker/docker-compose.yml down
+   -v` — safe for these, they're reproducible build artifacts, never source
+   of truth) or by `chown`-ing them in place:
    ```bash
    docker run --rm -v brabo-dev_api_app_node_modules:/v alpine chown -R "$(id -u):$(id -g)" /v
-   # repita para os outros volumes node_modules/_build/deps/.mix/.hex
+   # repeat for the other node_modules/_build/deps/.mix/.hex volumes
    ```
-   **Volumes novinhos** (um primeiro clone, ou uma máquina que só rodou o
-   instalador, que não define nenhum destes volumes) falhavam do outro jeito:
-   `api` e `web` saíam com `EACCES: permission denied, mkdir
-   '/workspace/node_modules/.pnpm'`, porque um volume novo herda o dono
-   do caminho **na imagem** e o caminho não existia lá, então ele
-   nascia `root:root` (AT-172). `docker/api/Dockerfile` e `docker/web/Dockerfile`
-   agora criam e dão `chown` nos três pontos de montagem de `node_modules` antes do `USER`.
-   Os pontos de montagem **dentro do bind mount no seu disco** são uma metade
-   separada: o Docker cria um ausente no host como `root` (ele deixou
-   `packages/shared/node_modules` com dono root no checkout), e nenhuma imagem consegue
-   mudar isso. `pnpm dev` roda `scripts/dev/preflight.mjs`, que os cria
-   como você antes; `docker compose up` rodado à mão o pula, então rode
-   `pnpm dev:preflight` uma vez antes do seu primeiro `up` à mão.
-3. Para um arquivo já escrito por um agente numa pasta de projeto no modo **`mounted`**
-   no host, a correção é o mesmo `sudo chown -R $USER <pasta>`
-   que esta seção prescrevia para o repositório inteiro — agora é pontual
-   para arquivos preexistentes, não o contorno permanente.
+   **Brand-new volumes** (a first clone, or a machine that only ran the
+   installer, which defines none of these volumes) used to fail the other way:
+   `api` and `web` exited with `EACCES: permission denied, mkdir
+   '/workspace/node_modules/.pnpm'`, because a new volume inherits its owner
+   from the path **in the image** and the path did not exist there, so it was
+   born `root:root` (AT-172). `docker/api/Dockerfile` and `docker/web/Dockerfile`
+   now create and `chown` the three `node_modules` mount points before `USER`.
+   The mount points **inside the bind mount on your disk** are a separate
+   half: Docker creates a missing one on the host as `root` (it left
+   `packages/shared/node_modules` root-owned in the checkout), and no image can
+   change that. `pnpm dev` runs `scripts/dev/preflight.mjs`, which creates them
+   as you first; `docker compose up` run by hand skips it, so run
+   `pnpm dev:preflight` once before your first hand-run `up`.
+3. For a file already written by an agent into a **`mounted`**-mode project
+   folder on the host, the fix is the same `sudo chown -R $USER <folder>`
+   this section used to prescribe for the whole repo — it's now a one-off
+   for pre-existing files, not the standing workaround.
 
-4. **Os dois volumes de DADOS são outro caso, e `down -v` NÃO é seguro para
-   eles.** `/data/git-repos` e `/data/project-workspaces` são montados em
-   `api` e `engine` como volumes nomeados. Um volume nomeado nasce com o dono
-   do que existir naquele caminho **na imagem** — e quando o caminho não
-   existe, ele nasce `root`, deixando o processo não-root de fora. As imagens de dev
-   só começaram a criá-los e dar `chown` antes do `USER` recentemente; as
-   imagens de produção sempre fizeram. O sintoma não é um arquivo que você não consegue editar no
-   seu disco: é o `git init --bare` do `LocalGitProvider` morrendo com
-   `permission denied: /data/git-repos/<slug>.git`, e o
-   `permissions.json` de cada projeto sem onde ser escrito — ou seja, **provisionar
-   um repositório é impossível**.
+4. **The two DATA volumes are a different case, and `down -v` is NOT safe for
+   them.** `/data/git-repos` and `/data/project-workspaces` are mounted into
+   `api` and `engine` as named volumes. A named volume is born owned by
+   whatever exists at that path **in the image** — and when the path doesn't
+   exist, it is born `root`, leaving the non-root process out. The dev images
+   only started creating and `chown`-ing them before `USER` recently; the
+   production images always did. The symptom is not a file you can't edit on
+   your disk: it is `git init --bare` of the `LocalGitProvider` dying with
+   `permission denied: /data/git-repos/<slug>.git`, and each project's
+   `permissions.json` having nowhere to be written — that is, **provisioning
+   a repository is impossible**.
 
-   Ao contrário dos volumes de artefato de build acima, estes dois guardam fonte da verdade
-   (bare repos locais, worktrees por projeto), então apagá-los perde dados.
-   Corrija-os no lugar:
+   Unlike the build-artifact volumes above, these two hold source of truth
+   (local bare repos, per-project worktrees), so dropping them loses data.
+   Fix them in place:
    ```bash
    docker run --rm -v brabo-dev_git_local_repos:/v alpine chown -R "$(id -u):$(id -g)" /v
    docker run --rm -v brabo-dev_project_workspaces:/v alpine chown -R "$(id -u):$(id -g)" /v
    ```
-   Um volume criado depois da correção já sobe com o dono certo. Quando
-   você acrescentar um volume nomeado **novo**, crie o diretório na imagem:
-   esquecer não é erro de build, é um `permission denied` em runtime.
+   A volume created after the fix already comes up with the right owner. When
+   you add a **new** named volume, create the directory in the image:
+   forgetting it is not a build error, it is a runtime `permission denied`.
 
-### Reset total do ambiente de dev {#reset-total}
+### Total reset of the dev environment {#reset-total}
 
 ```bash
 bash scripts/dev/reset-total.sh      # ou: pnpm bootstrap → Docker › Reset total
 ```
 
-Reconstrói as imagens, **apaga o banco**, migra e semeia de novo — as
-credenciais de provider que já estão no `.env` (`<PROVIDER>_TEST_KEY`) voltam
-ativas no owner, então você não as digita de novo na interface toda vez. Ele
-**não** remove nem recria volume nenhum — `node_modules`, `_build`/`deps`,
-`pgdata` (só os schemas dentro dele são apagados), `neo4j`, os bare repos
-locais e os workspaces dos projetos sobrevivem todos — e ele **diz isso** no começo
-e ao lado da linha de sucesso (AT-181). Essa é a escolha conservadora de
-propósito: apagar volumes jogaria fora workspaces e repositórios locais
-que ninguém pediu para perder.
+Rebuilds the images, **wipes the database**, migrates and seeds again — the
+provider credentials already in `.env` (`<PROVIDER>_TEST_KEY`) come back
+active on the owner, so you don't retype them in the UI every time. It does
+**not** remove or recreate any volume — `node_modules`, `_build`/`deps`,
+`pgdata` (only the schemas inside it are dropped), `neo4j`, the local bare
+repos and the project workspaces all survive — and it **says so** at the start
+and next to the success line (AT-181). That is the conservative choice on
+purpose: wiping volumes would throw away workspaces and local repositories
+nobody asked to lose.
 
-O preço é que **um reset nunca reproduz um primeiro clone.** Um defeito que
-só aparece com um volume que ainda não existe — como o volume `node_modules`
-que nascia `root` (AT-172) — passa por todo reset sem ser visto. Para
-exercitar esse caminho, use um **projeto compose descartável**, nunca este script e
-nunca o seu projeto `brabo-dev` (nem `brabo`, o nome da instalação):
+The price is that **a reset never reproduces a first clone.** A defect that
+only shows up with a volume that does not exist yet — like the `node_modules`
+volume that used to be born `root` (AT-172) — passes every reset unseen. To
+exercise that path, use a **throwaway compose project**, never this script and
+never your `brabo-dev` project (nor `brabo`, the installation's name):
 
 ```bash
 docker compose -p brabo-primeiro-clone -f docker/docker-compose.yml build engine
@@ -889,91 +890,91 @@ docker compose -p brabo-primeiro-clone -f docker/docker-compose.yml \
 docker compose -p brabo-primeiro-clone -f docker/docker-compose.yml down -v
 ```
 
-O `run` cria os volumes daquele projeto do zero e não publica porta, então
-não colide com a sua stack rodando. Medido assim para o engine em
-2026-09-25 (AT-182): `_build`, `deps`, `.mix` e `.hex` nascem com dono
-`DEV_UID:DEV_GID`, e `mix local.hex`/`local.rebar`/`deps.get` passam como o
-usuário não-root. Duas coisas ele deixa para trás: os pontos de montagem vazios
-`_build`/`deps` que cria **dentro do seu checkout**, com dono `root` (remova-os
-com o one-liner `alpine` da tabela abaixo), e a imagem que construiu.
+`run` creates that project's volumes from scratch and publishes no port, so it
+does not collide with your running stack. Measured this way for the engine on
+2026-09-25 (AT-182): `_build`, `deps`, `.mix` and `.hex` are born owned by
+`DEV_UID:DEV_GID`, and `mix local.hex`/`local.rebar`/`deps.get` pass as the
+non-root user. Two things it does leave behind: the empty `_build`/`deps`
+mount points it creates **inside your checkout**, owned by `root` (remove them
+with the `alpine` one-liner in the table below), and the image it built.
 
-**A ordem é a questão, e não é negociável:**
+**The order is the point, and it is not negotiable:**
 
-0. **A guarda da instalação** ([ADR 0170](adr/0170-compose-de-dev-brabo-dev.md)),
-   antes do preflight: se esta máquina tem qualquer container do compose de
-   INSTALAÇÃO (o rótulo `com.docker.compose.project.config_files` dele
-   aponta para `docker-compose.install.yml`), ou se o compose de dev resolveria
-   para o projeto `brabo`, ele recusa com `RESET NÃO COMEÇOU`, nomeando o que
-   encontrou. Até o ADR 0170 dev e instalação eram o mesmo projeto Docker, e
-   o `DROP SCHEMA` deste script teria caído no banco da instalação.
-1. `preflight`, depois os **pré-requisitos de host** (AT-203), depois `build` — a
-   parte lenta, feita enquanto o seu ambiente ainda está de pé. As migrations e o
-   seed rodam no HOST, com o `apps/engine/deps`/`_build` e o
-   `node_modules` do checkout — não os volumes dos containers, e nada que o build da imagem
-   atualize. Então, antes de qualquer efeito, o script roda `mix deps.get` e
-   `mix compile` em `apps/engine`, confere que `drizzle-kit` e `ts-node`
-   resolvem, e confere a senha do Neo4j contra a do volume. Medido em
-   2026-09-26: com uma dependência nova no `mix.lock` (mint 1.10.1, #613),
-   `pnpm engine:migrate` morria com `lock mismatch` **depois** do
-   `DROP SCHEMA`, e "rodar de novo" falhava do mesmo jeito. Uma recusa aqui diz
-   `RESET NÃO COMEÇOU … Nada foi parado nem apagado`: o banco está intacto.
-2. **`stop api engine`.** Esses dois, e nenhum outro: são os que mantêm
-   conexão viva com o Postgres do compose (o pool do Drizzle da api sobre
-   `public`/`drizzle`, o Ecto/Oban do engine sobre `engine`). `web` é um servidor
-   Vite e não fala com banco nenhum, `neo4j` é outro banco que este reset
-   não toca, e o `broker` só fala HTTP com a api.
+0. **The installation guard** ([ADR 0170](adr/0170-compose-de-dev-brabo-dev.md)),
+   before the preflight: if this machine has any container from the
+   INSTALLATION compose (its `com.docker.compose.project.config_files` label
+   points at `docker-compose.install.yml`), or if the dev compose would resolve
+   to the project `brabo`, it refuses with `RESET NÃO COMEÇOU`, naming what it
+   found. Until ADR 0170 dev and installation were the same Docker project, and
+   this script's `DROP SCHEMA` would have landed on the installation's database.
+1. `preflight`, then the **host prerequisites** (AT-203), then `build` — the
+   slow part, done while your environment is still up. The migrations and the
+   seed run on the HOST, with the checkout's `apps/engine/deps`/`_build` and
+   `node_modules` — not the containers' volumes, and nothing the image build
+   refreshes. So before any effect the script runs `mix deps.get` and
+   `mix compile` in `apps/engine`, checks that `drizzle-kit` and `ts-node`
+   resolve, and checks the Neo4j password against the volume's. Measured on
+   2026-09-26: with a new dependency in `mix.lock` (mint 1.10.1, #613),
+   `pnpm engine:migrate` died with `lock mismatch` **after** the
+   `DROP SCHEMA`, and "run it again" failed the same way. A refusal here says
+   `RESET NÃO COMEÇOU … Nada foi parado nem apagado`: the database is intact.
+2. **`stop api engine`.** These two, and no others: they are the ones holding
+   a live connection to the compose Postgres (the api's Drizzle pool over
+   `public`/`drizzle`, the engine's Ecto/Oban over `engine`). `web` is a Vite
+   server and talks to no database, `neo4j` is a different database this reset
+   doesn't touch, and the `broker` only speaks HTTP to the api.
 3. `up postgres`, `DROP SCHEMA`, `migrate`.
-4. `up --wait` de tudo, depois `seed`.
-5. Pergunta `/health` à api e ao engine e `/` ao web, imprime
-   `docker compose ps`, e só então conclui.
+4. `up --wait` for everything, then `seed`.
+5. Ask `/health` of the api and the engine and `/` of the web, print
+   `docker compose ps`, and only then conclude.
 
-Apagar os schemas **por baixo de processos vivos** era o que o quebrava:
-o engine morre dentro do `DROP SCHEMA engine CASCADE`
-(`Engine.Sessions.Rehydrator` consulta `engine.session_states`, que acabou de
-sumir — `ERROR 42P01 (undefined_table)`), as migrations recriam
-tudo depois, e **nada traz um processo morto de volta**. O seed
-então falhava no passo que ativa a sessão (api → engine) com
-`ECONNREFUSED`, e o script ainda imprimia "reset completo" — um `echo`
-fixo no fim de um script que nunca perguntava nada sobre o que tinha
-acabado de fazer.
+Dropping the schemas **underneath live processes** is what used to break it:
+the engine dies inside the `DROP SCHEMA engine CASCADE`
+(`Engine.Sessions.Rehydrator` queries `engine.session_states`, which just
+vanished — `ERROR 42P01 (undefined_table)`), the migrations recreate
+everything afterwards, and **nothing brings a dead process back**. The seed
+then failed on the step that activates the session (api → engine) with
+`ECONNREFUSED`, and the script still printed "reset completo" — a fixed
+`echo` at the end of a script that never asked anything about what it had
+just done.
 
-**Se ele parar no meio**, ele diz isso e nomeia o passo
-(`RESET INCOMPLETO — parou em: <passo>`), e a resposta é **rodá-lo
-de novo**: ele apaga os schemas toda vez, então a segunda execução começa da
-mesma lousa limpa que a primeira. Rodar só `pnpm --filter api seed` para
-recuperar também é seguro agora — o seed é idempotente e reaproveita o workspace,
-o projeto e a sessão de demonstração em vez de duplicá-los (e **não**
-reacrescenta os 5 eventos da sessão).
+**If it stops in the middle**, it says so and names the step
+(`RESET INCOMPLETO — parou em: <passo>`), and the answer is to **run it
+again**: it drops the schemas every time, so the second run starts from the
+same clean slate as the first. Running only `pnpm --filter api seed` to
+recover is also safe now — the seed is idempotent and reuses the demo
+workspace, project and session instead of duplicating them (and does **not**
+re-append the session's 5 events).
 
-| o que você vê | o que é |
+| what you see | what it is |
 |---|---|
-| `RESET INCOMPLETO — parou em: migrations (api + engine)` com `permission denied` sob `apps/engine/_build` | `pnpm engine:migrate` roda no HOST, e o Docker cria um ponto de bind-mount ausente como `root`. Corrija no lugar: `docker run --rm -v "$PWD/apps/engine:/x" alpine chown -R "$(id -u):$(id -g)" /x/_build` |
-| `RESET INCOMPLETO … banco apagado, migrado e semeado, mas estes serviços não responderam: <lista>` | o banco está bem; um processo não voltou. `docker compose -f docker/docker-compose.yml --env-file .env logs <serviço>` diz por quê. Nada aqui exige rodar o reset de novo |
-| `RESET NÃO COMEÇOU — recusado em: guarda da instalação na máquina (ADR 0170)` | nada foi tocado. Há uma instalação do Brabo nesta máquina (os containers são listados), ou `COMPOSE_PROJECT_NAME=brabo` está definida. Derrube a instalação **sem** `-v` (a recusa imprime o `docker compose -f <pasta>/docker/docker-compose.install.yml --env-file <pasta>/.env down` exato — os volumes e os dados dela ficam) ou tire a variável; veja [Levando um ambiente de dev para brabo-dev](#dev-para-brabo-dev) |
-| `RESET NÃO COMEÇOU — recusado em: pré-requisitos de host das migrations` | nada foi tocado. `mix deps.get`/`mix compile` falhou em `apps/engine` no host (leia a saída acima dela), ou `drizzle-kit`/`ts-node` não resolvem — `pnpm install --frozen-lockfile` |
-| `O NEO4J RECUSA A SENHA DO .env`, antes de qualquer efeito ou depois de `container brabo-dev-neo4j-1 is unhealthy` | o Neo4j guarda a senha no volume `neo4j_data` quando ele é **criado** e ignora `NEO4J_AUTH` depois, enquanto o healthcheck usa a do `.env`. Medido em 2026-09-26: um volume de 13/09, o container recriado com a senha default, healthcheck `The client is unauthorized due to authentication failure`. Ponha a senha antiga de volta em `NEO4J_PASSWORD`, ou mude-a dentro do Neo4j (`ALTER CURRENT USER SET PASSWORD FROM … TO …`, o comando é impresso), ou — o grafo é derivado, `pnpm --filter api grafo:reprojetar` o reconstrói — remova o volume você mesmo. O script nunca o remove (AT-181) |
-| o `up --wait` estoura o tempo | `BRABO_RESET_WAIT_TIMEOUT` (segundos, default 600). Um primeiro boot com volumes `node_modules`/`_build` vazios roda `pnpm install`/`mix deps.get` antes de o processo escutar |
+| `RESET INCOMPLETO — parou em: migrations (api + engine)` with `permission denied` under `apps/engine/_build` | `pnpm engine:migrate` runs on the HOST, and Docker creates a missing bind-mount point as `root`. Fix it in place: `docker run --rm -v "$PWD/apps/engine:/x" alpine chown -R "$(id -u):$(id -g)" /x/_build` |
+| `RESET INCOMPLETO … banco apagado, migrado e semeado, mas estes serviços não responderam: <lista>` | the database is fine; a process didn't come back. `docker compose -f docker/docker-compose.yml --env-file .env logs <serviço>` says why. Nothing here needs the reset to run again |
+| `RESET NÃO COMEÇOU — recusado em: guarda da instalação na máquina (ADR 0170)` | nothing was touched. There is an installation of Brabo on this machine (the containers are listed), or `COMPOSE_PROJECT_NAME=brabo` is set. Bring the installation down **without** `-v` (the refusal prints the exact `docker compose -f <folder>/docker/docker-compose.install.yml --env-file <folder>/.env down` — its volumes and data stay) or unset the variable; see [Moving a dev environment to brabo-dev](#dev-para-brabo-dev) |
+| `RESET NÃO COMEÇOU — recusado em: pré-requisitos de host das migrations` | nothing was touched. `mix deps.get`/`mix compile` failed in `apps/engine` on the host (read the output above it), or `drizzle-kit`/`ts-node` don't resolve — `pnpm install --frozen-lockfile` |
+| `O NEO4J RECUSA A SENHA DO .env`, before any effect or after `container brabo-dev-neo4j-1 is unhealthy` | Neo4j stores the password in the `neo4j_data` volume when it is **created** and ignores `NEO4J_AUTH` afterwards, while the healthcheck uses the one in `.env`. Measured on 2026-09-26: a volume from 09/13, the container recreated with the default password, healthcheck `The client is unauthorized due to authentication failure`. Put the old password back in `NEO4J_PASSWORD`, or change it inside Neo4j (`ALTER CURRENT USER SET PASSWORD FROM … TO …`, the command is printed), or — the graph is derived, `pnpm --filter api grafo:reprojetar` rebuilds it — remove the volume yourself. The script never removes it (AT-181) |
+| the `up --wait` times out | `BRABO_RESET_WAIT_TIMEOUT` (seconds, default 600). A first boot with empty `node_modules`/`_build` volumes runs `pnpm install`/`mix deps.get` before the process listens |
 
-### Levando um ambiente de dev para brabo-dev {#dev-para-brabo-dev}
+### Moving a dev environment to brabo-dev {#dev-para-brabo-dev}
 
-Desde o [ADR 0170](adr/0170-compose-de-dev-brabo-dev.md) o compose de dev
-(`docker/docker-compose.yml`) é o projeto Docker **`brabo-dev`**: containers
+Since [ADR 0170](adr/0170-compose-de-dev-brabo-dev.md) the dev compose
+(`docker/docker-compose.yml`) is the Docker project **`brabo-dev`**: containers
 `brabo-dev-api-1`, `brabo-dev-postgres-1`…, volumes `brabo-dev_pgdata`,
-`brabo-dev_neo4j_data`…, rede `brabo-dev_default`. O compose de instalação
-(`docker-compose.install.yml`) continua **`brabo`**, e as instalações
-já existentes também. Antes, os dois eram `brabo` — um projeto Docker: subir um
-por cima do outro recriava os containers e os ligava ao banco do outro
-(medido em 2026-09-19: o banco de uma instalação recebeu uma migration de
-dev), e o `reset-total.sh` teria apagado os schemas da instalação.
+`brabo-dev_neo4j_data`…, network `brabo-dev_default`. The installation compose
+(`docker-compose.install.yml`) stays **`brabo`**, and so do the installations
+already out there. Before, both were `brabo` — one Docker project: bringing one
+up over the other recreated the containers and bound them to the other's
+database (measured on 2026-09-19: an installation's database received a dev
+migration), and `reset-total.sh` would have dropped the installation's schemas.
 
-**O que muda para você se já desenvolvia aqui:** o próximo `pnpm dev`
-cria volumes `brabo-dev_*` NOVOS e vazios. Os seus dados ficam onde estavam, nos
-volumes `brabo_*`, intocados — nada nesta mudança remove um volume. O
-preflight avisa enquanto os vê (ele nunca recusa por isso, e nunca
-apaga). Escolha um dos dois caminhos.
+**What changes for you if you already developed here:** the next `pnpm dev`
+creates NEW, empty `brabo-dev_*` volumes. Your data stays where it was, in the
+`brabo_*` volumes, untouched — nothing in this change removes a volume. The
+preflight warns while it sees them (it never refuses for this, and never
+deletes). Pick one of the two paths.
 
-**Distinguindo volumes de dev dos de uma instalação.** Os dois levam o rótulo
-`com.docker.compose.project=brabo`, então o prefixo sozinho não diz nada. O que diz:
+**Telling dev volumes from an installation's.** Both carry the label
+`com.docker.compose.project=brabo`, so the prefix alone says nothing. What does:
 
 ```bash
 docker volume ls --filter label=com.docker.compose.project=brabo \
@@ -982,22 +983,22 @@ docker ps -a --filter label=com.docker.compose.project=brabo \
   --format '{{.Names}}\t{{.Label "com.docker.compose.project.config_files"}}'
 ```
 
-- Volumes que só o compose de dev declara — `api_*_node_modules`,
+- Volumes that only the dev compose declares — `api_*_node_modules`,
   `web_*_node_modules`, `broker_*_node_modules`, `engine_build`, `engine_deps`,
-  `engine_mix`, `engine_hex` — provam que um ambiente de dev usou o nome `brabo`.
-  A instalação nunca os cria.
-- Volumes que os dois composes declaram — `pgdata`, `neo4j_data`, `neo4j_logs`,
+  `engine_mix`, `engine_hex` — prove a dev environment used the name `brabo`.
+  The installation never creates them.
+- Volumes both composes declare — `pgdata`, `neo4j_data`, `neo4j_logs`,
   `ollama_data`, `git_local_repos`, `project_workspaces`,
-  `brabo_projects_base` — são ambíguos sozinhos. Se nenhum container de uma
-  instalação existe (o segundo comando não mostra `docker-compose.install.yml`)
-  e você nunca instalou o Brabo nesta máquina, eles são os seus dados antigos de dev.
-  Se você instalou, eles podem ser da instalação (ou uma mistura, depois do
-  acidente que este ADR fecha): não os copie nem apague antes de saber.
-  `backup_local` só existe na instalação.
+  `brabo_projects_base` — are ambiguous on their own. If no container of an
+  installation exists (the second command shows no `docker-compose.install.yml`)
+  and you never installed Brabo on this machine, they are your old dev data.
+  If you did install it, they may be the installation's (or a mix, after the
+  accident this ADR closes): do not copy nor delete them before you know.
+  `backup_local` only exists in the installation.
 
-**Caminho A — levar os dados** (o banco, o grafo, os repositórios bare
-locais e os workspaces; os volumes de artefato de build não valem a
-cópia, os novos se enchem sozinhos no primeiro boot):
+**Path A — carry the data over** (the database, the graph, the local bare
+repositories and the workspaces; the build-artifact volumes are not worth
+copying, the new ones fill themselves on the first boot):
 
 ```bash
 # 1. a stack antiga para baixo, SEM -v (ela pode ainda estar rodando como `brabo`).
@@ -1016,110 +1017,110 @@ done
 pnpm dev
 ```
 
-`cp -a` mantém donos e modos, o que importa para o `pgdata` (a imagem do Postgres
-recusa um diretório de dados de que não é dona) e para os dois volumes de dados (veja
-[Os containers de dev escrevem como o seu usuário](#dev-containers-nao-root) acima). O Postgres tem de estar **parado**
-enquanto o diretório dele é copiado — é para isso que serve o passo 1.
+`cp -a` keeps owners and modes, which matters for `pgdata` (the Postgres image
+refuses a data directory it doesn't own) and for the two data volumes (see
+[Dev containers write as your user](#dev-containers-nao-root) above). Postgres must be **down**
+while its directory is copied — that is what step 1 is for.
 
-**Caminho B — começar do zero:** só rode `pnpm dev`, depois
-`bash scripts/dev/reset-total.sh` para migrar e semear o banco novo. Os
-volumes antigos ficam no disco até você removê-los.
+**Path B — start from scratch:** just run `pnpm dev`, then
+`bash scripts/dev/reset-total.sh` to migrate and seed the new database. The
+old volumes stay on disk until you remove them.
 
-**Removendo os volumes antigos, só depois de a stack nova funcionar e só os que
-você provou serem de dev** (os da instalação são dados que você perderia):
+**Removing the old volumes, only after the new stack works and only the ones
+you proved are dev** (the installation's are data you'd lose):
 
 ```bash
 docker volume rm brabo_api_root_node_modules brabo_engine_build  # …um a um, pelo nome
 ```
 
-Nenhum script faz isso por você, de propósito: `docker volume rm` do
-`brabo_pgdata` de uma instalação é o único erro aqui que não se desfaz.
+No script does this for you, on purpose: `docker volume rm` of an
+installation's `brabo_pgdata` is the one mistake here that cannot be undone.
 
 ---
 
-### Ligando o acesso rápido na instalação local (TP-01) {#acesso-rapido-local}
+### Turning on quick access on the local installation (TP-01) {#acesso-rapido-local}
 
-O acesso rápido por papel (ADR 0245, RN-984) só existe em imagem construída
-nesta máquina, nunca nas das Actions. Para a instalação local do TP-01
+Role-based quick access (ADR 0245, RN-984) only exists in an image built on
+this machine, never in the ones from Actions. For the TP-01 local installation
 (`~/brabo-v7`):
 
-1. No checkout da `dev`: `AMBIENTE=local docker buildx bake` (ou os
-   `docker build` com `--build-arg BRABO_AMBIENTE=local` na api e
-   `--build-arg VITE_BRABO_AMBIENTE=local` no web).
-2. No `.env` da instalação: `BRABO_AMBIENTE=local` e `BRABO_BIND=127.0.0.1`
-   (sem o bind, a porta fica aberta na rede e qualquer um entra como owner).
-3. Copie o `docker/docker-compose.install.yml` novo para a pasta da
-   instalação (o de lá é cópia).
-4. `docker compose up -d`. A tela de login mostra o botão "Acesso rápido"; as
-   contas `<papel>@brabo.dev` ficam num workspace próprio. A instalação precisa
-   já ter a primeira conta (sem usuário a rota responde 409).
+1. In the `dev` checkout: `AMBIENTE=local docker buildx bake` (or the
+   `docker build` commands with `--build-arg BRABO_AMBIENTE=local` on the api and
+   `--build-arg VITE_BRABO_AMBIENTE=local` on the web).
+2. In the installation's `.env`: `BRABO_AMBIENTE=local` and `BRABO_BIND=127.0.0.1`
+   (without the bind, the port is open on the network and anyone gets in as owner).
+3. Copy the new `docker/docker-compose.install.yml` into the installation
+   folder (the one there is a copy).
+4. `docker compose up -d`. The login screen shows the "Acesso rápido" button; the
+   `<role>@brabo.dev` accounts live in a workspace of their own. The installation
+   must already have its first account (with no user, the route answers 409).
 
-Para desligar: reconstrua sem `AMBIENTE` e tire `BRABO_AMBIENTE` do `.env`.
-O `install.sh` não liga o `local`.
+To turn it off: rebuild without `AMBIENTE` and remove `BRABO_AMBIENTE` from `.env`.
+`install.sh` does not turn `local` on.
 
-## Deploy local {#deploy-local}
+## Local deploy {#deploy-local}
 
-Sobe o Brabo inteiro num cluster local e o valida com um
-smoke test. Decisões no
+Brings up the whole of Brabo in a local cluster and validates it with a
+smoke test. Decisions in
 [ADR 0025](adr/0025-fase5-deploy-kubernetes-kustomize.md).
 
-### Pré-requisitos {#prerequisites}
+### Prerequisites {#prerequisites}
 
-Obrigatórios no PATH: `docker`, `kubectl`, `kustomize`, `jq`, `openssl`.
+Required on the PATH: `docker`, `kubectl`, `kustomize`, `jq`, `openssl`.
 
-`k3d` e `helm` **não** precisam estar instalados — o bootstrap os instala
-em `~/.local/bin`, numa versão fixada com checksum conferido. Garanta que
-esse diretório está no PATH.
+`k3d` and `helm` **don't** need to be installed — bootstrap installs them
+into `~/.local/bin`, at a pinned version with a checked checksum. Make sure
+that directory is on the PATH.
 
-Recursos: a stack inteira (Postgres, Prometheus, dois operators e os
-três apps) pede cerca de **4 GiB** livres.
+Resources: the full stack (Postgres, Prometheus, two operators, and the
+three apps) asks for around **4 GiB** free.
 
-### Subir {#bringing-it-up}
+### Bringing it up {#bringing-it-up}
 
 ```bash
 make deploy-local           # constrói as imagens, sobe o cluster, instala, valida
 make deploy-local-clean     # o mesmo, sem reconstruir as imagens
 ```
 
-No fim: web em <http://localhost:8088>, api em `:3000`, engine em
-`:4000` — **as mesmas portas do `docker-compose.prod.yml`**, de propósito (ADR
-0025, decisão 10). O bootstrap roda o seed, que cria
-`owner@brabo.dev` já verificado com a senha de
-`BRABO_SMOKE_PASSWORD` (default `brabo12345678`) — é com isso que você entra
-no próprio login do web.
+At the end: web at <http://localhost:8088>, api at `:3000`, engine at
+`:4000` — **the same ports as `docker-compose.prod.yml`**, on purpose (ADR
+0025, decision 10). The bootstrap runs the seed, which creates
+`owner@brabo.dev` already verified with the password from
+`BRABO_SMOKE_PASSWORD` (default `brabo12345678`) — that's what you sign in
+with in the web's own login.
 
-O seed roda **depois** dos rollouts (o último passo dele ativa uma sessão,
-o que faz a api chamar o engine), e o bootstrap só segue depois de
-**verificar que o login devolve 200**. Essa checagem é por resultado, não
-por processo, e existe porque a anterior não era:
-`wait --for=condition=Ready=false` é satisfeito por um pod que nunca chegou a
-rodar, e por isso o bootstrap anunciava "usuário do smoke pronto"
-enquanto o login devolvia 401.
+The seed runs **after** the rollouts (its last step activates a session,
+which makes the api call the engine), and the bootstrap only proceeds after
+**verifying that login returns 200**. That check is result-based, not
+process-based, and exists because the previous one wasn't:
+`wait --for=condition=Ready=false` is satisfied by a pod that never got to
+run, and because of that the bootstrap used to announce "smoke user ready"
+while login was returning 401.
 
-> **O seed é idempotente.** Rodá-lo de novo sobre um banco semeado é o
-> caso normal (`BRABO_KEEP_CLUSTER=1`): o workspace, o projeto e a sessão da
-> demonstração são encontrados e reaproveitados, nunca duplicados, e a sessão reaproveitada
-> não ganha os cinco eventos de novo (`apps/api/src/db/seed.ts`, o
-> docblock do topo). Uma segunda execução não morre mais em `workspaces_slug_unique`. O
-> bootstrap ainda decide pelo **login**, não pela fase do pod, e ainda
-> remove o pod no fim para ele não reprovar o passo 1 do `smoke.sh`, que
-> exige todo pod saudável.
+> **The seed is idempotent.** Running it again over a seeded database is the
+> normal case (`BRABO_KEEP_CLUSTER=1`): the workspace, project and session of
+> the demo are found and reused, never duplicated, and the reused session does
+> not get its five events appended again (`apps/api/src/db/seed.ts`, the
+> top docblock). A second run no longer dies on `workspaces_slug_unique`. The
+> bootstrap still decides by the **login**, not by the pod's phase, and still
+> removes the pod at the end so it doesn't fail step 1 of `smoke.sh`, which
+> requires every pod healthy.
 
-> **Isto ocupa as portas do `pnpm dev`.** Manter as portas iguais é o que
-> faz o `smoke.sh` valer para os dois modos, e o preço é que eles não
-> coexistem: com o cluster de pé, o `pnpm dev` não consegue publicar a porta da `api` e
-> **a 5173 nunca abre**. Repare que o web muda de porta entre os modos —
-> 8088 aqui, 5173 lá. Para voltar ao desenvolvimento:
+> **This uses up `pnpm dev`'s ports.** Keeping the ports the same is what
+> makes `smoke.sh` hold for both modes, and the price is that they don't
+> coexist: with the cluster up, `pnpm dev` can't publish the `api` port and
+> **5173 never opens**. Notice that the web changes port between modes —
+> 8088 here, 5173 there. To go back to development:
 >
 > ```bash
 > make k8s-down && pnpm dev
 > ```
 >
-> `pnpm dev:preflight` diz em que modo você está, sem adivinhação. Os dois
-> são tratados em
-> [Primeiros passos](getting-started.md#the-two-local-modes-dont-coexist).
+> `pnpm dev:preflight` tells you which mode you're in, no guessing. Both
+> are covered in
+> [Getting started](getting-started.md#the-two-local-modes-dont-coexist).
 
-Outros alvos:
+Other targets:
 
 ```bash
 make smoke-k8s        # só o smoke test, contra o cluster rodando
@@ -1129,50 +1130,50 @@ make k8s-logs         # últimas linhas de api, engine e web
 make k8s-down         # remove o cluster
 ```
 
-Variáveis: `BRABO_SKIP_BUILD=1` (usa as imagens do daemon),
-`BRABO_KEEP_CLUSTER=1` (reaproveita o cluster), `BRABO_CLUSTER_TOOL=kind`,
-`BRABO_SKIP_OBSERVABILITY=1` (sem Tempo, Loki, Collector, Alloy nem Grafana —
-AT-177). A última é uma recusa explícita para as provas agendadas e o
-default não muda: `make deploy-local` ainda sobe a stack inteira.
-Prometheus e prometheus-adapter ficam de qualquer jeito, porque o HPA do engine
-escala por `oban_queue_depth` pela External Metrics API que eles servem.
-Releases de helm independentes (ESO, CNPG, metrics-server, Prometheus) instalam em
-paralelo; cada uma escreve o próprio log, impresso só se falhar.
+Variables: `BRABO_SKIP_BUILD=1` (uses the daemon's images),
+`BRABO_KEEP_CLUSTER=1` (reuses the cluster), `BRABO_CLUSTER_TOOL=kind`,
+`BRABO_SKIP_OBSERVABILITY=1` (no Tempo, Loki, Collector, Alloy or Grafana —
+AT-177). The last one is an explicit opt-out for the scheduled proofs and the
+default does not change: `make deploy-local` still brings the whole stack up.
+Prometheus and the prometheus-adapter stay either way, because the engine's HPA
+scales on `oban_queue_depth` through the External Metrics API they serve.
+Independent helm releases (ESO, CNPG, metrics-server, Prometheus) install in
+parallel; each writes its own log, printed only if it fails.
 
-### Validar uma tag da esteira {#validar-tag-do-pipeline}
+### Validating a pipeline tag {#validar-tag-do-pipeline}
 
 ```bash
 make deploy-local TAG=v0.2.0-qa.1
 ```
 
-A esteira da Fase 6 **não faz deploy** — ela termina na tag. `TAG=` é como
-você vê, no cluster local, o que aquela tag carimbou: o bootstrap faz um
-checkout destacado da tag e constrói as imagens a partir daquele commit.
+Phase 6's pipeline **doesn't deploy** — it ends at the tag. `TAG=` is how
+you see, in the local cluster, what that tag stamped: bootstrap does a
+detached checkout of the tag and builds the images from that commit.
 
-Ele **recusa** rodar com árvore suja, em vez de adivinhar o que fazer
-com o seu trabalho em andamento. Ao terminar você fica num HEAD
-destacado; o comando para voltar aparece no log.
+It **refuses** to run with a dirty tree, instead of guessing what to do
+with your work in progress. When it finishes you're left in a detached
+HEAD; the command to go back appears in the log.
 
-Verificação: **nenhuma**. Nenhum workflow passa `TAG=`: o agendado
-`propriedades.yml` constrói a árvore do checkout, nunca uma tag, então o checkout
-destacado em `deploy/k8s/bootstrap.sh` (e a recusa dele com árvore suja) roda
-só quando alguém o digita. O que ele sobe depois é o mesmo bootstrap
-e smoke do [Deploy local](#deploy-local), que são provados.
+Verification: **none**. No workflow passes `TAG=`: the scheduled
+`propriedades.yml` builds the checked-out tree, never a tag, so the detached
+checkout in `deploy/k8s/bootstrap.sh` (and its refusal on a dirty tree) runs
+only when someone types it. What it brings up afterwards is the same bootstrap
+and smoke as [Local deploy](#deploy-local), which are proven.
 
-### Fazendo deploy das imagens de uma release {#imagens-de-uma-release}
+### Deploying a release's images {#imagens-de-uma-release}
 
-Desde o [ADR 0119](adr/0119-imagens-publicadas-no-ghcr-por-digest.md) toda
-tag final publica as imagens de produção no GHCR
-(`ghcr.io/viralabs-dev/brabo-{api,engine,web,backup,broker}`, públicas — nenhum
-`imagePullSecret` em lugar nenhum) e registra o que publicou, **por digest**,
-em `.release/images.json`. A quinta, o broker de containers
-([ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md)), é
-para instalações — o overlay não tem Deployment do broker, e
-`make imagens-do-release` escreve só as outras quatro.
+Since [ADR 0119](adr/0119-imagens-publicadas-no-ghcr-por-digest.md) every
+final tag publishes the production images to GHCR
+(`ghcr.io/viralabs-dev/brabo-{api,engine,web,backup,broker}`, public — no
+`imagePullSecret` anywhere) and records what it published, **by digest**,
+in `.release/images.json`. The fifth, the container broker
+([ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md)), is
+for installations — the overlay has no broker Deployment, and
+`make imagens-do-release` writes only the other four.
 
-Os overlays deste repositório mantêm `newTag: REPLACE_WITH_DIGEST`, um
-marcador. **O repositório nunca declara que release está em produção** —
-você declara, na hora do deploy:
+The overlays in this repository keep `newTag: REPLACE_WITH_DIGEST`, a
+marker. **The repository never declares which release is in production** —
+you do, at deploy time:
 
 ```bash
 # 1. pegue o registro da release de que você está fazendo deploy
@@ -1185,94 +1186,94 @@ make imagens-do-release OVERLAY=prod      # ou OVERLAY=staging
 git diff deploy/k8s/overlays/prod/kustomization.yaml
 ```
 
-Três coisas que vale saber antes de rodar:
+Three things worth knowing before you run it:
 
-- **Não commite o resultado.** `kustomize edit` faz a ida e volta do YAML: ele
-  reordena chaves e desprende os comentários. A mudança é feita para viver na
-  sua árvore de trabalho o tempo de um `kubectl apply -k`, e não mais.
-- **`digest:` substitui `newTag:`**, que é a questão — uma tag mutável em
-  produção quer dizer nenhum rollback determinístico e dois pods do mesmo
-  ReplicaSet possivelmente rodando binários diferentes.
-- **Rollback é o mesmo comando com o arquivo da release anterior.** Não há
-  mais nada a desfazer: o digest é o estado inteiro.
+- **Don't commit the result.** `kustomize edit` round-trips the YAML: it
+  reorders keys and detaches the comments. The change is meant to live in
+  your working tree long enough to `kubectl apply -k`, and no longer.
+- **`digest:` replaces `newTag:`**, which is the point — a mutable tag in
+  production means no deterministic rollback and two pods of the same
+  ReplicaSet possibly running different binaries.
+- **Rollback is the same command with the previous release's file.** There
+  is nothing else to undo: the digest is the whole state.
 
-Se `make imagens-do-release` diz que não acha `.release/images.json`, você
-pulou o passo 1. Se não acha `kustomize`, a versão que o CI usa está
-fixada em `KUSTOMIZE_VERSION`, em `.github/workflows/ci.yml`.
+If `make imagens-do-release` says it can't find `.release/images.json`, you
+skipped step 1. If it can't find `kustomize`, the version the CI uses is
+pinned in `KUSTOMIZE_VERSION`, in `.github/workflows/ci.yml`.
 
-Verificação: `scripts/ci/aplicar-imagens.spec.ts`, em todo PR, prova a
-metade do passo 2 que **lê** o arquivo — ele aceita o `images.json` que o
-`release.yml` escreve e recusa um sem `imagens`, com lista vazia, ou sem
-versão e commit. O que ele entrega ao `kustomize edit set image` é provado por
-`scripts/ci/images-manifest.spec.ts` — sempre por digest, nunca uma tag, e só
-as quatro imagens que a base do kustomize declara. Rodar o `kustomize` no overlay
-não tem spec. A corrente inteira
-(baixar o arquivo de uma release real, escrevê-lo, `kubectl apply -k`) **nunca
-rodou como prova**: nada aplica os digests de uma release a um cluster, e o
-cluster agendado roda imagens construídas da árvore, não as publicadas.
+Verification: `scripts/ci/aplicar-imagens.spec.ts`, on every PR, proves the
+half of step 2 that **reads** the file — it accepts the `images.json` that
+`release.yml` writes and refuses one with no `imagens`, an empty list, or no
+version and commit. What it hands to `kustomize edit set image` is proven by
+`scripts/ci/images-manifest.spec.ts` — always by digest, never a tag, and only
+the four images the kustomize base declares. Running `kustomize` on the overlay
+has no spec. The chain as a whole
+(download a real release's file, write it, `kubectl apply -k`) has **never
+run as a proof**: nothing applies a release's digests to a cluster, and the
+scheduled cluster runs images built from the tree, not the published ones.
 
-### Que versão está no ar {#que-versao-esta-no-ar}
+### What version is live {#que-versao-esta-no-ar}
 
-Três lugares dizem a mesma coisa, e a resposta é a versão **cozida
-no artefato** — não uma configuração que alguém poderia ter mudado por
-acidente
+Three places say the same thing, and the answer is the version **baked
+into the artifact** — not a configuration someone could have changed by
+accident
 ([ADR 0036](adr/0036-telas-de-auth-fieis-ao-design-e-fontes-auto-hospedadas.md)):
 
-1. **A tela de login**, no rodapé. O caminho mais rápido, e não precisa de
-   acesso ao cluster: abra `/login` e leia o primeiro item do rodapé.
-2. **A tag da imagem**, se você tem `kubectl`:
+1. **The login screen**, in the footer. The fastest path, and it needs no
+   cluster access: open `/login` and read the footer's first item.
+2. **The image tag**, if you have `kubectl`:
 
    ```bash
    kubectl -n brabo get deploy -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[0].image}{"\n"}{end}'
    ```
 
-3. **`service.version` nos spans**, da api, no Tempo. O único
-   dos três que amarra uma requisição específica a um build.
+3. **`service.version` on the spans**, from the api, in Tempo. The only one
+   of the three that ties a specific request to a build.
 
-`dev` nos três não é falha: é o que uma imagem construída fora do
-`release.yml` informa, porque não nasceu de tag nenhuma. `docker
-compose`, `make deploy-local` sem `TAG=` e um build local caem todos
-aí.
+`dev` in all three isn't a failure: it's what an image built outside
+`release.yml` reports, because it wasn't born from any tag. `docker
+compose`, `make deploy-local` without `TAG=`, and a local build all land
+there.
 
-**Divergência entre os três é o achado.** O rodapé mostrando uma
-versão e a tag da imagem outra quer dizer cache do bundle no navegador ou
-no nginx, não deploy errado — o bundle e a imagem vêm do mesmo
-build. Recarregue ignorando o cache antes de suspeitar do cluster.
+**Divergence between the three is the finding.** The footer showing one
+version and the image tag another means bundle caching in the browser or
+in nginx, not a wrong deploy — the bundle and the image come from the same
+build. Reload ignoring cache before suspecting the cluster.
 
-### O gate de SecOps está preso em "SAST não rodou" {#semgrep-do-gate}
+### The SecOps gate is stuck on "SAST não rodou" {#semgrep-do-gate}
 
-O fio da sessão mostra um `agent.error` do SecOps (origem `infra`) dizendo
-`SAST não rodou: semgrep falhou (:invalid_output), pulado` (ou `:sem_saida`,
-ou `indisponível`) e a PR fica em `awaiting_secops`. Desde a
-[RN-714](business-rules/engine.md#rn-714) o gate nunca aprova sem análise
-estática: ele fica pendente e bloqueia a PR. Depois de corrigir a causa abaixo,
-o gate roda de novo sozinho — no próximo reinício do engine, ou quando o
-`GateRescuer` acha o ciclo parado (15 minutos). O erro aparece uma vez por
-motivo: um resgate que bate no mesmo motivo de novo só o registra no
-servidor do engine. Antes da RN-714 a mesma
-falha aprovava o gate. Nos composes de produção e de instalação o
-engine roda com `read_only: true` e um tmpfs em `/home/engine`; quando esse
-tmpfs é criado `root:root`, o usuário do engine (uid 1000) não consegue criar
-`/home/engine/.semgrep`, o semgrep sai com stdout vazio, e o gate
-não consegue ler um resultado.
+The session thread shows a SecOps `agent.error` (origin `infra`) saying
+`SAST não rodou: semgrep falhou (:invalid_output), pulado` (or `:sem_saida`,
+or `indisponível`) and the PR stays in `awaiting_secops`. Since
+[RN-714](business-rules/engine.md#rn-714) the gate never approves without static
+analysis: it stays pending and blocks the PR. After fixing the cause below,
+the gate runs again by itself — on the next engine restart, or once the
+`GateRescuer` finds the cycle stale (15 minutes). The error appears once per
+reason: a rescue that hits the same reason again only logs it on the engine
+server. Before RN-714 the same
+failure approved the gate. On the production and installation composes the
+engine runs with `read_only: true` and a tmpfs at `/home/engine`; when that
+tmpfs is created `root:root`, the engine user (uid 1000) cannot create
+`/home/engine/.semgrep`, semgrep exits with an empty stdout, and the gate
+cannot read a result.
 
-Confira de dentro do engine rodando:
+Check from inside the running engine:
 
 ```bash
 docker exec brabo-engine-1 sh -c 'ls -ld /home/engine; id -u'
 ```
 
-A pasta tem de pertencer ao uid 1000. Os dois composes declaram
-`/home/engine:uid=1000,gid=1000,mode=0700` desde a RN-707; uma instalação
-criada antes dela mantém a linha antiga até o compose dela ser atualizado e o
-serviço `engine` ser recriado (`docker compose ... up -d engine`). O Kubernetes
-não é afetado (`fsGroup: 1000`). Um binário `semgrep` ausente bloqueia o gate
-do mesmo jeito. O semgrep ainda busca as regras dele no
-registry: sem saída de rede a varredura falha com `scan_failed`, que é uma
-causa diferente.
+The folder must belong to uid 1000. Both composes declare
+`/home/engine:uid=1000,gid=1000,mode=0700` since RN-707; an installation
+created before it keeps the old line until its compose is updated and the
+`engine` service is recreated (`docker compose ... up -d engine`). Kubernetes
+is not affected (`fsGroup: 1000`). A missing `semgrep` binary blocks the gate
+the same way. Semgrep still fetches its rules from the
+registry: without egress the scan fails with `scan_failed`, which is a
+different cause.
 
-Um `scan_failed` também pode vir de um semgrep **sem `semgrep-core`**, o
-binário que faz a varredura:
+A `scan_failed` can also come from a semgrep **without `semgrep-core`**, the
+binary that does the scanning:
 
 ```bash
 docker exec brabo-dev-engine-1 semgrep --version   # compose de dev
@@ -1280,29 +1281,29 @@ docker exec brabo-dev-engine-1 sh -c 'semgrep --config p/security-audit --json -
 # "Failed to find semgrep-core in PATH or in the semgrep package." (exit 2)
 ```
 
-O Semgrep 1.179.0 parou de publicar wheels `musllinux`, então na imagem Alpine do engine
-o pip o constrói a partir do sdist e o binário do core falta. Os dois Dockerfiles do engine
-fixam `SEMGREP_VERSION=1.183.0` (o de dev desde 02/10, mantido igual
-ao de produção por `scripts/ci/semgrep-do-engine.spec.ts`); uma imagem de dev construída
-antes disso se reconstrói com `docker compose -p brabo-dev up -d --build engine`.
-Subir a versão exige uma release que tenha wheel `musllinux` no PyPI.
+Semgrep 1.179.0 stopped publishing `musllinux` wheels, so on the Alpine engine
+image pip builds it from the sdist and the core binary is missing. Both engine
+Dockerfiles pin `SEMGREP_VERSION=1.183.0` (the dev one since 02/10, held equal
+to production by `scripts/ci/semgrep-do-engine.spec.ts`); a dev image built
+before that rebuilds with `docker compose -p brabo-dev up -d --build engine`.
+Raising the version needs a release that has a `musllinux` wheel on PyPI.
 
-### O engine aborta com `sys_sigaltstack(): Internal error` {#engine-sigaltstack}
+### The engine aborts with `sys_sigaltstack(): Internal error` {#engine-sigaltstack}
 
 `sys/unix/sys_signal_stack.c:101:sys_sigaltstack(): Internal error: Failed to
-set alternate signal stack`, exit 134, no boot ou no build da imagem (`mix
-local.hex`, `mix compile`): o ERTS pediu à musl uma pilha de sinal de tamanho fixo
-que a musl ≥ 1.2.6 recusa em CPUs com AMX (erlang/otp#11349). Aparece de forma
-intermitente no CI (só alguns runners têm AMX) e determinística num
-servidor desses. O engine roda OTP 29.1.1, que tem a correção
-([ADR 0209](adr/0209-engine-em-otp-29.md)); vê-lo de novo quer dizer uma imagem com
-OTP < 29.1 em Alpine ≥ 3.24 — reconstrua a partir dos Dockerfiles atuais. O passo de build
-do CI "O host tem AMX?" diz se uma dada execução caiu num host desses.
+set alternate signal stack`, exit 134, at boot or in the image build (`mix
+local.hex`, `mix compile`): the ERTS asked musl for a fixed-size signal stack
+that musl ≥ 1.2.6 refuses on CPUs with AMX (erlang/otp#11349). It shows up
+intermittently in CI (only some runners have AMX) and deterministically on such
+a server. The engine runs OTP 29.1.1, which has the fix
+([ADR 0209](adr/0209-engine-em-otp-29.md)); seeing it again means an image with
+OTP < 29.1 on Alpine ≥ 3.24 — rebuild from the current Dockerfiles. The CI build
+step "O host tem AMX?" tells whether a given run landed on such a host.
 
-### Erro de CORS {#erro-de-cors}
+### CORS error {#erro-de-cors}
 
-A mensagem do navegador nomeia o **destino** da chamada, nunca a
-causa. Leia primeiro a **origem** que ela cita — é essa a informação útil
+The browser's message names the **destination** of the call, never the
+cause. Read the **origin** it cites first — that's the useful information
 ([ADR 0037](adr/0037-cors-do-engine-e-a-porta-como-contrato.md)):
 
 ```
@@ -1311,24 +1312,24 @@ Access to fetch at 'http://localhost:3000/health' from origin
                      ^^^^ esta parte é o diagnóstico
 ```
 
-**Se a origem não é a que você espera** (`:5174` em vez de `:5173`, um
-host diferente, `https` em vez de `http`), o problema é a origem, não o
+**If the origin isn't the one you expect** (`:5174` instead of `:5173`, a
+different host, `https` instead of `http`), the problem is the origin, not
 CORS.
 
-Nos composes, `WEB_ORIGIN` é **derivada** de `WEB_PORT` — mudar
-`WEB_PORT` no `.env` (a orientação dos [primeiros passos](getting-started.md)
-para porta ocupada) já move a origem aceita junto, então essa
-divergência específica não acontece mais. O que ainda causa isto: alguém
-passou `--port` direto ao Vite fora do compose (o ADR 0037 fez o Vite
-recusar subir nesse caso, via `strictPort`, em vez de subir em silêncio
-noutra porta), o web é servido por outro caminho, ou
-`WEB_ORIGIN` foi definida à mão e sobrepôs a derivação. Corrija a origem,
-ou acrescente-a a `WEB_ORIGIN` — **nos dois serviços**, que leem a mesma
-variável.
+In the composes, `WEB_ORIGIN` is **derived** from `WEB_PORT` — changing
+`WEB_PORT` in `.env` (the guidance in [getting started](getting-started.md)
+for a busy port) already moves the accepted origin along with it, so that
+specific divergence no longer happens. What still causes this: someone
+passed `--port` straight to Vite outside of compose (ADR 0037 made Vite
+refuse to start in that case, via `strictPort`, instead of silently
+starting on another port), the web is served through a different path, or
+`WEB_ORIGIN` was set by hand and overrode the derivation. Fix the origin,
+or add it to `WEB_ORIGIN` — **on both services**, which read the same
+variable.
 
-**Se a origem está certa**, confirme o que cada serviço de fato responde.
-`curl` não faz CORS, então mostra o cabeçalho cru — exatamente o que o
-navegador olha:
+**If the origin is right**, confirm what each service actually answers.
+`curl` doesn't do CORS, so it shows the raw header — exactly what the
+browser looks at:
 
 ```bash
 # api — espera-se access-control-allow-origin + allow-credentials
@@ -1347,36 +1348,36 @@ curl -sI -X OPTIONS http://localhost:3000/auth/login \
   | grep -i access-control
 ```
 
-**Saída vazia é o achado**: o serviço não reconheceu a origem.
-`WEB_ORIGIN` errada ou ausente, ou a porta errada.
+**Empty output is the finding**: the service didn't recognize the origin.
+Wrong or missing `WEB_ORIGIN`, or the wrong port.
 
-**Um preflight sem o cabeçalho que o web manda** é o outro modo de
-falha, e o mais enganoso: a lista `allowedHeaders` da api é explícita
-e **nenhum teste faz preflight**, então um cabeçalho novo do cliente passa no CI e
-quebra só no navegador. A lista de hoje é `Content-Type`,
+**A preflight missing the header the web sends** is the other failure
+mode, and the most deceptive: the api's `allowedHeaders` list is explicit
+and **no test does a preflight**, so a new client header passes CI and
+breaks only in the browser. Today's list is `Content-Type`,
 `Authorization`, `X-CSRF-Token`, `traceparent`.
 
-Três coisas que **não** são problema de CORS, por mais que pareçam
-um:
+Three things that **aren't** a CORS problem, no matter how much they look
+like one:
 
-- **api ↔ engine.** CORS é mecanismo do navegador; ali quem chama é um
-  cliente HTTP do lado do servidor, que ignora esses cabeçalhos. Uma falha nesse
-  caminho é o service token (`401`/`403` — veja
-  [rotação](#rotacao-das-chaves-do-auth)) ou o endereço errado
-  (`ECONNREFUSED` — veja [a sessão não sai de `created`](#sessao-nao-ativa)).
-- **O canal Phoenix ficando em silêncio.** WebSocket não passa por CORS.
-  Quem recusa é o `check_origin` do endpoint, também alimentado por
-  `WEB_ORIGIN`, e a recusa aparece no log do engine — não no
-  console do navegador como erro de CORS.
-- **O `/metrics` do engine bloqueado no navegador.** Isso é deliberado: uma
-  métrica interna não é feita para ser legível pelo JavaScript da página. Use
+- **api ↔ engine.** CORS is a browser mechanism; there the caller is a
+  server-side HTTP client, which ignores those headers. A failure on that
+  path is the service token (`401`/`403` — see
+  [rotation](#rotacao-das-chaves-do-auth)) or the wrong address
+  (`ECONNREFUSED` — see [the session doesn't leave `created`](#sessao-nao-ativa)).
+- **The Phoenix channel going silent.** WebSocket doesn't go through CORS.
+  Whoever refuses is the endpoint's `check_origin`, also fed by
+  `WEB_ORIGIN`, and the refusal shows up in the engine's log — not in the
+  browser console as a CORS error.
+- **The engine's `/metrics` blocked in the browser.** That's deliberate: an
+  internal metric isn't meant to be readable by page JavaScript. Use
   `curl`.
 
-### A sessão não sai de `created` {#sessao-nao-ativa}
+### The session doesn't leave `created` {#sessao-nao-ativa}
 
-Sintoma: ativar uma sessão não faz nada. "Abrir sessão criativa" cria
-a sessão e a tela não se mexe; "Ativar sessão" também não.
-No log da api, `POST /projects/:id/sessions/:id/transition` devolve
+Symptom: activating a session does nothing. "Open creative session" creates
+the session and the screen doesn't move; "Activate session" doesn't either.
+In the api's log, `POST /projects/:id/sessions/:id/transition` returns
 `500`:
 
 ```
@@ -1385,13 +1386,13 @@ TransitionSessionUseCase.activate ✗ TypeError
       caused by: AggregateError [ECONNREFUSED]
 ```
 
-Ativar uma sessão é o primeiro passo que **atravessa** para o engine
-(a api pede a sessão supervisionada por HTTP interno), então é
-aqui que um `ENGINE_URL` errado aparece — e não antes, porque nada mais
-no caminho de criação sai da api.
+Activating a session is the first step that **crosses over** to the engine
+(the api asks for the supervised session over internal HTTP), so this is
+where a wrong `ENGINE_URL` shows up — and not before, because nothing else
+on the creation path leaves the api.
 
-Confirme de **dentro** do container, que é onde o endereço importa
-(`brabo-dev-api-1` no compose de dev; numa instalação é `brabo-api-1`,
+Confirm from **inside** the container, which is where the address matters
+(`brabo-dev-api-1` in the dev compose; in an installation it is `brabo-api-1`,
 [ADR 0170](adr/0170-compose-de-dev-brabo-dev.md)):
 
 ```bash
@@ -1404,220 +1405,220 @@ for (const u of ["http://engine:4000/health", "http://localhost:4000/health"]) {
 docker exec brabo-dev-api-1 sh -c 'echo $ENGINE_URL'
 ```
 
-`engine:4000` respondendo `200` enquanto `localhost:4000` dá
-`ECONNREFUSED`, com `ENGINE_URL=http://localhost:4000`, é o diagnóstico
-fechado: **dentro do container, `localhost` é a própria api**.
+`engine:4000` responding `200` while `localhost:4000` gives
+`ECONNREFUSED`, with `ENGINE_URL=http://localhost:4000`, is the closed
+diagnosis: **inside the container, `localhost` is the api itself**.
 
-A causa costuma ser o `.env`, não o compose. `pnpm dev` passa o `.env`
-como `--env-file`, e um valor ali **vence** o
-`${ENGINE_URL:-http://engine:4000}` do compose. Correção: remova (ou comente) a
-linha `ENGINE_URL` do seu `.env` e recrie a api —
+The cause is usually the `.env`, not the compose. `pnpm dev` passes `.env`
+as `--env-file`, and a value there **wins over** the compose's
+`${ENGINE_URL:-http://engine:4000}`. Fix: remove (or comment out) the
+`ENGINE_URL` line from your `.env` and recreate the api —
 
 ```bash
 docker compose -f docker/docker-compose.yml --env-file .env up -d api
 ```
 
-— porque cada ambiente já traz o default certo sem ela:
-o compose aponta para o serviço `engine`, e a api rodando no host
-cai em `http://localhost:4000` pelo próprio código. Definir a
-variável só faz sentido para apontar para um engine que não é nenhum dos dois.
-Vale também para o compose de **produção**, que usa a mesma
-interpolação; no Kubernetes o valor vem do ConfigMap e sempre
-foi `http://engine:4000`.
+— because each environment already brings the right default without it:
+compose points at the `engine` service, and the api running on the host
+falls back to `http://localhost:4000` from its own code. Setting the
+variable only makes sense to point at an engine that's neither of the two.
+It also applies to the **production** compose, which uses the same
+interpolation; in Kubernetes the value comes from the ConfigMap and has
+always been `http://engine:4000`.
 
-Duas checagens antes de culpar o endereço, se `ENGINE_URL` está correta:
+Two checks before blaming the address, if `ENGINE_URL` is correct:
 
-- **O engine está de pé?** `docker compose ps engine` e
-  `curl -sI http://localhost:4000/health`. `ECONNREFUSED` com o
-  endereço certo quer dizer serviço fora do ar, não mal configurado.
-- **Uma sessão que ativa e se fecha sozinha ~30s depois** não é este
-  problema. Olhe o `termination_reason`: `heartbeat_timeout` quer dizer que a
-  ativação funcionou e ninguém entrou no canal Phoenix — comportamento
-  esperado ao ativar de fora da interface
-  (`SESSION_HEARTBEAT_TIMEOUT_MS`). `conversation_idle_timeout` é o
-  outro: um agente conversacional esperou o usuário por mais
-  de `SESSION_CONVERSATION_IDLE_TIMEOUT_MS` (8h), contadas do fim do
-  turno dele ([RN-581](business-rules/api.md#rn-581)). Para mudar esse teto,
-  defina a variável no `.env` (os três composes a mapeiam para o engine)
-  ou, no Kubernetes, acrescente um item `env:` ao patch do engine no overlay:
-  `deploy/k8s/` não a escreve de propósito, porque uma variável ausente
-  ali já é o default de 8h do código (AT-153). Um `409` com
-  `reason: "sessao_encerrada"` depois disso é a sessão fechada recusando
-  conversa — abra uma sessão nova.
+- **Is the engine up?** `docker compose ps engine` and
+  `curl -sI http://localhost:4000/health`. `ECONNREFUSED` with the right
+  address means the service is down, not misconfigured.
+- **A session that activates and closes itself ~30s later** isn't this
+  problem. Look at `termination_reason`: `heartbeat_timeout` means
+  activation worked and nobody joined the Phoenix channel — expected
+  behavior when activating from outside the interface
+  (`SESSION_HEARTBEAT_TIMEOUT_MS`). `conversation_idle_timeout` is the
+  other one: a conversational agent was waiting for the user for longer
+  than `SESSION_CONVERSATION_IDLE_TIMEOUT_MS` (8h), counted from the end of
+  its turn ([RN-581](business-rules/api.md#rn-581)). To change that ceiling,
+  set the variable in the `.env` (all three composes map it to the engine)
+  or, on Kubernetes, add an `env:` item to the engine patch of the overlay:
+  `deploy/k8s/` does not write it on purpose, because an absent variable
+  there already is the code's 8h default (AT-153). A `409` with
+  `reason: "sessao_encerrada"` afterwards is the closed session refusing
+  conversation — open a new session.
 
-### A aba Terminal fica presa em "Abrindo terminal..." para sempre {#terminal-preso-abrindo}
+### The Terminal tab is stuck on "Opening terminal..." forever {#terminal-preso-abrindo}
 
-Sintoma: num projeto em modo `runner` (ADR 0103/0104), a aba Código → Dev → Terminal
-nunca sai do esqueleto de carregamento. O console do navegador mostra, num
-laço apertado com backoff crescente:
+Symptom: a project in `runner` mode (ADR 0103/0104), Code → Dev → Terminal
+tab never leaves the loading skeleton. The browser console shows, in a
+tight loop with growing backoff:
 
 ```
 socket do terminal com erro {"erro":"[object Event]"}
 socket do terminal fechado
 ```
 
-Isto é o WebSocket do navegador nunca alcançando o engine, não um
-problema do runner — acontece até antes de qualquer `brabo-runner` conectar. Três
-causas empilhadas, todas fechadas pela [RN-433](business-rules/infra.md#rn-433):
+This is the browser's WebSocket never reaching the engine, not a runner
+problem — it happens even before any `brabo-runner` connects. Three
+stacked causes, all closed by [RN-433](business-rules/infra.md#rn-433):
 
-1. **`ENGINE_PUBLIC_URL` resolvendo para um hostname interno do Docker.** O
-   ticket que a api entrega ao navegador (`POST .../terminal-ticket`) leva
-   `engineWsUrl`, montado a partir de `ENGINE_PUBLIC_URL` — distinta de
-   `ENGINE_URL` (RN-419), que é para chamadas api→engine **dentro** da
-   rede do compose. `docker/docker-compose.yml` agora define
-   `ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://localhost:4000}` no
-   serviço `api` (o mesmo default que `VITE_ENGINE_URL` já usa para o `web`).
-   Confirme de dentro do container:
+1. **`ENGINE_PUBLIC_URL` resolving to a Docker-internal hostname.** The
+   ticket the api hands the browser (`POST .../terminal-ticket`) carries
+   `engineWsUrl`, built from `ENGINE_PUBLIC_URL` — distinct from
+   `ENGINE_URL` (RN-419), which is for api→engine calls **inside** the
+   compose network. `docker/docker-compose.yml` now sets
+   `ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://localhost:4000}` on the
+   `api` service (same default `VITE_ENGINE_URL` already uses for `web`).
+   Confirm from inside the container:
 
    ```bash
    docker exec brabo-dev-api-1 sh -c 'echo $ENGINE_PUBLIC_URL'
-   # esperado: http://localhost:4000 (ou o endereço público real do seu engine)
+   # expected: http://localhost:4000 (or your real public engine address)
    ```
 
-   Um valor vazio aqui num ambiente construído antes desta correção quer dizer que o
-   código caiu para `ENGINE_URL` (`http://engine:4000`) — um hostname que
-   só resolve dentro da rede do Docker, nunca a partir do navegador. Correção:
-   reconstrua/recrie o container `api` para o novo default do compose valer,
-   ou defina `ENGINE_PUBLIC_URL` explicitamente no `.env` se o endereço público
-   real do engine for outro (um túnel, outro host).
-2. **Um socket que nunca abre tentava de novo para sempre, em silêncio.**
-   Independente do endereço acima — mesmo um engine genuinamente inalcançável
-   (fora do ar, atrás de firewall) deveria aparecer como erro, nunca girar para sempre.
-   `apps/web/src/lib/terminal-channel.ts` agora desiste depois de 8s se o
-   socket não abriu, e mostra o `RunnerOnboardingPanel` com uma
-   mensagem acionável em vez de ficar no laço do comportamento padrão de
-   reconexão do WebSocket do navegador.
-3. **A URL do socket duplicava o caminho.** O bloqueio de verdade depois que
-   os dois primeiros foram corrigidos: `terminal-channel.ts` concatenava
-   `/runner/websocket` num `engineWsUrl` que a api já devolve
-   completo (`ws://host:port/runner`) — e o próprio construtor `Socket` do `phoenix.js`
-   acrescenta `/websocket` de novo sobre qualquer endpoint que
-   receba. O engine recebia `GET /runner/runner/websocket/websocket` e
-   o rejeitava (`Phoenix.Router.NoRouteError`), visível em
-   `docker logs brabo-dev-engine-1` como uma conexão que nunca passa de
-   `REFUSED CONNECTION`. Corrigido passando `engineWsUrl` direto ao
-   `Socket` — `apps/runner/src/channel.ts` (o lado do CLI do mesmo
-   contrato) já fazia isso corretamente.
+   An empty value here on an environment built before this fix means the
+   code fell back to `ENGINE_URL` (`http://engine:4000`) — a hostname that
+   only resolves inside the Docker network, never from the browser. Fix:
+   rebuild/recreate the `api` container so the new compose default takes
+   effect, or set `ENGINE_PUBLIC_URL` explicitly in `.env` if the engine's
+   real public address is something else (a tunnel, a different host).
+2. **A socket that never opens used to retry forever, silently.**
+   Independent of the address above — even a genuinely unreachable engine
+   (down, firewalled) should surface as an error, never spin forever.
+   `apps/web/src/lib/terminal-channel.ts` now gives up after 8s if the
+   socket hasn't opened, and shows `RunnerOnboardingPanel` with an
+   actionable message instead of looping on the browser's default
+   WebSocket reconnect behavior.
+3. **The socket URL duplicated its path.** The actual blocker once the
+   first two were fixed: `terminal-channel.ts` used to concatenate
+   `/runner/websocket` onto an `engineWsUrl` the api already returns
+   complete (`ws://host:port/runner`) — and `phoenix.js`'s own `Socket`
+   constructor appends `/websocket` again on top of whatever endpoint it's
+   given. The engine received `GET /runner/runner/websocket/websocket` and
+   rejected it (`Phoenix.Router.NoRouteError`), visible in
+   `docker logs brabo-dev-engine-1` as a connection that never gets past
+   `REFUSED CONNECTION`. Fixed by passing `engineWsUrl` straight to
+   `Socket` — `apps/runner/src/channel.ts` (the CLI side of the same
+   contract) already did this correctly.
 
-### O runner inunda a api com um ticket morto {#runner-com-ticket-morto}
+### The runner floods the api with a dead ticket {#runner-com-ticket-morto}
 
-Sintoma: o web começa a responder **429** às requisições da própria pessoa, sem
-atividade incomum da parte dela; e/ou um projeto em modo `runner` aparece como
-sem agente local (tarefas de dev presas em `dev.blocked_by_container`,
-`RunnerReadiness` recusando) enquanto o `brabo-runner` está visivelmente rodando na
-máquina dela.
+Symptom: the web starts answering **429** to the person's own requests, with
+no unusual activity on their part; and/or a project in `runner` mode shows as
+having no local agent (dev tasks stuck on `dev.blocked_by_container`,
+`RunnerReadiness` refusing) while `brabo-runner` is visibly running on their
+machine.
 
-**Como confirmar.** No log do engine, procure o MESMO ticket sendo
-recusado de novo e de novo, numa cadência fixa de cerca de **5,13 s**:
+**How to confirm.** In the engine's log, look for the SAME ticket being
+refused over and over, at a fixed cadence of roughly **5,13 s**:
 
 ```bash
 docker logs brabo-dev-engine-1 2>&1 | grep 'REFUSED CONNECTION TO EngineWeb.RunnerSocket' | tail -20
 ```
 
-Dezenas dessas em poucas horas, todas com a mesma string de ticket, é a
-assinatura. ~5,13 s não é arbitrário — é o teto do backoff interno
-`reconnectAfterMs` do `phoenix.js`.
+Dozens of those in a few hours, all carrying the same ticket string, is the
+signature. ~5,13 s is not arbitrary — it is the ceiling of `phoenix.js`'s
+internal `reconnectAfterMs` backoff.
 
-**Causa.** O ticket do socket é de **uso único**
-([RN-108](business-rules/web.md#rn-108)); o auto-reconnect embutido
-da biblioteca repete os MESMOS `params`, então ele tenta de novo um ticket que foi
-consumido na primeira conexão e nunca mais será aceito. Uma versão
-de `apps/runner/src/channel.ts` saiu com esse auto-reconnect LIGADO —
-enquanto o docblock do próprio módulo afirmava que ele estava neutralizado. Empilhado na
-política PRÓPRIA de nova tentativa do runner (que está correta: ticket fresco por rodada, backoff,
-teto de tentativas consecutivas), o resultado medido foi **530 requisições em
-um minuto** contra o teto de 300 req/min do `RATE_LIMIT_USER`, quatro minutos
-seguidos acima do limite. O limite é **por usuário**, e é por isso que o 429
-apareceu no navegador do dono da conta e não em algum lugar perto do runner.
+**Cause.** The socket ticket is **single-use**
+([RN-108](business-rules/web.md#rn-108)); the library's built-in
+auto-reconnect repeats the SAME `params`, so it retries a ticket that was
+consumed on the first connection and will never be accepted again. A version
+of `apps/runner/src/channel.ts` shipped with that auto-reconnect left ON —
+while the module's own docblock claimed it was neutralized. Stacked on the
+runner's OWN retry policy (which is correct: fresh ticket per round, backoff,
+ceiling on consecutive attempts), the measured result was **530 requests in
+one minute** against the 300 req/min `RATE_LIMIT_USER` ceiling, four minutes
+in a row over the limit. The limit is **per user**, which is why the 429
+surfaced in the account owner's browser rather than anywhere near the runner.
 
-A segunda consequência é a pior: enquanto preso nesse laço o runner
-**não está conectado**, então o `RunnerReadiness` ([RN-507](business-rules/runner.md#rn-507))
-recusa e o projeto parece não ter agente local — parte do que se lê
-como "o container não sobe" é isto.
+The second consequence is the worse one: while stuck in that loop the runner
+is **not connected**, so `RunnerReadiness` ([RN-507](business-rules/runner.md#rn-507))
+refuses and the project looks like it has no local agent — some of what reads
+as "the container won't come up" is this.
 
-**Correção.** Atualize o binário `brabo-runner` (ou reinstale a partir da tela
-do projeto). Nada a mudar no servidor: o rate limiter fez o trabalho dele, e o
-engine estava certo em recusar cada um daqueles tickets. Se a inundação ainda
-está em curso, parar o runner a encerra na hora, e os 429 somem à medida que
-a janela deslizante esvazia (um minuto).
+**Fix.** Update the `brabo-runner` binary (or reinstall from the project
+screen). Nothing to change on the server: the rate limiter did its job, and the
+engine was right to refuse every one of those tickets. If the flood is still
+in progress, stopping the runner ends it immediately, and the 429s clear as
+the sliding window drains (one minute).
 
-### A api recusa subir por segredo de OAuth {#segredo-de-oauth-no-boot}
+### The api refuses to boot over an OAuth secret {#segredo-de-oauth-no-boot}
 
-Sintoma: com `NODE_ENV=production`, a api morre no início com uma mensagem
-sobre `GIT_OAUTH_STATE_SECRET` — ausente, definida com o valor de exemplo
-do repositório, ou curta demais.
+Symptom: with `NODE_ENV=production`, the api dies at start with a message
+about `GIT_OAUTH_STATE_SECRET` — missing, set to the repository's example
+value, or too short.
 
-**Não é regressão, e não a contorne.** Esta chave assina o `state` do
-OAuth de git, e o `state` é o que impede o callback público de ser
-forjado. Antes do [ADR 0059](adr/0059-segredo-do-state-de-oauth-sem-default.md)
-a api subia com um default publicado aqui mesmo neste repositório —
-quem vê este erro tinha, até agora, o fluxo de conexão de git aberto a
-qualquer um. O boot falhar é o aviso chegando, atrasado.
+**It's not a regression, and don't work around it.** This key signs git
+OAuth's `state`, and `state` is what stops the public callback from being
+forged. Before [ADR 0059](adr/0059-segredo-do-state-de-oauth-sem-default.md)
+the api would boot with a default published right in this repository —
+whoever sees this error had, until now, the git-connection flow open to
+anyone. The boot failing is the warning arriving, late.
 
 ```bash
 export GIT_OAUTH_STATE_SECRET="$(openssl rand -base64 32)"
 ```
 
-No Kubernetes o valor vem de `brabo-secrets`, sob a chave de mesmo nome
-do objeto `brabo` no cofre de segredos, que
-`deploy/k8s/base/common/externalsecrets.yaml` puxa inteiro — se o erro apareceu
-lá, o problema é o cofre não entregar a chave, e o caminho é
-[Diagnóstico do deploy](#diagnostico-do-deploy).
+In Kubernetes the value comes from `brabo-secrets`, under the same-named
+key of the `brabo` object in the secret store, which
+`deploy/k8s/base/common/externalsecrets.yaml` pulls whole — if the error showed up
+there, the problem is the vault not delivering the key, and the path is
+[Deploy diagnosis](#diagnostico-do-deploy).
 
-Trocar a chave **invalida os `state`s em voo**: quem está no meio de
-"conectar GitHub" naquele instante é recusado e refaz o fluxo. Como
-o TTL do `state` é de 10 minutos, essa é a janela — não há migração
-a fazer, e nenhuma conexão **já estabelecida** é afetada (o
-token guardado não depende desta chave).
+Changing the key **invalidates in-flight `state`s**: whoever is mid
+"connect GitHub" at that instant gets refused and redoes the flow. Since
+the `state`'s TTL is 10 minutes, that's the window — there's no migration
+to do, and no **already-established** connection is affected (the stored
+token doesn't depend on this key).
 
-### O provider recusa o callback do login social {#callback-login-social-nao-registrado}
+### The provider rejects the social-login callback {#callback-login-social-nao-registrado}
 
-Sintoma: clicar em "Entrar com GitHub"/"Entrar com GitLab" na tela de
-login vai ao provider e volta com um erro DO PRÓPRIO PROVIDER
-(`redirect_uri_mismatch` no GitHub, "The redirect URI included is not
-valid" no GitLab) — nem chega a
+Symptom: clicking "Sign in with GitHub"/"Sign in with GitLab" on the login
+screen goes to the provider and comes back with an error OF ITS OWN KIND
+(`redirect_uri_mismatch` on GitHub, "The redirect URI included is not
+valid" on GitLab) — it never even reaches
 `/auth/oauth/:provider/callback`.
 
-**Não é bug do produto — é um cadastro faltando do lado do
-provider.** O login social ([ADR 0084](adr/0084-login-social-github-e-gitlab.md))
-reaproveita o MESMO OAuth App que a conexão de git já usa
-(`GITHUB_OAUTH_CLIENT_ID`/`GITLAB_OAUTH_CLIENT_ID`, nenhuma variável nova), mas
-cada FLUXO tem o próprio `redirect_uri`, e o provider exige que TODOS
-os que a api pode pedir estejam cadastrados antes:
+**It's not a product bug — it's a missing registration on the provider's
+side.** Social login ([ADR 0084](adr/0084-login-social-github-e-gitlab.md))
+reuses the SAME OAuth App the git connection already uses
+(`GITHUB_OAUTH_CLIENT_ID`/`GITLAB_OAUTH_CLIENT_ID`, no new variable), but
+each FLOW has its own `redirect_uri`, and the provider requires that ALL
+the ones the api can ask for be registered beforehand:
 
-- Conexão de git (já existia): `${API_PUBLIC_URL}/git/oauth/<provider>/callback`
-- Login social (novo): `${API_PUBLIC_URL}/auth/oauth/<provider>/callback`
+- Git connection (already existed): `${API_PUBLIC_URL}/git/oauth/<provider>/callback`
+- Social login (new): `${API_PUBLIC_URL}/auth/oauth/<provider>/callback`
 
-Cadastre o segundo na configuração do OAuth App (GitHub: Settings
-→ Developer settings → OAuth Apps; GitLab: Settings → Applications) — o GitHub
-aceita várias URLs de callback no mesmo App, o GitLab também. Não precisa de
-App separado nem de client id/secret novos.
+Register the second one in the OAuth App's configuration (GitHub: Settings
+→ Developer settings → OAuth Apps; GitLab: Settings → Applications) — GitHub
+accepts several callback URLs on the same App, so does GitLab. No separate
+App or new client id/secret needed.
 
-### Os quatro segredos irmãos também não sobem com o default {#segredos-irmaos-no-boot}
+### The four sibling secrets also refuse the default {#segredos-irmaos-no-boot}
 
-Sintoma: com `NODE_ENV=production`, a api (ou, para `SECRET_KEY_BASE`
-e `BRABO_SERVICE_TOKEN`, a release `:prod` do engine, que recusa os
-mesmos valores de token desde a [RN-601](business-rules/engine.md#rn-601)) morre
-no início com uma mensagem sobre `AUTH_JWT_SECRET`,
-`BRABO_SERVICE_TOKEN`, `CREDENTIALS_MASTER_KEY` ou `SECRET_KEY_BASE` —
-ausente, definida com o valor de exemplo do repositório, ou curta demais.
+Symptom: with `NODE_ENV=production`, the api (or, for `SECRET_KEY_BASE`
+and `BRABO_SERVICE_TOKEN`, the engine's `:prod` release, which refuses the
+same token values since [RN-601](business-rules/engine.md#rn-601)) dies
+at start with a message about `AUTH_JWT_SECRET`,
+`BRABO_SERVICE_TOKEN`, `CREDENTIALS_MASTER_KEY`, or `SECRET_KEY_BASE` —
+missing, set to the repository's example value, or too short.
 
-**Mesma causa do segredo de OAuth acima, e a mesma orientação: não é
-regressão, e não a contorne.**
-O [ADR 0059](adr/0059-segredo-do-state-de-oauth-sem-default.md) já
-declarava estes quatro como pendentes — o mesmo padrão, só ainda não
-replicado — e a [RN-114](business-rules/api.md#rn-114) o fechou. Cada um protege
-uma coisa diferente:
+**Same cause as the OAuth secret above, and the same guidance: it's not a
+regression, and don't work around it.**
+[ADR 0059](adr/0059-segredo-do-state-de-oauth-sem-default.md) already
+declared these four as pending — the same pattern, just not replicated
+yet — and [RN-114](business-rules/api.md#rn-114) closed it. Each protects
+something different:
 
-- `AUTH_JWT_SECRET` público = qualquer um pode derivar o par que assina o
-  access token e forjar um válido.
-- `BRABO_SERVICE_TOKEN` público = qualquer um pode chamar `/internal/*` passando por cima do
+- `AUTH_JWT_SECRET` public = anyone can derive the pair that signs the
+  access token and forge a valid one.
+- `BRABO_SERVICE_TOKEN` public = anyone can call `/internal/*` bypassing
   `EngineServiceGuard`.
-- `CREDENTIALS_MASTER_KEY` público = qualquer um pode decifrar o cofre de
-  credenciais do usuário (chaves de LLM, tokens de git).
-- `SECRET_KEY_BASE` (engine) já tinha `raise` no `runtime.exs` — o
-  defeito era só o compose mascarando esse `raise` com um fallback
-  público.
+- `CREDENTIALS_MASTER_KEY` public = anyone can decrypt the user's
+  credential store (LLM keys, git tokens).
+- `SECRET_KEY_BASE` (engine) already had `raise` in `runtime.exs` — the
+  defect was only the compose masking that `raise` with a public
+  fallback.
 
 ```bash
 export AUTH_JWT_SECRET="$(openssl rand -base64 32)"
@@ -1626,81 +1627,82 @@ export CREDENTIALS_MASTER_KEY="$(openssl rand -base64 32)"
 export SECRET_KEY_BASE="$(openssl rand -base64 64)"
 ```
 
-Nada muda no Kubernetes, pelo mesmo motivo de
-`GIT_OAUTH_STATE_SECRET`: os quatro já vinham de `brabo-secrets`,
-sob a chave de mesmo nome do objeto `brabo` que
-`deploy/k8s/base/common/externalsecrets.yaml` puxa inteiro.
+Nothing changes in Kubernetes, for the same reason as
+`GIT_OAUTH_STATE_SECRET`: all four already came from `brabo-secrets`,
+under the same-named key of the `brabo` object that
+`deploy/k8s/base/common/externalsecrets.yaml` pulls whole.
 
-**O grafo de conhecimento (`NEO4J_URI`/`NEO4J_USER`/`NEO4J_PASSWORD`,
-[ADR 0099](adr/0099-neo4j-grafo-de-conhecimento-e-templates.md)) segue
-a mesma regra, com uma diferença**: `NEO4J_URI` e `NEO4J_USER` têm um
-default de desenvolvimento seguro (`bolt://neo4j:7687`, `neo4j` — não são
-segredos, e o `docker-compose.prod.yml` já os fornece); só
-`NEO4J_PASSWORD` não tem default público, pelo mesmo motivo dos quatro
-acima — e sem ela o boot da api falha em
-`GraphStore.onModuleInit` (`neo4j-config.ts`) ANTES mesmo de o próprio Neo4j
-recusar subir (o entrypoint da imagem oficial exige senha de 8+
-caracteres; um `NEO4J_AUTH` vazio derruba o container `neo4j` primeiro).
+**The knowledge graph (`NEO4J_URI`/`NEO4J_USER`/`NEO4J_PASSWORD`,
+[ADR 0099](adr/0099-neo4j-grafo-de-conhecimento-e-templates.md)) follows
+the same rule, with one difference**: `NEO4J_URI` and `NEO4J_USER` have a
+safe development default (`bolt://neo4j:7687`, `neo4j` — they're not
+secrets, and `docker-compose.prod.yml` already supplies them); only
+`NEO4J_PASSWORD` has no public default, for the same reason as the four
+above — and without it the api's boot fails in
+`GraphStore.onModuleInit` (`neo4j-config.ts`) BEFORE Neo4j itself even
+refuses to start (the official image's entrypoint requires an 8+ character
+password; an empty `NEO4J_AUTH` brings down the `neo4j` container first).
 
 ```bash
 export NEO4J_PASSWORD="$(openssl rand -hex 24)"
 ```
 
-**Em desenvolvimento a chave é `NEO4J_URI`, e ela vem vazia por padrão.** O
-serviço `neo4j` roda no profile padrão do compose de dev, então o servidor está de pé
-falando alguém com ele ou não; a api só conecta quando `NEO4J_URI` está
-definida. Descomente-a no `.env` (`bolt://neo4j:7687`) e recrie a api —
-o `GraphStore` então registra `Neo4j conectado — constraints do grafo garantidas`
-em vez de `NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD ausentes`. Usuário e senha
-chegam ao container com os mesmos defaults que o serviço `neo4j` usa para
-`NEO4J_AUTH`, então defina-os só para TROCAR a senha, e trocá-la ali
-muda os dois lados de uma vez.
+**In development the switch is `NEO4J_URI`, and it is empty by default.** The
+`neo4j` service runs in the dev compose's default profile, so the server is up
+whether or not anything talks to it; the api only connects when `NEO4J_URI` is
+set. Uncomment it in `.env` (`bolt://neo4j:7687`) and recreate the api —
+`GraphStore` then logs `Neo4j conectado — constraints do grafo garantidas`
+instead of `NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD ausentes`. User and password
+reach the container with the same defaults the `neo4j` service uses for
+`NEO4J_AUTH`, so set them only to CHANGE the password, and changing it there
+changes both sides at once.
 
-Até isto ser ligado, o `docker-compose.yml` não passava as três variáveis ao
-serviço `api` de jeito nenhum e o serviço não tem `env_file` — então o bloco
-que o `.env.example` documentava desde que o grafo nasceu não chegava a nada, e
-descomentá-lo não ligava nada. O `docker-compose.prod.yml` as fornecia
-desde o primeiro dia (é por isso que só o desenvolvimento foi afetado): um Neo4j saudável ficava
-ao lado de uma api informando as variáveis ausentes, indefinidamente.
+Until this was wired, `docker-compose.yml` did not pass the three variables to
+the `api` service at all and the service has no `env_file` — so the block
+`.env.example` has documented since the graph was born reached nothing, and
+uncommenting it turned nothing on. `docker-compose.prod.yml` had supplied them
+since day one (that is why only development was affected): a healthy Neo4j sat
+next to an api reporting the variables absent, indefinitely.
 
-**HEX, não base64.** O entrypoint do Neo4j lê `NEO4J_AUTH` como
-`usuario/senha` e separa na PRIMEIRA barra — uma senha base64 pode
-conter `/` (o alfabeto tem `/` e `+`), e isso quebra o parse com
-`Invalid value for NEO4J_AUTH`, derrubando o container `neo4j` num
-laço de reinício. Isso aconteceu de verdade: o smoke test do CI falhou assim depois de
-um merge que reintroduziu `-base64` por engano. Hex não tem `/`, `+` nem `=`.
+**HEX, not base64.** Neo4j's entrypoint reads `NEO4J_AUTH` as
+`user/password` and splits on the FIRST slash — a base64 password can
+contain `/` (the alphabet has `/` and `+`), and that breaks the parse with
+`Invalid value for NEO4J_AUTH`, taking down the `neo4j` container in a
+restart loop. This actually happened: CI's smoke test failed this way after
+a merge that reintroduced `-base64` by mistake. Hex has no `/`, `+` or `=`.
 
-O `docker/smoke.sh` já gera as cinco variáveis efêmeras acima (os
-quatro irmãos mais `NEO4J_PASSWORD`, esta em hex) a cada execução — é
-assim que o job de CI
-"Build, scan e smoke das imagens de produção" sobe o
-`docker-compose.prod.yml` sem
-nenhum segredo commitado.
+`docker/smoke.sh` already generates the five ephemeral variables above (the
+four siblings plus `NEO4J_PASSWORD`, this one in hex) on every run — that's
+how the CI job
+"Build, scan e smoke das imagens de produção" brings up
+`docker-compose.prod.yml` with
+no secret committed.
 
-Trocar `AUTH_JWT_SECRET` ou `BRABO_SERVICE_TOKEN` sem a
-dança do `_PREVIOUS` tem o mesmo efeito já documentado em
-[Rotação das chaves do auth](#rotacao-das-chaves-do-auth); trocar
-`CREDENTIALS_MASTER_KEY` sem re-embrulhar tem o mesmo efeito já
-documentado em
-[Rotação da chave mestra](#rotacao-da-chave-mestra). Esta checagem de BOOT não
-muda nenhum dos dois procedimentos — ela só impede a chave de chegar à produção
-como o literal público deste repositório.
+Changing `AUTH_JWT_SECRET` or `BRABO_SERVICE_TOKEN` without the
+`_PREVIOUS` dance has the same effect already documented in
+[Auth key rotation](#rotacao-das-chaves-do-auth); changing
+`CREDENTIALS_MASTER_KEY` without re-wrapping has the same effect already
+documented in
+[Master key rotation](#rotacao-da-chave-mestra). This BOOT check doesn't
+change either procedure — it just stops the key from reaching production
+as this repository's public literal.
 
-### SMTP real no `MailSender` {#smtp-real}
+### Real SMTP in `MailSender` {#smtp-real}
 
-O `MailSender` envia e-mail de verdade só quando `MAIL_TRANSPORT=smtp` — o
-default é `log` (o comportamento de sempre), **inclusive em produção**:
-enviar e-mail de verdade é escolha explícita do operador
-([ADR 0096](adr/0096-smtp-real-no-mailsender.md)). Veja
-[Configuração](reference/configuration.md#api) para a tabela completa de `SMTP_*`.
+`MailSender` sends a real email only when `MAIL_TRANSPORT=smtp` — the
+default is `log` (the usual behavior), **including in production**:
+sending real email is opt-in for the operator
+([ADR 0096](adr/0096-smtp-real-no-mailsender.md)). See
+[Configuration](reference/configuration.md#api) for the full `SMTP_*`
+table.
 
-Sintoma de configuração incompleta: com `NODE_ENV=production` e
-`MAIL_TRANSPORT=smtp`, a api morre no início reclamando de
-`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` ou `SMTP_FROM` — mesmo padrão
-de mensagem dos
-[quatro segredos irmãos](#segredos-irmaos-no-boot) ([RN-408](business-rules/api.md#rn-408)),
-mas SEM o default público que eles têm: aqui a regra só entra em cena
-quando o operador escolheu `smtp`.
+Symptom of incomplete configuration: with `NODE_ENV=production` and
+`MAIL_TRANSPORT=smtp`, the api dies at start complaining about
+`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, or `SMTP_FROM` — same message
+pattern as the
+[four sibling secrets](#segredos-irmaos-no-boot) ([RN-408](business-rules/api.md#rn-408)),
+but WITHOUT the public default they have: here the rule only kicks in
+once the operator opted into `smtp`.
 
 ```bash
 export MAIL_TRANSPORT=smtp
@@ -1711,123 +1713,123 @@ export SMTP_PASSWORD="$(sua-credencial-do-provedor)"
 export SMTP_FROM="Brabo <nao-responda@seu-dominio.com>"
 ```
 
-`SMTP_PASSWORD` é um segredo de INFRAESTRUTURA do serviço (uma variável de ambiente simples, como
-`AUTH_JWT_SECRET`), não um segredo de USUÁRIO — ele não passa por envelope
-encryption, e não tem procedimento de rotação próprio além de trocar a
-variável e reiniciar (o provedor de SMTP decide a política de rotação
-dessa credencial). No Kubernetes, a chave vai para o objeto `brabo` do
-cofre de segredos como qualquer outra, e chega a `brabo-secrets` sem mudança de
-manifesto — `deploy/k8s/base/common/externalsecrets.yaml` puxa o objeto
-inteiro.
+`SMTP_PASSWORD` is a service INFRASTRUCTURE secret (a plain env var, like
+`AUTH_JWT_SECRET`), not a USER secret — it doesn't go through envelope
+encryption, and has no rotation procedure of its own beyond changing the
+variable and restarting (the SMTP provider decides that credential's
+rotation policy). In Kubernetes, the key goes into the `brabo` object of the
+secret store like any other, and reaches `brabo-secrets` with no manifest
+change — `deploy/k8s/base/common/externalsecrets.yaml` pulls the whole
+object.
 
-Se o e-mail não chega mesmo sem erro de boot: confira no log da api
-`falha ao enviar e-mail via SMTP` (`type`/destinatário aparecem, o corpo e
-o token NUNCA aparecem — mesma regra do `LogMailSender`), e teste a
-credencial com o próprio cliente SMTP do provedor antes de suspeitar do Brabo.
+If email doesn't arrive even with no boot error: check the api's log for
+`falha ao enviar e-mail via SMTP` (`type`/recipient show up, the body and
+the token NEVER show up — same rule as `LogMailSender`), and test the
+credential with the provider's own SMTP client before suspecting Brabo.
 
-### k3d é o padrão mesmo com kind instalado {#k3d-is-the-default-even-with-kind-installed}
+### k3d is the default even with kind installed {#k3d-is-the-default-even-with-kind-installed}
 
-Não é preferência. O k3s vem com um controlador de NetworkPolicy
-embutido; **o kindnet do kind não implementa NetworkPolicy** e
-ignora os manifestos em silêncio. Num cluster kind, as policies desta fase
-existem no etcd sem efeito nenhum, e o deploy pareceria validado
-sem ter validado metade do item 4 do escopo. O smoke test avisa quando
-o cluster não está aplicando.
+It's not a preference. k3s ships with a built-in NetworkPolicy
+controller; **kind's kindnet doesn't implement NetworkPolicy** and
+silently ignores the manifests. On a kind cluster, this phase's policies
+exist in etcd with no effect at all, and the deploy would look validated
+without having validated half of scope item 4. The smoke test warns when
+the cluster isn't enforcing.
 
-### O que o smoke test cobre {#what-the-smoke-test-covers}
+### What the smoke test covers {#what-the-smoke-test-covers}
 
-1. Todo pod **Ready** — não só `Running`. Um pod cuja checagem de readiness
-   falha fica `Running` para sempre sem receber tráfego.
-2. Nenhum container com `runAsUser: 0`.
-3. Login em `POST /auth/login` com o usuário do seed — exercita argon2id,
-   emissão de access token e os cookies de sessão.
-4. `workspace → project → session`. Este passo atravessa o conjunto inteiro de
-   NetworkPolicies: criar uma sessão faz a api chamar o engine
-   por HTTP interno, com o service token. A sessão é criada com
-   `kind: consultiva` — obrigatório desde a FASE 20
-   ([RN-097](business-rules/api.md#rn-097)) — e é `consultiva` de
-   propósito: o smoke test exercita criar → ativar → fechar e nunca
-   ativa execução, que numa sessão consultiva devolve `409`.
+1. Every pod **Ready** — not just `Running`. A pod whose readiness check
+   fails stays `Running` forever without receiving traffic.
+2. No container with `runAsUser: 0`.
+3. Login at `POST /auth/login` with the seed user — exercises argon2id,
+   access-token issuance, and the session cookies.
+4. `workspace → project → session`. This step crosses the whole
+   NetworkPolicy set: creating a session makes the api call the engine
+   over internal HTTP, with the service token. The session is created with
+   `kind: consultiva` — mandatory since PHASE 20
+   ([RN-097](business-rules/api.md#rn-097)) — and it's `consultiva` on
+   purpose: the smoke test exercises create → activate → close and never
+   activates execution, which on a consultative session returns `409`.
 
-   **Este é o passo que prova que a rota tem consumidor fora do
-   web.** Quando `kind` passou a ser obrigatório, a suíte da api passou com 1562
-   testes, e foi o smoke test que falhou, porque é o único
-   que chama a rota como cliente externo, sem mock, contra
-   a imagem de produção.
-5. Sondas distintas (`/live` e `/ready` para o engine, `/live` para a
-   api) e o `/config.js` do web apontando para as URLs do cluster.
-6. `oban_queue_depth` com os rótulos `queue` e `state` em `/metrics`.
-7. `external.metrics.k8s.io` servindo a métrica — o modo de falha do
-   prometheus-adapter é silencioso, então perguntamos direto à API agregada.
+   **This is the step that proves the route has a consumer outside the
+   web.** When `kind` was made mandatory, the api's suite passed with 1562
+   tests, and it was the smoke test that failed, because it's the only
+   one that calls the route as an external client, with no mock, against
+   the production image.
+5. Distinct probes (`/live` and `/ready` for the engine, `/live` for the
+   api) and the web's `/config.js` pointing at the cluster's URLs.
+6. `oban_queue_depth` with the `queue` and `state` labels at `/metrics`.
+7. `external.metrics.k8s.io` serving the metric — the prometheus-adapter's
+   failure mode is silent, so we ask the aggregated API directly.
 
-### Diagnóstico do deploy {#diagnostico-do-deploy}
+### Deploy diagnosis {#diagnostico-do-deploy}
 
-#### `403` no `/internal/*`, ou `401` nas chamadas da api para o engine {#403-on-internal-or-401-on-the-apis-calls-to-the-engine}
+#### `403` on `/internal/*`, or `401` on the api's calls to the engine {#403-on-internal-or-401-on-the-apis-calls-to-the-engine}
 
-Os dois sintomas têm a mesma causa: o service token não bate
-entre os dois lados (a api recusa com `403`, o plug do engine com
-`401`). Confira que as duas cargas leem o **mesmo** valor:
+Both symptoms have the same cause: the service token doesn't match
+between the two sides (the api refuses with `403`, the engine's plug with
+`401`). Check that both loads read the **same** value:
 
 ```bash
 kubectl -n brabo get secret brabo-secrets -o jsonpath='{.data.BRABO_SERVICE_TOKEN}' | base64 -d | sha256sum
 kubectl -n brabo exec deploy/engine -- sh -c 'printf %s "$BRABO_SERVICE_TOKEN" | sha256sum'
 ```
 
-Comparar o hash em vez do valor evita imprimir o segredo no
-terminal. Se divergem, o pod do engine tem uma versão velha do
-Secret: `kubectl -n brabo rollout restart deploy/engine`. Se batem,
-o cabeçalho não está passando: confira que `BRABO_SERVICE_TOKEN` está definido
-nas **duas** cargas — o engine tem um default de desenvolvimento
-(`dev-service-token-change-me`), então esquecer a variável só lá
-produz exatamente este sintoma, sem erro de boot — e que nenhum proxy no
-caminho está tirando cabeçalhos desconhecidos.
+Comparing the hash instead of the value avoids printing the secret to the
+terminal. If they diverge, the engine pod has an old version of the
+Secret: `kubectl -n brabo rollout restart deploy/engine`. If they match,
+the header isn't getting through: check that `BRABO_SERVICE_TOKEN` is set
+on **both** loads — the engine has a development default
+(`dev-service-token-change-me`), so forgetting the variable only there
+produces exactly this symptom, with no boot error — and that no proxy in
+the path is stripping unknown headers.
 
-#### Login devolvendo `401` para todo mundo depois de um deploy {#login-returning-401-for-everyone-after-a-deploy}
+#### Login returning `401` for everyone after a deploy {#login-returning-401-for-everyone-after-a-deploy}
 
-Quase sempre um `AUTH_JWT_SECRET` novo pulando o passo de coexistência: o
-access token some junto com ele, mas o sintoma aparece no
-refresh. O procedimento correto está em
-[Rotação das chaves do auth](#rotacao-das-chaves-do-auth).
+Almost always a new `AUTH_JWT_SECRET` skipping the coexistence step: the
+access token disappears along with it, but the symptom shows up on
+refresh. The correct procedure is in
+[Auth key rotation](#rotacao-das-chaves-do-auth).
 
-#### O `ExternalSecret` nunca fica Ready {#externalsecret-never-becomes-ready}
+#### `ExternalSecret` never becomes Ready {#externalsecret-never-becomes-ready}
 
-O `SecretStore` lê o Secret de origem `brabo`, criado imperativamente pelo
-bootstrap. Confirme que ele existe e que o RBAC está no lugar:
+The `SecretStore` reads the source Secret `brabo`, created imperatively by
+the bootstrap. Confirm it exists and that RBAC is in place:
 
 ```bash
 kubectl -n brabo get secret brabo
 kubectl -n brabo describe secretstore brabo-secret-store
 ```
 
-Desde a AT-220 o `ExternalSecret` puxa o objeto `brabo` **inteiro** do
-cofre (`dataFrom.extract`) em vez de listar cada chave. Duas consequências para o
-diagnóstico:
+Since AT-220 the `ExternalSecret` pulls the **whole** `brabo` object from the
+store (`dataFrom.extract`) instead of listing each key. Two consequences for
+diagnosis:
 
-- **Uma chave ausente não o impede mais de ficar Ready.** O `brabo-secrets` é
-  criado sem ela, e a falha aparece em quem precisa da chave: um Pod
-  com `secretKeyRef` (`NEO4J_PASSWORD` no Neo4j, `BACKUP_S3_ACCESS_KEY`/
-  `BACKUP_S3_SECRET_KEY` no S3 local) fica em
-  `CreateContainerConfigError`, e a api ou o engine recusa subir em
-  produção nomeando a variável. O objeto no cofre tem de levar
+- **A missing key no longer keeps it from becoming Ready.** `brabo-secrets` is
+  created without it, and the failure shows up in whoever needs the key: a Pod
+  with a `secretKeyRef` (`NEO4J_PASSWORD` in Neo4j, `BACKUP_S3_ACCESS_KEY`/
+  `BACKUP_S3_SECRET_KEY` in the local S3) stays in
+  `CreateContainerConfigError`, and the api or the engine refuses to boot in
+  production naming the variable. The object in the store must carry
   `DATABASE_URL`, `SECRET_KEY_BASE`, `CREDENTIALS_MASTER_KEY`,
   `GIT_OAUTH_STATE_SECRET`, `AUTH_JWT_SECRET`, `AUTH_TOKEN_PEPPER`,
   `BRABO_SERVICE_TOKEN`, `RELEASE_COOKIE`, `BACKUP_S3_ENDPOINT`,
-  `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY` e
-  `NEO4J_PASSWORD` — a lista que o `deploy/k8s/bootstrap.sh` cria localmente.
-  Compare o que chegou:
+  `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY` and
+  `NEO4J_PASSWORD` — the list `deploy/k8s/bootstrap.sh` creates locally.
+  Compare what arrived:
 
   ```bash
   kubectl -n brabo get secret brabo-secrets -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'
   ```
 
-- **Tudo nesse objeto chega aos Pods.** Toda chave vira uma
-  variável de ambiente da api, do engine, dos dois Jobs de migração e do CronJob
-  de backup (`envFrom: brabo-secrets`). Não guarde em `brabo` nada que esses
-  processos não deveriam ver; o segredo de outro consumidor vai em outro objeto.
+- **Everything in that object reaches the Pods.** Every key becomes an
+  environment variable of api, engine, the two migration Jobs and the backup
+  CronJob (`envFrom: brabo-secrets`). Don't store in `brabo` anything those
+  processes shouldn't see; another consumer's secret goes in another object.
 
-#### HPA do engine em `<unknown>` {#engine-hpa-at-unknown}
+#### Engine HPA at `<unknown>` {#engine-hpa-at-unknown}
 
-Em ordem, do mais ao menos provável:
+In order, most to least likely:
 
 ```bash
 # 1. o engine está expondo a métrica?
@@ -1841,48 +1843,48 @@ kubectl -n monitoring port-forward svc/prometheus-server 9090:80
 kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/brabo/oban_queue_depth?labelSelector=state%3Davailable"
 ```
 
-Se (1) responde e (3) não, o problema é a regra em
+If (1) responds and (3) doesn't, the problem is the rule in
 `deploy/k8s/helm/prometheus-adapter-values.yaml`.
 
-#### O Job de migração não reaplica {#migration-job-doesnt-reapply}
+#### Migration Job doesn't reapply {#migration-job-doesnt-reapply}
 
-A spec de um `Job` é imutável: com o Job anterior ainda no cluster,
-reaplicar com uma imagem nova falha. O bootstrap já apaga os dois
-antes de aplicar; à mão:
+A `Job`'s spec is immutable: with the previous Job still in the cluster,
+reapplying with a new image fails. The bootstrap already deletes both
+before applying; manually:
 
 ```bash
 kubectl -n brabo delete job migrate-api migrate-engine --ignore-not-found
 kubectl apply -k deploy/k8s/overlays/local
 ```
 
-#### `bin/engine rpc` responde `eaddrinuse` {#binengine-rpc-responds-eaddrinuse}
+#### `bin/engine rpc` responds `eaddrinuse` {#binengine-rpc-responds-eaddrinuse}
 
-A faixa de portas da distribuição Erlang (`ERL_AFLAGS`) precisa de mais de uma
-porta: o nó rodando ocupa a primeira, e o `rpc` sobe um nó
-oculto que precisa de outra. A faixa configurada é 9100–9110, aberta na
-NetworkPolicy.
+The Erlang distribution's port range (`ERL_AFLAGS`) needs more than one
+port: the running node occupies the first, and `rpc` brings up a hidden
+node that needs another. The configured range is 9100–9110, opened in
+the NetworkPolicy.
 
-#### Conferindo que as réplicas do engine estão em cluster {#checking-that-the-engines-replicas-are-clustered}
+#### Checking that the engine's replicas are clustered {#checking-that-the-engines-replicas-are-clustered}
 
-Sem cluster Erlang, o `:global.trans` de `Workspace.ensure!` não
-serializa nada e duas réplicas rodam um `git init` concorrente no
-mesmo diretório compartilhado:
+Without an Erlang cluster, `Workspace.ensure!`'s `:global.trans` doesn't
+serialize anything and two replicas run a concurrent `git init` on the
+same shared directory:
 
 ```bash
 kubectl -n brabo exec deploy/engine -- /app/bin/engine rpc 'IO.inspect(Node.list())'
 ```
 
-Deve listar os outros pods. Uma lista vazia com mais de uma réplica é um
-defeito.
+Should list the other pods. An empty list with more than one replica is a
+defect.
 
-### Segredos: fallback para sealed-secrets {#fallback-sealed-secrets}
+### Secrets: fallback to sealed-secrets {#fallback-sealed-secrets}
 
-O padrão é o External Secrets Operator. Onde ele não é viável,
-substitua o `ExternalSecret` em
-`deploy/k8s/base/common/externalsecrets.yaml` por um `SealedSecret`,
-**mantendo o mesmo nome de Secret (`brabo-secrets`) e as mesmas chaves** —
-nada mais no deploy precisa mudar, porque tudo o consome
-via `secretRef`.
+The default is the External Secrets Operator. Where it isn't viable,
+replace the `ExternalSecret` in
+`deploy/k8s/base/common/externalsecrets.yaml` with a `SealedSecret`,
+**keeping the same Secret name (`brabo-secrets`) and the same keys** —
+nothing else in the deploy needs to change, because everything consumes
+it via `secretRef`.
 
 ```bash
 kubectl create secret generic brabo-secrets \
@@ -1892,132 +1894,132 @@ kubectl create secret generic brabo-secrets \
   | kubeseal --format yaml > deploy/k8s/overlays/<env>/sealed-brabo-secrets.yaml
 ```
 
-O `SealedSecret` é cifrado para a chave pública daquele cluster e pode ser
-versionado. Um Secret simples **nunca** pode.
+The `SealedSecret` is encrypted for that cluster's public key and can be
+versioned. A plain Secret **never** can.
 
-Verificação: **nenhuma**. Nada no repositório roda `kubeseal`, e o
-cluster agendado (`propriedades.yml`) materializa o `brabo-secrets` pelo
-External Secrets, então este caminho nunca foi exercitado. Antes de confiar nele,
-suba um cluster com o `SealedSecret` no lugar e rode `make smoke-k8s`:
-o primeiro passo dele exige todo pod Ready, e um pod cujo `secretRef` aponta
-para um Secret que nunca se materializou não está.
+Verification: **none**. Nothing in the repository runs `kubeseal`, and the
+scheduled cluster (`propriedades.yml`) materializes `brabo-secrets` through
+External Secrets, so this path has never been exercised. Before relying on it,
+bring up a cluster with the `SealedSecret` in place and run `make smoke-k8s`:
+its first step requires every pod Ready, and a pod whose `secretRef` points
+at a Secret that never materialized is not.
 
-### Limites conhecidos deste ambiente {#known-limits-of-this-environment}
+### Known limits of this environment {#known-limits-of-this-environment}
 
-- **RWO em vez de RWX.** Funciona porque o cluster tem um nó só,
-  e RWO quer dizer "um NÓ", não "um pod". Num cluster de verdade esta
-  configuração poria api e engine em nós diferentes e o `git push` do dev
-  agent falharia com `remote unpack failed`.
-- **Sem pgvector** no Postgres do CloudNativePG. Hoje nenhuma migration cria
-  a extensão e nenhuma coluna `vector` existe.
-- **O `.gitlab-ci.yml` não tem validação estática local** (Fase 8c, ADR
-  0039). O subagente de Workflows da área de Infra valida workflows do GitHub Actions
-  com `actionlint` (fixado em `docker/engine/Dockerfile(.prod)`,
-  mesmo padrão de `hadolint`/`gitleaks`); não há binário offline
-  equivalente para o GitLab CI — o linter oficial precisa de uma instância viva.
-  Lacuna documentada, não uma meia-solução inventada.
+- **RWO instead of RWX.** Works because the cluster has a single node,
+  and RWO means "one NODE", not "one pod". On a real cluster this
+  configuration would put api and engine on different nodes and the dev
+  agent's `git push` would fail with `remote unpack failed`.
+- **No pgvector** on CloudNativePG's Postgres. Today no migration creates
+  the extension and no `vector` column exists.
+- **`.gitlab-ci.yml` has no local static validation** (Phase 8c, ADR
+  0039). The Infra area's Workflows subagent validates GitHub Actions
+  workflows with `actionlint` (pinned in `docker/engine/Dockerfile(.prod)`,
+  same pattern as `hadolint`/`gitleaks`); there's no equivalent offline
+  binary for GitLab CI — the official linter needs a live instance.
+  Documented gap, not an invented half-solution.
 
 ---
 
-## Rollout do engine {#rollout-do-engine}
+## Engine rollout {#rollout-do-engine}
 
-Decisões no
+Decisions in
 [ADR 0026](adr/0026-fase5-observabilidade-e-graceful-shutdown.md).
 
-O engine hospeda os processos de sessão. Derrubar uma réplica sem cuidado
-deixava, antes da Fase 5, **toda** sessão daquele pod pendurada em
-`active` sem processo nenhum — nunca avançando, nunca fechando.
+The engine hosts the session processes. Bringing down a replica carelessly
+used to leave, before Phase 5, **every** session on that pod hanging in
+`active` with no process at all — never advancing, never closing.
 
-### O que acontece durante um rollout, em ordem {#what-happens-during-a-rollout-in-order}
+### What happens during a rollout, in order {#what-happens-during-a-rollout-in-order}
 
-| fase | quanto tempo | o que acontece |
+| phase | how long | what happens |
 |---|---|---|
-| `preStop` | até 45s (`SHUTDOWN_DRAIN_TIMEOUT_MS`) | `Engine.Shutdown.drain/1`: `/ready` vira 503, `/internal/sessions` recusa sessões novas, e toda sessão deste nó é oferecida a um par vivo |
-| repasse por sessão | 5s (`@handoff_timeout_ms`) | `:erpc.call` para outro nó assumir o processo |
-| não adotada | — | vira `closing` com causa `node_shutdown`, depois `closed_abnormally` |
-| SIGTERM | o resto dos 90s (`terminationGracePeriodSeconds`) | a árvore de supervisão cai |
+| `preStop` | up to 45s (`SHUTDOWN_DRAIN_TIMEOUT_MS`) | `Engine.Shutdown.drain/1`: `/ready` flips to 503, `/internal/sessions` refuses new sessions, and every session on this node is offered to a live peer |
+| per-session handoff | 5s (`@handoff_timeout_ms`) | `:erpc.call` to another node to take over the process |
+| not adopted | — | become `closing` with cause `node_shutdown`, then `closed_abnormally` |
+| SIGTERM | rest of the 90s (`terminationGracePeriodSeconds`) | the supervision tree comes down |
 
-Os 90s são deliberados: 45s de drain mais folga para o desmonte da BEAM.
-Baixar `terminationGracePeriodSeconds` sem baixar o timeout do drain
-faz o kubelet matar o pod **no meio do repasse** — que é exatamente como
-você recria o bug que o drain existe para evitar.
+The 90s are deliberate: 45s of drain plus slack for the BEAM's teardown.
+Lowering `terminationGracePeriodSeconds` without lowering the drain
+timeout makes kubelet kill the pod **mid-handoff** — which is exactly how
+you recreate the bug the drain exists to prevent.
 
-### Fazendo o rollout {#doing-the-rollout}
+### Doing the rollout {#doing-the-rollout}
 
 ```bash
 kubectl -n brabo rollout restart deployment/engine
 kubectl -n brabo rollout status  deployment/engine --timeout=300s
 ```
 
-Com uma réplica só, não há par para adotar: **toda** sessão ativa
-vai terminar `closed_abnormally / node_shutdown`. Isso é correto, não
-falha — mas se o objetivo era não interromper ninguém, escale para 2 antes:
+With a single replica, there's no peer to adopt: **every** active session
+will end up `closed_abnormally / node_shutdown`. That's correct, not a
+failure — but if the goal was to not interrupt anyone, scale to 2 first:
 
 ```bash
 kubectl -n brabo scale deployment/engine --replicas=2
 ```
 
-### Provando que nada ficou órfão {#proving-nothing-was-left-orphaned}
+### Proving nothing was left orphaned {#proving-nothing-was-left-orphaned}
 
 ```bash
 make rollout-test
 ```
 
-Abre 5 sessões ativas, faz o rollout, e exige que **cada uma**
-esteja num de dois estados: `active` com um dono `:global` vivo (adotada),
-ou `closed_abnormally` com `node_shutdown` (drenada). Qualquer outra
-combinação reprova — em especial `active` sem dono, que é a
-definição operacional de órfã.
+Opens 5 active sessions, does the rollout, and requires that **each one**
+be in one of two states: `active` with a live `:global` owner (adopted),
+or `closed_abnormally` with `node_shutdown` (drained). Any other
+combination fails — especially `active` with no owner, which is the
+operational definition of an orphan.
 
-**Ele guarda a evidência que os pods antigos levam embora** (AT-078). Antes do
-`rollout restart`, `deploy/k8s/rollout-evidencia.sh` começa a escrever em
-`ROLLOUT_EVIDENCE_DIR` (um `mktemp -d` quando não definida; o caminho é impresso no
-fim):
+**It keeps the evidence the old pods take with them** (AT-078). Before the
+`rollout restart`, `deploy/k8s/rollout-evidencia.sh` starts writing into
+`ROLLOUT_EVIDENCE_DIR` (a `mktemp -d` when unset; the path is printed at the
+end):
 
-| arquivo | o quê |
+| file | what |
 |---|---|
-| `engine-<pod>.log` | `kubectl logs -f` de **todo** pod do engine — os já de pé (log inteiro, desde o boot), que o rollout mata, e todo pod criado depois — anexado assim que fica `Running` |
-| `final-<pod>.log` | uma cópia sem follow dos pods ainda de pé no fim, cobrindo um `logs -f` que caiu |
-| `events.log` | `kubectl get events -w` do namespace, com os timestamps próprios de cada evento (`SuccessfulRescale`, `ScalingReplicaSet`, `Killing`…) |
-| `replicas.log` | a cada 2 s (`EVIDENCIA_INTERVALO`, que o spec encurta): `<epoch> <spec.replicas do Deployment> <ready> <HPA current> <HPA desired>` |
-| `donos.log` | toda leitura de dono da checagem: `<epoch> <sessão> <nó dono ou ->` |
-| `donos-durante-rollout.log` | a mesma leitura, em laço enquanto o `rollout status` roda — em que réplica cada repasse caiu. Guardado à parte porque uma leitura no meio do rollout às vezes bate num pod de saída, e não pode alimentar o veredito |
-| `engine-estado.txt` | só leitura: as linhas das sessões do teste em `engine.session_states` (sem linha, nem o drain nem o `Adopter` veem uma sessão) e os últimos jobs do `SessionAdoptionWorker`, tirados no fim dos dois desfechos |
-| `marcos.log`, `anexos.log`, `pods-antes.txt`, `pods-no-fim.txt` | marcos do teste (`rollout-restart`, `rollout-status-ok`…), quando cada log foi anexado, os pods no T0 e no fim |
+| `engine-<pod>.log` | `kubectl logs -f` of **every** engine pod — the ones already up (whole log, from boot), which the rollout kills, and every pod created later — attached as soon as it is `Running` |
+| `final-<pod>.log` | a non-follow copy of the pods still up at the end, covering a `logs -f` that dropped |
+| `events.log` | `kubectl get events -w` for the namespace, with each event's own timestamps (`SuccessfulRescale`, `ScalingReplicaSet`, `Killing`…) |
+| `replicas.log` | every 2 s (`EVIDENCIA_INTERVALO`, which the spec shortens): `<epoch> <Deployment spec.replicas> <ready> <HPA current> <HPA desired>` |
+| `donos.log` | every owner read of the check: `<epoch> <session> <owner node or ->` |
+| `donos-durante-rollout.log` | the same read, looped while `rollout status` runs — which replica each handoff landed on. Kept apart because a read mid-rollout sometimes hits a pod on its way out, and must not feed the verdict |
+| `engine-estado.txt` | read-only: the test sessions' rows in `engine.session_states` (without a row, neither the drain nor the `Adopter` sees a session) and the last `SessionAdoptionWorker` jobs, taken at the end of both outcomes |
+| `marcos.log`, `anexos.log`, `pods-antes.txt`, `pods-no-fim.txt` | test milestones (`rollout-restart`, `rollout-status-ok`…), when each log was attached, the pods at T0 and at the end |
 
-Numa órfã a falha imprime toda linha que nomeia a sessão em todos
-esses arquivos — o log do pod antigo inclusive — mais as mudanças de réplica
-relativas ao rollout, e um veredito por órfã: **sem dono ANTES
-ou DEPOIS do primeiro scale-down do HPA**. Isso separa o confundidor conhecido: o
-`hpa-test` que roda antes deixa três réplicas, e ~75 s dentro da janela o
-HPA escala para uma, matando réplicas novas. Uma queda em `spec.replicas` é
-lida como o HPA, porque o `rollout restart` nunca a muda. Nada disso
-muda o que conta como adotada ou drenada, nem o teto de 120 s. As partes
-puras, e os coletores contra um `kubectl` de mentira, são cobertos por
-`scripts/ci/rollout-evidencia.spec.ts`. O workflow agendado sobe o
-diretório como o artefato `rollout-evidencia` em toda execução que chegou à
-prova, verde inclusive.
+On an orphan the failure prints every line that names the session across all
+of those files — the old pod's log included — plus the replica changes
+relative to the rollout, and a verdict per orphan: **without an owner BEFORE
+or AFTER the first HPA scale-down**. That separates the known confounder: the
+`hpa-test` that runs first leaves three replicas, and ~75 s into the window the
+HPA scales down to one, killing new replicas. A drop in `spec.replicas` is
+read as the HPA, because `rollout restart` never changes it. None of this
+changes what counts as adopted or drained, nor the 120 s ceiling. The pure
+parts, and the collectors against a fake `kubectl`, are covered by
+`scripts/ci/rollout-evidencia.spec.ts`. The scheduled workflow uploads the
+directory as the `rollout-evidencia` artifact on every run that reached the
+proof, green included.
 
-O que ele **não** captura, medido na primeira execução verde com ele
-(`35449815544`): as linhas do próprio drain (`shutdown: drenando…`,
-`shutdown: drain concluído — …`) nunca chegam ao log do pod. `Engine.Shutdown.drain/0`
-roda dentro do `bin/engine rpc` do `preStop`, então a saída do `Logger` dele vai para
-o stdout desse hook, que o kubelet descarta quando o hook dá certo. Os
-logs dos pods antigos terminam em `SIGTERM received`. O desfecho do drain por sessão
-tem de ser lido de `donos-durante-rollout.log` (para que réplica cada sessão
-foi) e de `engine-estado.txt` (se a linha de `session_states` dela sobreviveu).
+What it does **not** capture, measured on the first green run with it
+(`35449815544`): the drain's own lines (`shutdown: drenando…`,
+`shutdown: drain concluído — …`) never reach the pod's log. `Engine.Shutdown.drain/0`
+runs inside the `preStop`'s `bin/engine rpc`, so its `Logger` output goes to
+that hook's stdout, which kubelet discards when the hook succeeds. The
+old pods' logs end at `SIGTERM received`. The per-session outcome of the drain
+has to be read from `donos-durante-rollout.log` (which replica each session
+went to) and `engine-estado.txt` (whether its `session_states` row survived).
 
-**Causa corrigida, não confirmada no k3d** (AT-078, RN-588). A órfã que esta prova
-pegou (~3 em 13 execuções: sem linha em `session_states`, e um segundo pod ANTIGO em
-`donos-durante-rollout.log`) vinha do `Monitor` do pod antigo apagando a linha
-depois que o par a regravou durante o repasse. O drain agora marca o repasse
-e o Monitor mantém a linha. Isso foi provado por um teste ExUnit determinístico,
-não por esta prova, que falha 1 em 4-6 e não consegue provar uma correção. Se uma órfã
-aparecer de novo, o log do pod que repassou a sessão leva uma
-linha `Monitor: session_state <id> mantido|apagado em <node>` por sessão: nenhuma
-linha quer dizer que o Monitor nunca processou o `:DOWN` (o pod morreu antes).
+**Fixed cause, unconfirmed on k3d** (AT-078, RN-588). The orphan this proof
+caught (~3 in 13 runs: no `session_states` row, and a second OLD pod in
+`donos-durante-rollout.log`) came from the old pod's `Monitor` deleting the row
+after the peer re-wrote it during the handoff. The drain now marks the handoff
+and the Monitor keeps the row. That was proven by a deterministic ExUnit test,
+not by this proof, which fails 1 in 4-6 and cannot prove a fix. If an orphan
+shows up again, the pod log of the pod that handed the session over carries one
+`Monitor: session_state <id> mantido|apagado em <node>` line per session: no
+line means the Monitor never processed the `:DOWN` (the pod died first).
 
-À mão, a mesma pergunta:
+Manually, the same question:
 
 ```sql
 -- sessões ativas segundo a api
@@ -2030,46 +2032,46 @@ kubectl -n brabo exec deploy/engine -- \
   /app/bin/engine rpc ':global.registered_names() |> Enum.filter(&match?({:brabo_session, _}, &1)) |> length()'
 ```
 
-Ativa na api sem dono no engine = órfã.
+Active in the api with no owner in the engine = orphan.
 
-### Quando a sessão escapa {#quando-a-sessao-escapa}
+### When a session escapes {#quando-a-sessao-escapa}
 
-**Sessão presa em `closing`.** `closing` é um estado de transição; presa
-ali quer dizer que o drain começou e não terminou. O alerta *Session stuck in
-closing* dispara depois de 15 minutos. Investigue o log do pod
-que estava saindo — se ele já se foi, o `Adopter` (uma varredura a cada
-30s) deveria ter assumido; se não assumiu, confira se a linha ainda
-existe em `engine.session_states`.
+**Session stuck in `closing`.** `closing` is a transitional state; stuck
+there means the drain started and didn't finish. The *Session stuck in
+closing* alert fires after 15 minutes. Investigate the log of the pod
+that was leaving — if it's already gone, the `Adopter` (a sweep every
+30s) should have taken over; if it didn't, check whether the row still
+exists in `engine.session_states`.
 
-**Órfã depois de `kill -9` / um OOMKill.** O `preStop` não roda nesses
-casos, por definição. O que cobre é o `SessionAdoptionWorker`,
-que a cada 30s procura uma linha em `session_states` sem dono `:global`
-e a assume. Se ele não está rodando, a fila do Oban está parada —
-e aí o problema é outro (veja o alerta de fila não
-consumida, em [Observabilidade](#observabilidade)).
+**Orphan after `kill -9` / an OOMKill.** `preStop` doesn't run in those
+cases, by definition. What covers it is the `SessionAdoptionWorker`,
+which every 30s looks for a row in `session_states` with no `:global`
+owner and takes it over. If it's not running, the Oban queue is stalled —
+and then the problem is something else (see the alert for a queue not
+being consumed, under [Observability](#observabilidade)).
 
-**Um rollout preso no `preStop`.** Sintoma: um pod `Terminating` por exatamente
-90s, toda vez. Quase certamente um `:erpc.call` esperando por um nó que
-já morreu mas ainda está em `Node.list()`. O timeout de 5s por sessão
-limita o estrago; 90s cheios querem dizer ~18 sessões em sequência ou um repasse
-que nunca volta.
+**A rollout stuck in `preStop`.** Symptom: a pod `Terminating` for exactly
+90s, every time. Almost certainly an `:erpc.call` waiting for a node that
+already died but is still in `Node.list()`. The 5s-per-session timeout
+caps the damage; a full 90s means ~18 sessions in sequence or a handoff
+that never returns.
 
-**Nada é adotado, mesmo com 2 réplicas.** Os nós não se
-enxergam. Confira o cluster Erlang:
+**Nothing gets adopted, even with 2 replicas.** The nodes can't see each
+other. Check the Erlang cluster:
 
 ```bash
 kubectl -n brabo exec deploy/engine -- /app/bin/engine rpc 'Node.list()'
 ```
 
-Lista vazia = o DNSCluster não resolveu o Service headless, ou a
-NetworkPolicy está bloqueando a faixa da distribuição (9100–9110). Sem
-cluster, cada réplica é uma ilha e todo rollout drena tudo.
+Empty list = the DNSCluster didn't resolve the headless Service, or the
+NetworkPolicy is blocking the distribution range (9100–9110). Without a
+cluster, each replica is an island and every rollout drains everything.
 
-### Aumentar a janela de drain {#aumentar-a-janela-de-drain}
+### Increasing the drain window {#aumentar-a-janela-de-drain}
 
-Se as sessões são longas e os 45s de drain não bastam, os dois valores sobem
-**juntos** — e nesta ordem de raciocínio: escolha o drain, depois acrescente
-folga:
+If sessions run long and the 45s drain isn't enough, both values go up
+**together** — and in this order of reasoning: pick the drain, then add
+slack:
 
 ```yaml
 # deploy/k8s/base/engine/deployment.yaml
@@ -2077,99 +2079,99 @@ terminationGracePeriodSeconds: 150   # drain + ~30s de desmonte
 # env SHUTDOWN_DRAIN_TIMEOUT_MS: "120000"
 ```
 
-Mexer só em `terminationGracePeriodSeconds` não alonga o drain;
-mexer só no drain faz o kubelet matar no meio.
+Touching only `terminationGracePeriodSeconds` doesn't lengthen the drain;
+touching only the drain makes kubelet kill mid-way.
 
-Verificação: **nenhuma própria**. `make rollout-test` é a prova que
-se aplica, e a execução agendada prova só o par que o overlay **local**
-produz: 90 s de grace de `deploy/k8s/base/engine/deployment.yaml` e um
-drain de 20 s de `deploy/k8s/overlays/local/patches.yaml` — não os 45 s do
-default, e não um aumentado. Depois de subir os dois no overlay de que você faz deploy, rode
-`make rollout-test` com os mesmos valores no overlay local
-antes do rollout que importa; nada confere que o grace period fica
-acima do drain.
+Verification: **none of its own**. `make rollout-test` is the proof that
+applies, and the scheduled run proves only the pair the **local** overlay
+produces: 90 s of grace from `deploy/k8s/base/engine/deployment.yaml` and a
+20 s drain from `deploy/k8s/overlays/local/patches.yaml` — not the 45 s of the
+default, and not a raised one. After raising both in the overlay you deploy, run
+`make rollout-test` with the same values in the local overlay
+before the rollout that matters; nothing checks that the grace period stays
+above the drain.
 
 ---
 
 ## Restore {#restore}
 
-Decisões no [ADR 0027](adr/0027-fase5-backup-hardening-release.md).
+Decisions in [ADR 0027](adr/0027-fase5-backup-hardening-release.md).
 
-> **Testado.** O procedimento abaixo é exatamente o que o `make test-restore`
-> roda, e ele roda contra o cluster local. Não há passo aqui que
-> ninguém nunca exercitou. O registro da última execução está no fim.
+> **Tested.** The procedure below is exactly what `make test-restore`
+> runs, and it's run against the local cluster. There's no step here that
+> nobody has ever exercised. The record of the last run is at the end.
 
-### O que tem backup, e o que deliberadamente não tem {#what-is-backed-up-and-what-deliberately-is-not}
+### What is backed up, and what deliberately is not {#what-is-backed-up-and-what-deliberately-is-not}
 
-Existem sete volumes nomeados; **dois** são fonte da verdade e só esses são
-copiados. A classificação é o
-[ADR 0152](adr/0152-backup-de-volumes-contra-compose.md), e o motivo de
-fazê-la é que "fazer backup de todo volume" custa espaço enquanto esconde o que importa.
+Seven named volumes exist; **two** are source of truth and only those are
+copied. The classification is
+[ADR 0152](adr/0152-backup-de-volumes-contra-compose.md), and the point of
+making it is that "back up every volume" costs space while hiding what matters.
 
-| volume | natureza | no backup? |
+| volume | nature | in the backup? |
 |---|---|---|
-| `pgdata` | fonte da verdade — event log, ações, pgvector, tudo | sim, como **dump lógico**. Nunca uma cópia de arquivo do diretório de dados: copiar um Postgres rodando produz um backup que pode não restaurar |
-| `git_local_repos` | fonte da verdade — os repos *bare* dos projetos do provider `local` | **sim**, e este era o buraco. Ele não é reconstruível a partir do Postgres: o event log guarda a narrativa, não os objetos do git |
-| `neo4j_data` | derivado — uma projeção do event log ([ADR 0101](adr/0101-memoria-relacional-como-projecao-do-event-log.md)) | não. A resposta para memória derivada é **reprojeção**, não restore — `grafo:reprojetar`, veja [Perda do grafo](#perda-do-grafo) |
-| `project_workspaces` | derivado — worktrees que o `WorktreeManager` recria a partir do bare repo, **e** a pasta `docs/` dos agentes dos projetos `container` e `runner`, que é uma projeção do event log ([ADR 0148](adr/0148-artefatos-projetados-em-arquivo.md)) | não. A resposta é **reprojeção** — `artefatos:reprojetar`, veja [Perda da pasta de artefatos](#perda-da-pasta-de-artefatos) |
-| `ollama_data` | reobtível — os modelos baixam de novo | não |
-| `brabo_projects_base` | do usuário, não do produto | não, e o instalador nunca o apaga |
+| `pgdata` | source of truth — event log, actions, pgvector, everything | yes, as a **logical dump**. Never a file copy of the data directory: copying a running Postgres produces a backup that may not restore |
+| `git_local_repos` | source of truth — the *bare* repos of `local`-provider projects | **yes**, and this was the hole. It is not reconstructible from Postgres: the event log holds the narrative, not the git objects |
+| `neo4j_data` | derived — a projection of the event log ([ADR 0101](adr/0101-memoria-relacional-como-projecao-do-event-log.md)) | no. The answer for derived memory is **reprojection**, not restore — `grafo:reprojetar`, see [Losing the graph](#perda-do-grafo) |
+| `project_workspaces` | derived — worktrees the `WorktreeManager` recreates from the bare repo, **and** the agents' `docs/` folder of `container` and `runner` projects, which is a projection of the event log ([ADR 0148](adr/0148-artefatos-projetados-em-arquivo.md)) | no. The answer is **reprojection** — `artefatos:reprojetar`, see [Losing the artifact folder](#perda-da-pasta-de-artefatos) |
+| `ollama_data` | re-obtainable — models download again | no |
+| `brabo_projects_base` | the user's, not the product's | no, and the installer never deletes it |
 
-### Onde o backup mora {#where-the-backup-lives}
+### Where the backup lives {#where-the-backup-lives}
 
-| o quê | onde |
+| what | where |
 |---|---|
-| agenda | Kubernetes: CronJob `brabo-backup`, 03:17 UTC, diário. Compose: não há agendador — você o roda, ou o instalador roda antes de uma migração |
-| destino | disco (`BACKUP_DIR`) **ou** um bucket compatível com S3 (`BACKUP_S3_ENDPOINT` / `BACKUP_S3_BUCKET`). `BACKUP_DIR` definida vence; vazia cai para o S3, que é o que o CronJob faz |
-| layout | `daily/brabo-<ISO>.dump` + `weekly/…` para o Postgres; `git-daily/brabo-git-<ISO>.tar.gz` + `git-weekly/…` para os bare repos |
-| retenção | 7 diários + 4 semanais de **cada tipo**, por CONTAGEM (`BACKUP_KEEP_DAILY` / `BACKUP_KEEP_WEEKLY`) |
-| formato | `pg_dump --format=custom --compress=9`; `tar -czf` para os repos |
-| histórico | tabela `backup_runs` — o **dump**, chaveado por `object_key`. O arquivo dos repos leva o mesmo timestamp no prefixo irmão; o vínculo é o nome, não uma coluna |
+| schedule | Kubernetes: `brabo-backup` CronJob, 03:17 UTC, daily. Compose: there is no scheduler — you run it, or the installer does before a migration |
+| destination | disk (`BACKUP_DIR`) **or** an S3-compatible bucket (`BACKUP_S3_ENDPOINT` / `BACKUP_S3_BUCKET`). `BACKUP_DIR` set wins; empty falls back to S3, which is what the CronJob does |
+| layout | `daily/brabo-<ISO>.dump` + `weekly/…` for Postgres; `git-daily/brabo-git-<ISO>.tar.gz` + `git-weekly/…` for the bare repos |
+| retention | 7 daily + 4 weekly of **each kind**, by COUNT (`BACKUP_KEEP_DAILY` / `BACKUP_KEEP_WEEKLY`) |
+| format | `pg_dump --format=custom --compress=9`; `tar -czf` for the repos |
+| history | `backup_runs` table — the **dump**, keyed by `object_key`. The repo archive carries the same timestamp in the sibling prefix; the link is the name, not a column |
 
-No cluster local o destino S3 é um SeaweedFS (`s3-local`, o
-gateway `weed server -s3` na porta 9000) dentro do namespace `brabo` — era
-MinIO até o MinIO parar de publicar a imagem comunitária dele
-([ADR 0169](adr/0169-seaweedfs-no-lugar-do-minio-no-overlay-local.md)); em
-staging/prod é o bucket de verdade. O procedimento não muda — só o
-endpoint. Se o bootstrap para em `rollout status deployment/s3-local` com
-`ImagePullBackOff`, a imagem fixada deixou de ser servida: o digest impede
-os bytes de mudarem, não o publicador de ir embora.
+In the local cluster the S3 destination is a SeaweedFS (`s3-local`, the
+`weed server -s3` gateway on port 9000) inside the `brabo` namespace — it was
+MinIO until MinIO stopped publishing its community image
+([ADR 0169](adr/0169-seaweedfs-no-lugar-do-minio-no-overlay-local.md)); in
+staging/prod it's the real bucket. The procedure doesn't change — only the
+endpoint. If the bootstrap stops at `rollout status deployment/s3-local` with
+`ImagePullBackOff`, the pinned image stopped being served: the digest keeps
+the bytes from changing, not the publisher from leaving.
 
-> **O destino padrão do compose é um volume nomeado, e isso serve para
-> verificar e é errado para migrar.** `docker compose down -v` apaga o
-> `backup_local` junto com os dados que ele devia salvar. Aponte
-> `BRABO_BACKUP_HOST_DIR` para um diretório do host antes de qualquer migração.
+> **The default compose destination is a named volume, and that is fine for
+> verifying and wrong for migrating.** `docker compose down -v` deletes
+> `backup_local` along with the data it was meant to save. Point
+> `BRABO_BACKUP_HOST_DIR` at a host directory before any migration.
 
-### O que o arquivo dos bare repos garante — e o que não garante {#garantia-dos-bare-repos}
+### What the bare-repo archive guarantees — and what it does not {#garantia-dos-bare-repos}
 
-Nada é congelado: os repos são copiados enquanto api e engine podem estar escrevendo
-neles. O que isso compra, exatamente:
+Nothing is quiesced: the repos are copied while api and engine may be writing
+to them. What that buys, exactly:
 
-- **Garantido.** Consistência **por referência**. O git escreve objetos antes de
-  mover uma ref, e troca a ref por rename atômico (ou reescrevendo o
-  `packed-refs` sob lock, também por rename). Um `tar` cruzando um `git push`
-  captura a ref no valor antigo ou no novo, nunca meio valor — e
-  no caso novo os objetos que ela alcança já estão em disco.
-- **Garantido.** Um arquivo parcial **reprova a execução** em vez de passar como
-  bom. Um `git gc` concorrente pode apagar um packfile entre o `tar` listar um
-  diretório e lê-lo; o status de saída do `tar` é capturado num arquivo (em `sh`
-  POSIX o status de um pipeline é o do último comando) e um não-zero vira uma
-  linha `failed` em `backup_runs`, que é o que alerta. Rode de novo.
-- **Garantido.** O arquivo é legível **de ponta a ponta** antes de qualquer coisa ser
-  escrita — `brabo-restore-git` é o `pg_restore --list` do lado do git. Um
-  tar truncado tem tamanho plausível e só lê-lo diz.
-- **Não garantido.** Qualquer instante global. O `tar` percorre a árvore ao longo de um período,
-  então dois repositórios — ou duas refs de um — podem vir de momentos diferentes.
-  Irrelevante para o git, que valida por ref; relevante para quem lê
-  "o backup das 03:17" como um retrato só.
-- **Não garantido.** Conectividade de objetos. Nada aqui roda `git fsck`: a
-  imagem de backup não tem git, de propósito. O que se prova é a integridade do
-  contêiner, não do conteúdo.
-- **Não copiados.** Arquivos `*.lock`, e `objects/tmp_*`. Restaurar um lock órfão
-  dá um repositório onde todo `git` se recusa a trabalhar, com uma mensagem que
-  nunca menciona backup.
+- **Guaranteed.** Consistency **per reference**. Git writes objects before it
+  moves a ref, and swaps the ref by atomic rename (or by rewriting
+  `packed-refs` under a lock, also by rename). A `tar` crossing a `git push`
+  captures the ref at its old value or its new one, never half a value — and
+  in the new case the objects it reaches are already on disk.
+- **Guaranteed.** A partial archive **fails the run** instead of passing as
+  good. A concurrent `git gc` can delete a packfile between `tar` listing a
+  directory and reading it; `tar`'s exit status is captured in a file (in POSIX
+  `sh` a pipeline's status is the last command's) and a non-zero turns into a
+  `failed` row in `backup_runs`, which is what alerts on. Run it again.
+- **Guaranteed.** The archive is readable **end to end** before anything is
+  written — `brabo-restore-git` is the `pg_restore --list` of the git side. A
+  truncated tar has plausible size and only reading it tells.
+- **Not guaranteed.** Any global instant. `tar` walks the tree over a period,
+  so two repositories — or two refs of one — can come from different moments.
+  Irrelevant to git, which validates per ref; relevant to anyone reading
+  "the 03:17 backup" as one snapshot.
+- **Not guaranteed.** Object connectivity. Nothing here runs `git fsck`: the
+  backup image has no git, on purpose. What is proved is the integrity of the
+  container, not of the contents.
+- **Not copied.** `*.lock` files, and `objects/tmp_*`. Restoring an orphan lock
+  yields a repository where every `git` refuses to work, with a message that
+  never mentions backup.
 
-### Antes de restaurar: o backup existe, e presta? {#before-restoring-does-the-backup-exist-and-is-it-any-good}
+### Before restoring: does the backup exist, and is it any good? {#before-restoring-does-the-backup-exist-and-is-it-any-good}
 
 ```sql
 select finished_at, kind, status, object_key,
@@ -2179,60 +2181,60 @@ select finished_at, kind, status, object_key,
  limit 10;
 ```
 
-Três coisas nessa saída importam mais que a última linha:
+Three things in that output matter more than the last row:
 
-- **Um `status = 'failed'` recente com um sucesso antigo** é o caso
-  perigoso: existe backup, só que velho. O alerta *Last backup run failed*
-  cobre exatamente isso.
-- **Uma queda brusca em `size_bytes`** entre execuções sugere um dump
-  truncado, e o tamanho sozinho não o denuncia — é o
-  `pg_restore --list` do script que o pega.
-- **Nenhuma linha** quer dizer que o CronJob nunca rodou com sucesso. Aí
-  o problema não é o restore.
+- **A recent `status = 'failed'` with an old success** is the dangerous
+  case: a backup exists, it's just old. The *Last backup run failed*
+  alert covers exactly this.
+- **A sharp drop in `size_bytes`** between runs suggests a truncated
+  dump, and the size alone doesn't give it away — the script's
+  `pg_restore --list` is what catches it.
+- **No rows at all** means the CronJob has never run successfully. Then
+  the problem isn't the restore.
 
-### O caminho automatizado (o mesmo que o teste roda) {#restore-automatizado}
+### The automated path (the same one the test runs) {#restore-automatizado}
 
-No Kubernetes:
+On Kubernetes:
 
 ```bash
 make test-restore
 ```
 
-Numa instalação compose — sem cluster, sem `kubectl`:
+On a compose install — no cluster, no `kubectl`:
 
 ```bash
 make test-restore-compose
 ```
 
-Os dois disparam um backup **real** (mesma imagem, mesmo comando que roda em
-produção — não um `pg_dump` improvisado, que testaria um caminho que ninguém usa),
-restauram em `brabo_restore_test`, validam, e apagam o banco. Use-os
-quando o objetivo é **verificar** o backup, não recuperar dados.
+Both trigger a **real** backup (same image, same command that runs in
+production — not an ad-hoc `pg_dump`, which would test a path nobody uses),
+restore into `brabo_restore_test`, validate, and drop the database. Use them
+when the goal is to **verify** the backup, not to recover data.
 
-Os dois embrulhos ficam separados de propósito: unificá-los faria o caminho do compose
-depender de `kubectl`, que é a dependência que ele existe para não ter. O que
-*não* é duplicado é o julgamento — os dois rodam o mesmo `brabo-restore`, com as
-mesmas três validações. O do compose acrescenta um terceiro passo que o cluster não consegue
-pedir: ele verifica o arquivo dos bare repos, porque no Kubernetes o volume
-`git_local_repos` não está montado no pod de backup e o passo é
-legitimamente pulado, enquanto no compose ele está montado e pular seria um
-falso verde.
+The two wrappers stay separate on purpose: unifying them would make the compose
+path depend on `kubectl`, which is the dependency it exists not to have. What is
+*not* duplicated is the judgement — both run the same `brabo-restore`, with the
+same three validations. The compose one adds a third step the cluster cannot
+ask for: it verifies the bare-repo archive, because on Kubernetes the
+`git_local_repos` volume is not mounted in the backup pod and the step is
+legitimately skipped, while under compose it is mounted and skipping would be a
+false green.
 
-Os dois são provados toda semana no
-[`propriedades.yml`](#provas-de-propriedade-agendadas): `make test-restore` (e
-a quebra deliberada dele, `make test-restore-mutacao`) no job do cluster, e
-`make test-restore-compose` — com a verificação dos bare repos que só o
-caminho do compose faz — num segundo job, `restore-compose`, em outro runner
-(AT-195). A migração do instalador também roda o do compose.
+Both are proven every week in
+[`propriedades.yml`](#provas-de-propriedade-agendadas): `make test-restore` (and
+its deliberate break, `make test-restore-mutacao`) in the cluster job, and
+`make test-restore-compose` — with the bare-repo verification that only the
+compose path performs — in a second job, `restore-compose`, on another runner
+(AT-195). The installer's migration also runs the compose one.
 
-### Restaurando de verdade, durante um incidente {#restore-de-verdade}
+### Restoring for real, during an incident {#restore-de-verdade}
 
-O script `brabo-restore` restaura num banco NOVO e nunca toca
-o de origem — de propósito. Restaurar por cima do banco vivo é
-irreversível e quase sempre a decisão errada nos primeiros minutos de um
-incidente.
+The `brabo-restore` script restores into a NEW database and never touches
+the source one — on purpose. Restoring over the live database is
+irreversible and almost always the wrong call in the first minutes of an
+incident.
 
-**1. Suba um Job de restore apontando para o nome de banco que você quer:**
+**1. Bring up a restore Job pointing at the database name you want:**
 
 ```bash
 kubectl -n brabo create job restore-manual --from=cronjob/brabo-backup \
@@ -2244,11 +2246,11 @@ kubectl -n brabo set env job/restore-manual RESTORE_DB=brabo_recuperado
 kubectl -n brabo logs -f job/restore-manual
 ```
 
-Para restaurar de uma cópia semanal em vez da última diária:
+To restore from a weekly copy instead of the latest daily:
 `RESTORE_PREFIX=weekly/`.
 
-**2. Confira o que voltou** — as mesmas perguntas que o script faz, agora com
-os seus próprios olhos:
+**2. Check what came back** — the same questions the script asks, now with
+your own eyes:
 
 ```sql
 -- quantas tabelas voltaram (compare com a origem, não com um número
@@ -2263,9 +2265,9 @@ select session_id, count(*), min(seq), max(seq)
 having count(*) <> max(seq) - min(seq) + 1 or min(seq) <> 1;
 ```
 
-**3. Promova o banco recuperado** apontando `DATABASE_URL` para ele e
-reiniciando api e engine. Este é o último passo, e o único
-destrutivo:
+**3. Promote the recovered database** by pointing `DATABASE_URL` at it and
+restarting api and engine. This is the last step, and the only
+destructive one:
 
 ```bash
 kubectl -n brabo patch secret brabo-secrets --type merge \
@@ -2273,24 +2275,24 @@ kubectl -n brabo patch secret brabo-secrets --type merge \
 kubectl -n brabo rollout restart deployment/api deployment/engine
 ```
 
-> O Secret é materializado pelo External Secrets a partir do provedor. Um
-> `patch` direto é sobrescrito no próximo `refreshInterval` (1h):
-> mude **também** o valor no provedor, ou o sistema volta em silêncio
-> para o banco antigo dentro de uma hora — no meio da recuperação.
+> The Secret is materialized by External Secrets from the provider. A
+> direct `patch` gets overwritten on the next `refreshInterval` (1h):
+> change **also** the value in the provider, or the system quietly goes
+> back to the old database within an hour — mid-recovery.
 
-Verificação: os passos 1 e 2 são o `brabo-restore` que o `make test-restore`
-roda toda semana, e as duas consultas do passo 2 são as que
-o `docker/backup/restore.sh` se faz. O passo 3 — o patch em `DATABASE_URL` e
-reiniciar api e engine contra o banco recuperado — **nunca foi
-exercitado**: a prova apaga `brabo_restore_test` ao terminar e nunca
-aponta uma api rodando para ele.
+Verification: steps 1 and 2 are the `brabo-restore` that `make test-restore`
+runs every week, and the two queries of step 2 are the ones
+`docker/backup/restore.sh` asks itself. Step 3 — patching `DATABASE_URL` and
+restarting api and engine against the recovered database — has **never been
+exercised**: the proof drops `brabo_restore_test` when it finishes and never
+points a running api at it.
 
-### Restaurando numa instalação compose (banco recém-criado) {#restore-compose-banco-vazio}
+### Restoring on a compose installation (freshly created database) {#restore-compose-banco-vazio}
 
-Este é o caminho da **migração** do instalador (AT-738, ADR 0256): depois do
-`down -v` a instalação nova sobe com o Postgres vazio e o dump provado precisa
-voltar nele. Não há `kubectl`; o comando é o mesmo `brabo-restore`, com
-`--banco-vazio`:
+This is the installer's **migration** path (AT-738, ADR 0256): after `down -v`
+the new installation comes up with an empty Postgres and the proven dump has to
+go back into it. There is no `kubectl`; the command is the same `brabo-restore`,
+with `--banco-vazio`:
 
 ```bash
 # 1. Só o postgres de pé: api e engine PARADOS (eles migram o banco ao subir).
@@ -2304,112 +2306,113 @@ docker compose -f docker/docker-compose.install.yml up -d
 docker compose -f docker/docker-compose.install.yml run --rm backup brabo-restore-git --restaurar
 ```
 
-O que ele garante, e o que **não** faz:
+What it guarantees, and what it does **not** do:
 
-- **Recusa**, antes de baixar qualquer coisa, se o banco tiver QUALQUER tabela em
-  `public`, `drizzle` ou `engine` (inclusive a `__drizzle_migrations` de uma api
-  que já subiu): a mensagem diz `RECUSADO` e quantas tabelas achou. Banco com
-  dado nunca é sobrescrito — o ADR 0152 segue valendo, e o caminho de incidente
-  continua sendo o restore em banco NOVO acima.
-- Restaura numa única transação (falha não deixa meio banco) e roda as mesmas
-  validações do teste: lista de tabelas igual à do dump, contagem das tabelas
-  críticas igual à do dump (a origem não existe mais; o número vem das linhas do
-  `COPY`) e `seq` densa do event log. Zero linhas nas críticas reprova.
-- O destino do backup tem de ser a pasta do host: o volume `backup_local` é
-  apagado pelo `down -v`.
+- It **refuses**, before downloading anything, if the database has ANY table in
+  `public`, `drizzle` or `engine` (including the `__drizzle_migrations` of an api
+  that already came up): the message says `RECUSADO` and how many tables it
+  found. A database with data is never overwritten — ADR 0152 still holds, and
+  the incident path remains the restore into a NEW database above.
+- It restores in a single transaction (a failure does not leave half a database)
+  and runs the same validations as the test: table list equal to the dump's,
+  count of the critical tables equal to the dump's (the source no longer exists;
+  the number comes from the `COPY` rows) and a dense `seq` in the event log. Zero
+  rows in the critical tables fails.
+- The backup destination has to be the host folder: the `backup_local` volume is
+  erased by `down -v`.
 
-Provado em `propriedades.yml`, job `restore-banco-vazio`: postgres e backup do
-compose de instalação num projeto descartável, dado semeado, backup em pasta do
-host, restore num banco novo com contagens iguais, e a recusa sobre o banco já
-restaurado.
+Proven in `propriedades.yml`, job `restore-banco-vazio`: postgres and backup of
+the installation compose in a disposable project, seeded data, backup in a host
+folder, restore into a new database with equal counts, and the refusal on the
+already-restored database.
 
-### O que o restore NÃO cobre {#what-the-restore-does-not-cover}
+### What the restore does NOT cover {#what-the-restore-does-not-cover}
 
-- **As credenciais de usuário ficam ilegíveis se `CREDENTIALS_MASTER_KEY` for
-  diferente.** O dump leva as DEKs embrulhadas, não as chaves. Restaurar
-  num ambiente com outra chave mestra devolve um
-  banco intacto com credenciais de LLM e de git inúteis. Veja
-  [Rotação da chave mestra](#rotacao-da-chave-mestra).
-- **Nada dos usuários fica de fora.** Desde o corte do Keycloak
-  ([ADR 0032](adr/0032-corte-do-keycloak-e-sessao-em-cookie.md)) não há
-  banco de IdP separado: identidades, credenciais argon2id, refresh
-  tokens e o event log de auth moram todos no mesmo Postgres e entram
-  neste dump. O que **não** sobrevive é lê-los se o
-  `AUTH_TOKEN_PEPPER` for diferente — mesmo raciocínio da chave mestra
-  acima.
-- **O `brabo-restore` restaura o banco, e só ele.** Os bare repos
-  são o comando irmão, `brabo-restore-git` — veja
-  [Recuperando os bare repos](#restore-dos-bare-repos). São comandos
-  separados e não duas fases de um só porque são dois artefatos com
-  dois julgamentos: uma falha de git não pode reprovar a validação do event log, e
-  o contrário seria pior.
-- **Os worktrees dos agentes** (`project_workspaces`) não são copiados, e não precisam
-  ser: o `WorktreeManager` os recria a partir do bare repo. O que se
-  perde é trabalho em andamento não commitado.
-- ~~Os repositórios de verdade moram no GitHub/GitLab~~ — **isto estava
-  escrito aqui e estava errado**, e é por isso que o volume passou anos sem
-  backup. Vale para projetos dos providers `github`/`gitlab`; para um
-  projeto no provider `local` não há upstream em lugar nenhum, e o
-  bare repo em `git_local_repos` **é** o código que os agentes produziram.
-- **Não é PITR.** A granularidade é o último dump; qualquer coisa escrita
-  depois dele se perde. Se isso não é aceitável, o caminho é arquivamento de WAL
-  no CloudNativePG, que está fora do escopo desta fase.
+- **User credentials become unreadable if `CREDENTIALS_MASTER_KEY` is
+  different.** The dump carries the wrapped DEKs, not the keys. Restoring
+  into an environment with a different master key gives you back an
+  intact database with useless LLM and git credentials. See
+  [Master key rotation](#rotacao-da-chave-mestra).
+- **Nothing about users is left out.** Since the Keycloak cut
+  ([ADR 0032](adr/0032-corte-do-keycloak-e-sessao-em-cookie.md)) there's
+  no separate IdP database: identities, argon2id credentials, refresh
+  tokens, and the auth event log all live in the same Postgres and go
+  into this dump. What does **not** survive is reading them if
+  `AUTH_TOKEN_PEPPER` is different — same reasoning as the master key
+  above.
+- **`brabo-restore` restores the database, and only it.** The bare repos
+  are the sibling command, `brabo-restore-git` — see
+  [Recovering the bare repos](#restore-dos-bare-repos). They are separate
+  commands rather than two phases of one because they are two artefacts with
+  two judgements: a git failure must not fail the event-log validation, and
+  the reverse would be worse.
+- **Agent worktrees** (`project_workspaces`) aren't copied, and don't need
+  to be: the `WorktreeManager` recreates them from the bare repo. What is
+  lost is uncommitted work in progress.
+- ~~The real repositories live in GitHub/GitLab~~ — **this used to be
+  written here and it was wrong**, which is why the volume went years with
+  no backup. It holds for `github`/`gitlab`-provider projects; for a
+  project on the `local` provider there is no upstream anywhere, and the
+  bare repo in `git_local_repos` **is** the code the agents produced.
+- **It's not PITR.** The granularity is the last dump; anything written
+  after it is lost. If that's not acceptable, the path is WAL archiving
+  on CloudNativePG, which is out of scope for this phase.
 
-### Recuperando os bare repos {#restore-dos-bare-repos}
+### Recovering the bare repos {#restore-dos-bare-repos}
 
-Verificar não custa nada e não escreve nada — é o gesto semanal, e
-desde a AT-195 o job agendado `restore-compose` do `propriedades.yml` o faz
-(pelo `make test-restore-compose`, veja
-[o caminho automatizado](#restore-automatizado)):
+Verifying costs nothing and writes nothing — it is the weekly gesture, and
+since AT-195 the scheduled `restore-compose` job of `propriedades.yml` makes it
+(through `make test-restore-compose`, see
+[the automated path](#restore-automatizado)):
 
 ```bash
 docker compose -f docker/docker-compose.prod.yml run --rm backup brabo-restore-git
 ```
 
-Restaurar é o gesto de uma vez por incidente, e tem de ser digitado:
+Restoring is the once-in-an-incident gesture, and it has to be typed:
 
 ```bash
 docker compose -f docker/docker-compose.prod.yml \
   run --rm --user "$(docker run --rm -v brabo_git_local_repos:/v alpine stat -c %u:%g /v)" backup brabo-restore-git --restaurar
 ```
 
-Duas coisas sobre esse comando, as duas medidas e não supostas:
+Two things about that command, both measured rather than assumed:
 
-- **`--user <dono do volume>` não é opcional aqui, e root não serve** (o serviço tem `cap_drop: ALL`; a mensagem de recusa imprime o `uid:gid` lido por `stat`). O `git_local_repos` é compartilhado por três
-  imagens rodando com três uids diferentes (a api como `node`, o engine como
-  `engine`, a imagem de backup como uid 70). O volume fica com o dono de quem
-  o montou primeiro, modo 0755: o uid 70 o lê e não consegue escrever. Sem
-  root o comando recusa **antes** de extrair, nomeando esta correção — ele não
-  descobre o problema no meio do `tar`, deixando o volume escrito pela metade.
-- **O que é extraído é devolvido ao dono do diretório**, nunca
-  deixado como root. Senão o volume voltaria intacto e inútil: api
-  e engine, não-root, não conseguiriam escrever no que acabou de ser restaurado, e o
-  sintoma apareceria muito depois do restore sem nada apontando para ele.
+- **`--user <volume owner>` is not optional here, and root will not do** (the service has `cap_drop: ALL`; the refusal message prints the `uid:gid` read by `stat`). `git_local_repos` is shared by three
+  images running as three different uids (the api as `node`, the engine as
+  `engine`, the backup image as uid 70). The volume takes the owner of whoever
+  mounted it first, mode 0755: uid 70 reads it and cannot write it. Without
+  root the command refuses **before** extracting, naming this fix — it does not
+  discover the problem halfway through `tar`, leaving the volume part-written.
+- **What is extracted is handed back to the owner of the directory**, never
+  left as root. Otherwise the volume would come back intact and useless: api
+  and engine, non-root, could not write into what was just restored, and the
+  symptom would surface long after the restore with nothing pointing at it.
 
-Ele **recusa extrair por cima de repos existentes**. Sobrepor dois estados de repositório
-produz uma mistura de que nenhum `git` reclama e que ninguém nota até um `fetch`
-trazer de volta o histórico errado. Esvazie o volume, ou passe `RESTORE_GIT_FORCE=1`
-se a sobreposição é genuinamente o que você quer.
+It **refuses to extract over existing repos**. Overlaying two repository states
+produces a mix that no `git` complains about and nobody notices until a `fetch`
+brings back the wrong history. Empty the volume, or pass `RESTORE_GIT_FORCE=1`
+if the overlay is genuinely what you want.
 
-Verificação: as funções de shell por trás dos dois gestos são provadas em todo PR por
-`scripts/ci/backup-lib.spec.ts` — arquivar e restaurar vão e voltam idênticos, nenhum
-`*.lock` copiado, um arquivo truncado recusado na leitura, um destino em que ele não consegue
-escrever recusado antes do `tar`. Os próprios comandos, na imagem de backup contra
-o volume real, rodam pelo `make test-restore-compose` (a metade que
-verifica, nunca `--restaurar`), toda semana no `propriedades.yml`. Esse job primeiro
-cria um bare repo no volume (`git init --bare`, como o
-`LocalGitProvider` faz) e reprova se o veredito não o nomeia: com o
-volume vazio, `brabo-restore-git` responde "nada a restaurar" e sai com 0,
-o que seria um verde que não leu arquivo nenhum.
+Verification: the shell functions behind both gestures are proven on every PR by
+`scripts/ci/backup-lib.spec.ts` — archive and restore round-trip identical, no
+`*.lock` copied, a truncated archive refused on reading, a destination it cannot
+write refused before `tar`. The commands themselves, in the backup image against
+the real volume, run through `make test-restore-compose` (the verifying
+half, never `--restaurar`), weekly in `propriedades.yml`. That job first
+creates a bare repo in the volume (`git init --bare`, as the
+`LocalGitProvider` does) and fails if the verdict does not name it: with the
+volume empty, `brabo-restore-git` answers "nothing to restore" and exits 0,
+which would be a green that read no archive.
 
-### Perda do grafo (Neo4j) {#perda-do-grafo}
+### Losing the graph (Neo4j) {#perda-do-grafo}
 
-O `neo4j_data` **não** está em backup nenhum, e isso é a decisão, não um
-descuido ([ADR 0152](adr/0152-backup-de-volumes-contra-compose.md), decisão
-4). Restaurar uma projeção possivelmente velha ao lado de um Postgres restaurado noutro
-instante dá dois estados derivados de momentos diferentes sem nada para
-reconciliá-los. A resposta certa para memória derivada é reprojetar a partir da
-fonte — e esse comando existe ([RN-569](business-rules/api.md#rn-569)):
+`neo4j_data` is **not** in any backup, and that is the decision, not an
+oversight ([ADR 0152](adr/0152-backup-de-volumes-contra-compose.md), decision
+4). Restoring a possibly-stale projection next to a Postgres restored at another
+instant gives two derived states from different moments with nothing to
+reconcile them. The right answer for derived memory is to reproject from the
+source — and that command exists ([RN-569](business-rules/api.md#rn-569)):
 
 ```bash
 # Kubernetes (o script vem dentro da imagem da api)
@@ -2424,7 +2427,7 @@ pnpm --filter api grafo:reprojetar
 pnpm --filter api grafo:reprojetar -- --project <project-uuid>
 ```
 
-Saída esperada:
+Expected output:
 
 ```
 [reprojetar] escopo: event log inteiro
@@ -2437,92 +2440,92 @@ Saída esperada:
   grafo agora (inteiro): nós=80  arestas=80
 ```
 
-O que ele faz, e o que garante:
+What it does, and what it guarantees:
 
-- **A mesma tradução do projetor vivo.** Evento → nó/aresta mora numa
-  classe só (`GraphEventTranslator`), chamada tanto pelo projetor de ida quanto
-  por este comando. Ele lê `handoff.offered`, `psychologist.hypothesis_proposed`
-  e `anamnese.profile_updated` de `session_events`, e a `Interacao` de
-  toda sessão em `closed`/`closed_abnormally` de `sessions` (fechar uma
-  sessão não deixa evento no log).
-- **Idempotente, e nunca apaga.** Toda escrita é um `MERGE` numa chave
-  natural: rodá-lo duas vezes dá o mesmo grafo, e **rodar de novo é como você
-  tenta de novo** depois de uma falha no meio. Ele só acrescenta ou converge; um nó já no
-  grafo fica.
-- **Em lotes, por cursor.** O `session_events` é percorrido na ordem de `id` (ULID,
-  a chave primária), 200 linhas por vez — nunca a tabela inteira em memória. A
-  linha de progresso imprime o cursor; `--after-event <id>` retoma a fase de eventos
-  depois dele. Recomeçar é igualmente seguro, só mais lento.
-- **Ele não toca a outbox, então a api pode ficar de pé.** O projetor vivo
-  guarda o progresso dele em `outbox_events.processed_at`
-  (`aggregate_type = 'graph_projection'`); este comando nem lê nem
-  escreve essa tabela, então não consegue roubar, reabrir nem marcar uma linha. Os dois escrevem com
-  `MERGE` nas mesmas chaves.
-- **Ele falha nomeado, nunca como sucesso silencioso.** Neo4j não configurado ou
-  inalcançável é recusado *antes* de ler o log (um escopo vazio, senão,
-  "daria certo" com zero projetados); o Neo4j caindo no meio para com
-  o último evento completado; um `--project` desconhecido é recusado sem nada
-  escrito; um item com payload incoerente é contado, nomeado, e a execução
-  sai com `1` no fim.
+- **The same translation as the live projector.** Event → node/edge lives in
+  one class (`GraphEventTranslator`), called by both the forward projector and
+  this command. It reads `handoff.offered`, `psychologist.hypothesis_proposed`
+  and `anamnese.profile_updated` from `session_events`, and the `Interacao` of
+  every session in `closed`/`closed_abnormally` from `sessions` (closing a
+  session leaves no event in the log).
+- **Idempotent, and it never deletes.** Every write is a `MERGE` on a natural
+  key: running it twice gives the same graph, and **running it again is how you
+  retry** after a failure halfway. It only adds or converges; a node already in
+  the graph stays.
+- **In batches, by cursor.** `session_events` is walked in `id` order (ULID,
+  the primary key), 200 rows at a time — never the whole table in memory. The
+  progress line prints the cursor; `--after-event <id>` resumes the event phase
+  after it. Starting over is equally safe, just slower.
+- **It does not touch the outbox, so the api can stay up.** The live projector
+  keeps its progress in `outbox_events.processed_at`
+  (`aggregate_type = 'graph_projection'`); this command neither reads nor
+  writes that table, so it cannot steal, reopen or mark a row. Both write with
+  `MERGE` on the same keys.
+- **It fails named, never as silent success.** Neo4j unconfigured or
+  unreachable is refused *before* reading the log (an empty scope would
+  otherwise "succeed" with zero projected); Neo4j dropping mid-run stops with
+  the last event completed; an unknown `--project` is refused with nothing
+  written; an item with an incoherent payload is counted, named, and the run
+  exits `1` at the end.
 
-O que ele **não** reconstrói, e a única ressalva de ordem:
+What it does **not** rebuild, and the one ordering caveat:
 
-- **`PromptTemplate`/`PromptVersion`** não vêm do event log. A
-  fonte deles é o diretório `prompts/`: reenvie-os com
-  `node scripts/dev/seed-prompts.ts` (idempotente por hash).
-- **`PerfilAnamnese` é um retrato chaveado por usuário + dimensão, sem projeto.**
-  O último a escrever vence. Uma execução com `--project` reexecuta só os eventos de perfil
-  daquele projeto, então pode deixar um retrato no último valor daquele projeto quando outro
-  projeto escreveu um mais novo. A execução completa (sem `--project`) percorre o log inteiro em
-  ordem e restaura o último global — use-a depois de perder o grafo; guarde
-  `--project` para um reparo pontual.
-- **Uma execução completa exige uma janela de manutenção, sem teto de tempo**, e quanto
-  ela leva num log grande não foi medido — veja
-  [Rodando uma reprojeção completa](#reprojecao-em-janela) para a janela, a
-  linha de progresso e como saber quanto falta.
+- **`PromptTemplate`/`PromptVersion`** do not come from the event log. Their
+  source is the `prompts/` directory: re-send them with
+  `node scripts/dev/seed-prompts.ts` (idempotent by hash).
+- **`PerfilAnamnese` is a snapshot keyed by user + dimension, with no project.**
+  Last writer wins. A `--project` run replays only that project's profile
+  events, so it can leave a snapshot at that project's latest value when another
+  project wrote a newer one. The full run (no `--project`) walks the whole log in
+  order and restores the global latest — use it after losing the graph; keep
+  `--project` for a targeted repair.
+- **A full run takes a maintenance window, with no time ceiling**, and how
+  long it takes on a large log is unmeasured — see
+  [Running a full reprojection](#reprojecao-em-janela) for the window, the
+  progress line and how to tell how far along it is.
 
-A prova é o `make test-reprojecao`
-(`apps/api/test/scripts/reprojetar-grafo.spec.ts`): ele monta um cenário com
-o projetor de ida, **apaga** esse subgrafo, reprojeta, compara as contagens de nós e
-arestas mais a lista de chaves, e reprojeta de novo. Ele precisa do Neo4j de pé e
-pula sem ele — o job de CI da api não tem Neo4j, então ali ele pula. Ele não
-depende de ter havido um backup, de propósito.
+The proof is `make test-reprojecao`
+(`apps/api/test/scripts/reprojetar-grafo.spec.ts`): it builds a scenario with
+the forward projector, **wipes** that subgraph, reprojects, compares node and
+edge counts plus the list of keys, and reprojects again. It needs Neo4j up and
+skips without it — the api CI job has no Neo4j, so there it skips. It does not
+depend on a backup having happened, on purpose.
 
-A mesma prova também roda **dentro do cluster local**: `make test-reprojecao-k8s`
-(`deploy/k8s/test-reprojecao.sh`) é o quarto alvo do agendado
-`propriedades.yml` (veja [Provas de propriedade agendadas](#provas-de-propriedade-agendadas)).
-Ele roda o comando exatamente como esta seção manda rodá-lo num incidente
+The same proof also runs **inside the local cluster**: `make test-reprojecao-k8s`
+(`deploy/k8s/test-reprojecao.sh`) is the fourth target of the scheduled
+`propriedades.yml` (see [Scheduled property proofs](#provas-de-propriedade-agendadas)).
+It runs the command exactly as this section tells you to run it in an incident
 (`kubectl exec deploy/api -- node scripts/reprojetar-grafo.js --project <id>`),
-contra o Postgres e o Neo4j do cluster, num projeto que ele mesmo cria.
-Desde a AT-191 o cenário dele exercita **os quatro caminhos de tradução** do
-`GraphEventTranslator` — um `handoff.offered`, um
-`psychologist.hypothesis_proposed` citando uma mensagem como evidência, um
-`anamnese.profile_updated` para um usuário próprio, e a `Interacao` da
-sessão fechada — e exige **9 nós e 6 arestas** antes da limpeza, depois
-da reconstrução e depois da segunda execução (medido na execução `36498776825`). O
-Psicólogo e a Anamnese seguem pausados: a prova acrescenta os eventos que eles
-escreveriam e confere o que a reprojeção reconstrói a partir deles.
+against the cluster's Postgres and Neo4j, on a project it creates itself.
+Since AT-191 its scenario exercises **all four translation paths** of the
+`GraphEventTranslator` — a `handoff.offered`, a
+`psychologist.hypothesis_proposed` citing a message as evidence, an
+`anamnese.profile_updated` for a user of its own, and the `Interacao` of the
+closed session — and requires **9 nodes and 6 edges** before the wipe, after
+the rebuild and after the second run (measured on run `36498776825`). The
+Psychologist and the Anamnesis stay paused: the proof appends the events they
+would write and checks what the reprojection rebuilds from them.
 
-O grafo vazio até você rodar isto tem um efeito nomeado: leituras que dependem
-do grafo degradam. O RAG **não** é afetado — ele mora no pgvector, que está
-dentro do dump.
+The graph being empty until you run this has a named effect: reads that depend
+on the graph degrade. The RAG is **not** affected — it lives in pgvector, which
+is inside the dump.
 
-#### Rodando uma reprojeção completa: uma janela de manutenção, sem teto de tempo {#reprojecao-em-janela}
+#### Running a full reprojection: a maintenance window, no time ceiling {#reprojecao-em-janela}
 
-Uma reprojeção completa (do grafo ou da [pasta de artefatos](#perda-da-pasta-de-artefatos))
-é uma operação rara de **recuperação**, e roda numa **janela de manutenção, sem
-teto de tempo** — decisão do mantenedor (2026-09-27). Nada no produto
-a corta por tempo, avisa quando demora, ou a agenda: ela roda pelo tempo que
-o event log levar, e você planeja a janela para isso.
+A full reprojection (graph or [artifact folder](#perda-da-pasta-de-artefatos))
+is a rare **recovery** operation, and it runs in a **maintenance window, with no
+time ceiling** — maintainer's decision (2026-09-27). Nothing in the product
+times it out, warns when it takes long, or schedules it: it runs for as long as
+the event log takes, and you plan the window for that.
 
-Quanto tempo isso é num log de tamanho de produção **não foi medido**. A única execução real
-até agora é o compose de desenvolvimento (98 eventos em `session_events`, 2,5 s de ponta
-a ponta); uma extrapolação proporcional a partir disso não é medição, então cronometre a
-primeira execução completa da sua instalação e guarde esse número para a próxima janela.
+How long that is on a production-size log is **unmeasured**. The only real run
+so far is the development compose (98 events in `session_events`, 2.5 s end to
+end); a proportional extrapolation from it is not a measurement, so time the
+first full run of your installation and keep that number for the next window.
 
-**Acompanhando o progresso.** O comando imprime uma linha por lote — a cada 200
-eventos dos tipos que ele lê — antes do resultado final, então uma execução que
-ainda está imprimindo ainda está percorrendo o log:
+**Following the progress.** The command prints one line per batch — every 200
+events of the types it reads — before the final result, so a run that is
+still printing is still walking the log:
 
 ```
 [reprojetar] eventos: 200 projetados, cursor 01M2DTREY0TBKHCHG9NWXYF0A4
@@ -2532,10 +2535,10 @@ ainda está imprimindo ainda está percorrendo o log:
 [reprojetar-artefatos] artefatos: 200 projetados, cursor 01M2DTREY0TBKHCHG9NWXYF0A4
 ```
 
-O número é de quantos foram **projetados** (itens que falharam são impressos na
-própria linha e contados em `falhas=` no fim). A linha não leva um
-total. Para saber quanto falta, pergunte ao Postgres, com o cursor da
-última linha — só leitura, então é seguro enquanto a execução segue:
+The number is how many were **projected** (items that failed are printed on
+their own line and counted in `falhas=` at the end). The line does not carry a
+total. To know how far along the run is, ask Postgres, with the cursor from the
+last line — reading only, so it is safe while the run goes on:
 
 ```sql
 -- grafo, fase de eventos: quantos no total, e quantos ainda depois do cursor
@@ -2564,33 +2567,33 @@ SELECT count(*) AS total,
 SELECT created_at FROM session_events WHERE id = '<cursor>';
 ```
 
-Acrescente `AND session_id IN (SELECT id FROM sessions WHERE project_id = '<project-uuid>')`
-a uma contagem quando a execução tem `--project`. As listas de tipos são as que os
-comandos leem (`EVENTOS_DO_LOG_PROJETAVEIS` em
+Add `AND session_id IN (SELECT id FROM sessions WHERE project_id = '<project-uuid>')`
+to a count when the run has `--project`. The type lists are the ones the
+commands read (`EVENTOS_DO_LOG_PROJETAVEIS` in
 `apps/api/src/application/graph-projection/graph-event-translator.ts`,
-`ARTIFACT_PROJECTABLE_EVENT_TYPES` em
-`apps/api/src/domain/artifacts/artifact-projection-events.ts`); se algum dos arquivos
-ganhou um tipo, a contagem aqui fica curta dele.
+`ARTIFACT_PROJECTABLE_EVENT_TYPES` in
+`apps/api/src/domain/artifacts/artifact-projection-events.ts`); if either file
+gained a type, the count here is short by it.
 
-**O que esta decisão não acrescenta.** Nenhum teto, nenhum aviso, nenhuma reprojeção
-dividida em janelas ou agendada pelo produto. `--project` e
-`--after-event` continuam exatamente o que já eram — um reparo pontual e uma
-retomada depois de uma interrupção — e **não** são o jeito de caber uma recuperação completa
-numa janela mais curta: uma execução com `--project` não consegue restaurar o retrato
-global de `PerfilAnamnese` (acima), e retomar no meio de um tipo de artefato
-versionado pode deixar uma versão mais velha ([abaixo](#perda-da-pasta-de-artefatos)).
-A execução completa é a recuperação. Interrompê-la é seguro — a idempotência acima
-vale — e rodá-la de novo desde o início é sempre correto, só mais lento.
+**What this decision does not add.** No ceiling, no warning, no reprojection
+split into windows or scheduled by the product. `--project` and
+`--after-event` stay exactly what they already were — a targeted repair and a
+resume after an interruption — and are **not** the way to fit a full recovery
+into a shorter window: a `--project` run cannot restore the global
+`PerfilAnamnese` snapshot (above), and resuming in the middle of a versioned
+artifact type can leave an older version ([below](#perda-da-pasta-de-artefatos)).
+The full run is the recovery. Interrupting it is safe — the idempotence above
+holds — and running it again from the start is always correct, just slower.
 
-### Perda da pasta de artefatos (`docs/`) {#perda-da-pasta-de-artefatos}
+### Losing the artifact folder (`docs/`) {#perda-da-pasta-de-artefatos}
 
-Todo artefato que os agentes emitem mora **só no event log**; a pasta `docs/`
-do projeto é uma **projeção** dele ([ADR 0148](adr/0148-artefatos-projetados-em-arquivo.md)),
-então não está em backup nenhum e isso é a decisão, não um descuido
-(o [ADR 0152](adr/0152-backup-de-volumes-contra-compose.md) raciocina o mesmo para o
-grafo). Restaurar o banco **não** a traz de volta sozinho: as
-linhas da outbox que movem o projetor vivo já estão marcadas como processadas, então
-nada reescreve a pasta. O comando que reescreve existe
+Every artifact the agents emit lives **only in the event log**; the `docs/`
+folder of the project is a **projection** of it ([ADR 0148](adr/0148-artefatos-projetados-em-arquivo.md)),
+so it is not in any backup and that is the decision, not an oversight
+([ADR 0152](adr/0152-backup-de-volumes-contra-compose.md) reasons the same for the
+graph). Restoring the database does **not** bring it back by itself: the
+outbox rows that drive the live projector are already marked processed, so
+nothing rewrites the folder. The command that does exists
 ([RN-590](business-rules/api.md#rn-590)):
 
 ```bash
@@ -2606,7 +2609,7 @@ pnpm --filter api artefatos:reprojetar
 pnpm --filter api artefatos:reprojetar -- --project <project-uuid>
 ```
 
-Saída esperada:
+Expected output:
 
 ```
 [reprojetar-artefatos] escopo: event log inteiro
@@ -2617,310 +2620,310 @@ Saída esperada:
   artefatos projetados=6  falhas=0
 ```
 
-O que ele faz, e o que garante:
+What it does, and what it guarantees:
 
-- **A mesma tradução do projetor vivo.** Evento → pasta, nome de arquivo
-  e Markdown moram numa classe só (`ArtifactEventTranslator`), chamada tanto pelo
-  projetor de ida quanto por este comando.
-- **Idempotente, e nunca apaga.** O nome do arquivo é função do
-  evento (tipos versionados: `<tipo>.md`; append-only: com o `seq`), então rodá-lo
-  duas vezes reescreve os mesmos arquivos com o mesmo conteúdo, e **rodar de
-  novo é como você tenta de novo**. Um arquivo que você criou em `docs/` fica.
-- **Em lotes, por cursor.** O `session_events` é percorrido na ordem de `id`, 200 linhas
-  por vez; `--after-event <id>` retoma depois do cursor impresso.
-- **Ele não toca a outbox**, então a api pode ficar de pé.
-- **Ele falha nomeado, nunca como sucesso silencioso.** Uma escrita que falha (disco cheio,
-  pasta inalcançável, um projeto cuja pasta sumiu) é contada e nomeada por
-  evento, não para o resto, e a execução sai com `1` no fim. Um `--project`
-  desconhecido é recusado sem nada escrito.
+- **The same translation as the live projector.** Event → folder, file name
+  and Markdown live in one class (`ArtifactEventTranslator`), called by both
+  the forward projector and this command.
+- **Idempotent, and it never deletes.** The file name is a function of the
+  event (versioned types: `<type>.md`; append-only: with the `seq`), so running
+  it twice rewrites the same files with the same content, and **running it
+  again is how you retry**. A file you created in `docs/` stays.
+- **In batches, by cursor.** `session_events` is walked in `id` order, 200 rows
+  at a time; `--after-event <id>` resumes after the printed cursor.
+- **It does not touch the outbox**, so the api can stay up.
+- **It fails named, never as silent success.** A write that fails (full disk,
+  unreachable folder, a project whose folder is gone) is counted and named per
+  event, does not stop the rest, and the run exits `1` at the end. An unknown
+  `--project` is refused with nothing written.
 
-Onde ele escreve, e o que **não** cobre:
+Where it writes, and what it does **not** cover:
 
-- **Ele precisa ver o mesmo disco que a api.** A pasta é resolvida pela mesma
-  função que o projetor usa (`container`/`runner`:
-  `<PROJECT_WORKSPACES_ROOT>/<workspace_dir_name>/docs/`; `mounted`: dentro da
-  pasta do projeto). Rode-o na imagem da api, com os volumes da api.
-- **Ele escreve no local *atual* do projeto.** Uma conversão de modo não
-  move a `docs/` (o código da conversão nunca a toca), então arquivos escritos antes
-  dela ficam no local antigo; reprojetar os recria no atual.
-- **Tipos versionados mostram o último evento, então não retome no meio
-  deles.** `module_map`, `module_routing`, `project_image` e `c4_diagram`
-  sobrescrevem um arquivo; uma execução completa termina com a última versão emitida, enquanto
-  `--after-event` começando entre duas versões pode deixar uma mais velha.
-- **O que ele não lê:** tipos fora da lista projetável (`qa_verdict`,
-  `secops_verdict`, `task_blocked`, `infra_delegation_files`) nunca foram arquivos
-  e não são recriados.
-- **Ele roda numa janela de manutenção, sem teto de tempo**, igual ao
-  grafo: a linha de progresso e as consultas para acompanhá-la estão em
-  [Rodando uma reprojeção completa](#reprojecao-em-janela). Quanto ele leva num
-  event log grande não foi medido; o comando é seguro de interromper e rodar
-  de novo.
+- **It must see the same disk as the api.** The folder is resolved by the same
+  function the projector uses (`container`/`runner`:
+  `<PROJECT_WORKSPACES_ROOT>/<workspace_dir_name>/docs/`; `mounted`: inside the
+  project folder). Run it in the api image, with the api's volumes.
+- **It writes to the project's *current* location.** A mode conversion does not
+  move `docs/` (the conversion code never touches it), so files written before
+  it stay at the old location; reprojecting recreates them at the current one.
+- **Versioned types show the last event, so do not resume in the middle of
+  them.** `module_map`, `module_routing`, `project_image` and `c4_diagram`
+  overwrite one file; a full run ends with the latest emitted version, while
+  `--after-event` starting between two versions can leave an older one.
+- **What it does not read:** types outside the projectable list (`qa_verdict`,
+  `secops_verdict`, `task_blocked`, `infra_delegation_files`) were never files
+  and are not recreated.
+- **It runs in a maintenance window, with no time ceiling**, the same as the
+  graph: the progress line and the queries to follow it are in
+  [Running a full reprojection](#reprojecao-em-janela). How long it takes on a
+  large event log is unmeasured; the command is safe to interrupt and run
+  again.
 
-A prova é `apps/api/test/scripts/reprojetar-artefatos.spec.ts`: ele monta um
-cenário com o projetor de ida num Postgres de verdade e num disco de verdade, **apaga**
-a pasta, reprojeta, compara cada caminho e conteúdo, e reprojeta de novo.
-Ele roda em todo PR. O comando como esta seção manda rodá-lo num
-incidente — `node scripts/reprojetar-artefatos.js` dentro da **imagem** da api — é
-provado pelo `make test-reprojecao-artefatos-k8s` (`deploy/k8s/test-reprojecao-artefatos.sh`,
-AT-198), o irmão do alvo de cluster do grafo: ele cria um projeto próprio
-com um `artifact.note` pela API, espera o projetor vivo escrevê-lo,
-apaga a pasta `docs/<agente>/` do agente **dentro do pod da api**, roda o
-próprio script da imagem com `--project`, e exige que o arquivo reconstruído tenha o
-**mesmo sha256** do que o projetor vivo escreveu — depois roda de novo e
-exige o mesmo hash (idempotência). Ele roda no agendado
-`.github/workflows/propriedades.yml`, e como o irmão não depende de nenhum
-outro alvo.
+The proof is `apps/api/test/scripts/reprojetar-artefatos.spec.ts`: it builds a
+scenario with the forward projector on a real Postgres and a real disk, **wipes**
+the folder, reprojects, compares every path and content, and reprojects again.
+It runs on every PR. The command as this section tells you to run it in an
+incident — `node scripts/reprojetar-artefatos.js` inside the api **image** — is
+proved by `make test-reprojecao-artefatos-k8s` (`deploy/k8s/test-reprojecao-artefatos.sh`,
+AT-198), the sibling of the graph's cluster target: it creates its own project
+with an `artifact.note` through the API, waits for the live projector to write
+it, deletes the agent's `docs/<agent>/` folder **inside the api pod**, runs the
+image's own script with `--project`, and requires the rebuilt file to have the
+**same sha256** as the one the live projector wrote — then runs it again and
+requires the same hash (idempotence). It runs in the scheduled
+`.github/workflows/propriedades.yml`, and like its sibling it depends on no
+other target.
 
-### Quando o restore falha {#when-the-restore-fails}
+### When the restore fails {#when-the-restore-fails}
 
-| sintoma | causa provável |
+| symptom | probable cause |
 |---|---|
-| `no backup under .../daily/` | bucket errado, credencial errada, ou o CronJob nunca rodou |
-| `not an intact custom dump` | upload interrompido; use o objeto anterior ou `weekly/` |
-| `pg_restore failed` com erro de extensão | o banco de destino precisa das mesmas extensões (`pgvector`); no CNPG elas vêm do cluster, não do dump |
-| `missing tables in the restored copy` | um dump de outra versão de schema — o script diz QUAIS faltam; confira a data do objeto contra a migration mais recente |
-| `out of window` numa tabela crítica | a contagem não bate com o timestamp do dump: investigue antes de promover |
-| `server version mismatch` | o `pg_dump` do Job é 16; um cluster noutra major recusa a conexão |
-| timeout do Job | banco grande demais para o `activeDeadlineSeconds`; suba o valor no Job, não no CronJob |
-| `destination inaccessible … does not accept writes` | com `BACKUP_DIR`, o diretório existe e o uid do container não consegue escrever nele. É uma checagem de **escrita**, não de existência, de propósito: um destino só de leitura passaria no `ls` e reprovaria o dump, com o erro aparecendo depois do `pg_dump` e apontando para a coisa errada |
-| `tar of the bare repos exited with N` | algo mudou sob os repos no meio da leitura — o mais provável é um `git gc` concorrente. A execução é marcada `failed` em vez de entregar um arquivo parcial. Rode de novo |
-| `there are N bare repo(s) … and NO archive` | este volume não tem cobertura: o arquivo falta enquanto os repos não. Ausente-e-vazio é normal e informado de outro jeito |
-| `does not accept writes by this user (uid 70)` no `--restaurar` | o caso do dono do volume compartilhado — restaure com `--user <dono do volume>`, veja [Recuperando os bare repos](#restore-dos-bare-repos) |
+| `no backup under .../daily/` | wrong bucket, wrong credential, or the CronJob never ran |
+| `not an intact custom dump` | interrupted upload; use the previous object or `weekly/` |
+| `pg_restore failed` with an extension error | the destination database needs the same extensions (`pgvector`); on CNPG they come from the cluster, not the dump |
+| `missing tables in the restored copy` | a dump from a different schema version — the script says WHICH ones are missing; check the object's date against the most recent migration |
+| `out of window` on a critical table | count doesn't match the dump's timestamp: investigate before promoting |
+| `server version mismatch` | the Job's `pg_dump` is 16; a cluster on a different major refuses the connection |
+| Job timeout | database too large for `activeDeadlineSeconds`; raise the value on the Job, not the CronJob |
+| `destination inaccessible … does not accept writes` | with `BACKUP_DIR`, the directory exists and the container's uid can't write it. It is a **write** check, not an existence one, on purpose: a read-only destination would pass `ls` and fail the dump, with the error surfacing after `pg_dump` and pointing at the wrong thing |
+| `tar of the bare repos exited with N` | something changed under the repos mid-read — most likely a concurrent `git gc`. The run is marked `failed` rather than shipping a partial archive. Run it again |
+| `there are N bare repo(s) … and NO archive` | this volume has no coverage: the archive is missing while the repos are not. Absent-and-empty is normal and reported differently |
+| `does not accept writes by this user (uid 70)` on `--restaurar` | the shared-volume ownership case — restore with `--user <volume owner>`, see [Recovering the bare repos](#restore-dos-bare-repos) |
 
-### Provas de propriedade agendadas {#provas-de-propriedade-agendadas}
+### Scheduled property proofs {#provas-de-propriedade-agendadas}
 
-`make test-restore`, `make rollout-test` e `make hpa-test` provam
-**propriedades**, não configuração — um backup que roda toda noite e não
-restaura passa nos cinco alertas de `brabo-alerts.yaml`. Até o BRB-009 eles rodavam
-só quando alguém os digitava. O `.github/workflows/propriedades.yml` agora os roda
-numa agenda, num cluster k3d num runner hospedado pelo GitHub:
+`make test-restore`, `make rollout-test` and `make hpa-test` prove
+**properties**, not configuration — a backup that runs every night and does not
+restore passes all five alerts in `brabo-alerts.yaml`. Until BRB-009 they ran
+only when someone typed them. `.github/workflows/propriedades.yml` now runs
+them on a schedule, in a k3d cluster on a GitHub-hosted runner:
 
-1. instala `k3d`, `helm` e `kubectl` por checksum fixado;
-2. roda `deploy/k8s/bootstrap.sh` — o mesmo bootstrap que o `make deploy-local`
-   roda, construindo as quatro imagens de produção a partir da árvore do checkout (sem
-   registry, sem segredo) — com `BRABO_SKIP_OBSERVABILITY=1` (AT-177): nenhuma
-   das provas lê Tempo, Loki, o Collector, Alloy ou Grafana, e essa é
-   a única diferença do cluster que o `make deploy-local` te dá;
-3. roda `make smoke-k8s`, depois `make hpa-test`, `make rollout-test` e
-   `make test-restore`, na ordem do `Makefile`, cada um mesmo quando um anterior
-   falhou (um HPA quebrado não pode esconder um restore quebrado);
-4. roda `make test-restore-mutacao` (AT-126, BRB-009), a prova **da**
-   prova: ele tira um backup real, depois cria uma tabela (`zz_mutacao_restore`) na
-   origem que o dump não tem — exatamente "um dump faltando uma tabela" —
-   e roda o mesmo `brabo-restore`. Ele passa só se o restore o **rejeita**
-   e nomeia aquela tabela (a linha de log `faltando: zz_mutacao_restore`); se o restore
-   aprova, ou rejeita por outro motivo, o passo falha e abre a própria
-   issue. Um `make test-restore` verde diz que o backup restaura; este diz que a
-   prova ainda perceberia se não restaurasse. A tabela é apagada na saída, mesmo em
-   falha. Ele roda mesmo quando o `make test-restore` falhou (uma prova cega e um
-   restore quebrado são dois defeitos, e os dois têm de aparecer);
-5. roda `make test-reprojecao-k8s` (AT-127, BRB-018): o grafo não tem backup
-   ([ADR 0152](adr/0152-backup-de-volumes-contra-compose.md)) porque é
-   reprojetado a partir do event log, então o workflow prova isso também — ele cria
-   um projeto próprio com uma sessão fechada e quatro eventos (uma mensagem, um
-   handoff, uma hipótese do Psicólogo e um perfil da Anamnese — todo caminho do
-   tradutor, AT-191), o reprojeta, **apaga esse subgrafo** no Neo4j,
-   reprojeta, e exige as mesmas contagens de nós e arestas (9|6), depois
-   reprojeta de novo. Ele não usa estado deixado pelos outros alvos e
-   **não** é acoplado ao `test-restore` (o grafo não depende de um backup);
-6. roda `make test-reprojecao-artefatos-k8s` (AT-198, RN-590), a mesma prova
-   para a outra projeção derivada — a pasta `docs/` dos artefatos. Ele
-   cria um projeto próprio com um `artifact.note`, espera o projetor
-   vivo escrever o arquivo, **apaga a pasta do agente dentro do pod da
-   api**, roda o `node scripts/reprojetar-artefatos.js --project` da imagem,
-   e exige o **mesmo sha256**; depois reprojeta de novo e o exige
-   outra vez. Ele não depende de nenhum outro alvo;
-7. roda `make test-rotacao-chave-mestra-k8s` (AT-146), **por último**: os três passos
-   da [rotação da chave mestra](#rotacao-da-chave-mestra) — as duas chaves publicadas
-   no Secret de origem `brabo`, o `ExternalSecret` forçado a sincronizar, a api
-   reiniciada, o `rewrap-deks.js` da imagem, a chave anterior removida e a api
-   reiniciada de novo — com todo envelope conferido abrindo em cada passo e uma
-   credencial decifrando para o mesmo valor no fim. Ele troca a chave mestra do cluster
-   e reinicia a api, e é por isso que nada roda depois dele;
-8. só quando **tanto** o restore quanto a quebra deliberada passaram na mesma
-   execução, escreve `ultima-execucao-boa.json` (data, execução, commit, duração do restore)
-   e o sobe como o artefato `restore-ultima-execucao-boa` (guardado 90 dias),
-   e acrescenta a linha *Última execução boa do restore* ao resumo da execução;
-9. escreve a duração de cada passo no resumo da execução.
+1. installs `k3d`, `helm` and `kubectl` by pinned checksum;
+2. runs `deploy/k8s/bootstrap.sh` — the same bootstrap `make deploy-local`
+   runs, building the four production images from the checked-out tree (no
+   registry, no secret) — with `BRABO_SKIP_OBSERVABILITY=1` (AT-177): none of
+   the proofs reads Tempo, Loki, the Collector, Alloy or Grafana, and that is
+   the only difference from the cluster `make deploy-local` gives you;
+3. runs `make smoke-k8s`, then `make hpa-test`, `make rollout-test` and
+   `make test-restore`, in the `Makefile`'s order, each one even when an earlier
+   one failed (a broken HPA must not hide a broken restore);
+4. runs `make test-restore-mutacao` (AT-126, BRB-009), the proof **of** the
+   proof: it takes a real backup, then creates a table (`zz_mutacao_restore`) in
+   the source that the dump does not have — exactly "a dump missing a table" —
+   and runs the same `brabo-restore`. It passes only if the restore **rejects**
+   it and names that table (the log line `faltando: zz_mutacao_restore`); if the restore
+   approves, or rejects for another reason, the step fails and opens its own
+   issue. A green `make test-restore` says the backup restores; this says the
+   proof would still notice if it did not. The table is dropped on exit, even on
+   failure. It runs even when `make test-restore` failed (a blind proof and a
+   broken restore are two defects, and both must show);
+5. runs `make test-reprojecao-k8s` (AT-127, BRB-018): the graph is not backed up
+   ([ADR 0152](adr/0152-backup-de-volumes-contra-compose.md)) because it is
+   reprojected from the event log, so the workflow proves that too — it creates
+   its own project with a closed session and four events (a message, a
+   handoff, a Psychologist hypothesis and an Anamnesis profile — every path of
+   the translator, AT-191), reprojects it, **wipes that subgraph** in Neo4j,
+   reprojects, and requires the same node and edge counts (9|6), then
+   reprojects again. It uses no state left by the other targets and
+   is **not** coupled to `test-restore` (the graph does not depend on a backup);
+6. runs `make test-reprojecao-artefatos-k8s` (AT-198, RN-590), the same proof
+   for the other derived projection — the `docs/` folder of the artifacts. It
+   creates its own project with an `artifact.note`, waits for the live
+   projector to write the file, **deletes the agent's folder inside the api
+   pod**, runs the image's `node scripts/reprojetar-artefatos.js --project`,
+   and requires the **same sha256**; then reprojects again and requires it
+   once more. It depends on no other target;
+7. runs `make test-rotacao-chave-mestra-k8s` (AT-146), **last**: the three steps
+   of the [master key rotation](#rotacao-da-chave-mestra) — both keys published
+   in the `brabo` source Secret, the `ExternalSecret` force-synced, the api
+   restarted, the image's `rewrap-deks.js`, the previous key removed and the api
+   restarted again — with every envelope checked to open at each step and a
+   credential decrypting to the same value at the end. It swaps the cluster's
+   master key and restarts the api, which is why nothing runs after it;
+8. only when **both** the restore and the deliberate break passed in the same
+   run, writes `ultima-execucao-boa.json` (date, run, commit, restore duration)
+   and uploads it as the `restore-ultima-execucao-boa` artifact (kept 90 days),
+   and adds the line *Última execução boa do restore* to the run summary;
+9. writes each step's duration into the run summary.
 
-Um **segundo job**, `restore-compose` (AT-195), roda ao lado dele noutro
-runner — o compose de produção publica 3000/4000/8088, as mesmas portas que o
-cluster k3d mapeia, então os dois não podem dividir um. Ele constrói as quatro imagens com
-`docker-bake.hcl` (como o `ci.yml` faz), sobe o compose de produção pelo
-`docker/smoke.sh` (que deixa o usuário e a sessão do seed no banco),
-cria um bare repo em `git_local_repos` como fixture, e roda
-`make test-restore-compose`: um backup real, o restore com as três
-validações, e a verificação do arquivo dos bare repos. Um verde sem a
-linha nomeando os bare repos verificados reprova o passo. As falhas dele abrem issues
-do mesmo jeito, com títulos próprios.
-Medido na execução `36371633435`: build das imagens 190 s, subida do compose (smoke) 43 s,
-`make test-restore-compose` 4 s — 4 min 31 s para o job, em paralelo com os
-11 min do job do cluster, então o relógio do workflow não se mexe.
+A **second job**, `restore-compose` (AT-195), runs next to it on another
+runner — the production compose publishes 3000/4000/8088, the same ports the
+k3d cluster maps, so the two cannot share one. It builds the four images with
+`docker-bake.hcl` (as `ci.yml` does), brings the production compose up through
+`docker/smoke.sh` (which leaves the seed's user and session in the database),
+creates a bare repo in `git_local_repos` as a fixture, and runs
+`make test-restore-compose`: a real backup, the restore with the three
+validations, and the verification of the bare-repo archive. A green without the
+line naming the verified bare repos fails the step. Its failures open issues
+the same way, with titles of their own.
+Measured on run `36371633435`: image build 190 s, compose up (smoke) 43 s,
+`make test-restore-compose` 4 s — 4 min 31 s for the job, in parallel with the
+11 min of the cluster job, so the workflow's clock does not move.
 
-| gatilho | quando |
+| trigger | when |
 |---|---|
-| `schedule` | semanal, domingo 04:00 UTC |
-| `workflow_dispatch` | sob demanda, pela aba Actions (`gh workflow run propriedades.yml`) |
+| `schedule` | weekly, Sunday 04:00 UTC |
+| `workflow_dispatch` | on demand, from the Actions tab (`gh workflow run propriedades.yml`) |
 
-**Uma falha abre uma issue** com o título `Prova de propriedade falhou: <alvo>`,
-uma por alvo, e uma falha repetida do mesmo alvo **comenta na issue
-aberta** em vez de abrir outra. O bootstrap tem título próprio: com
-o cluster fora do ar, os três alvos ficam `skipped`, e uma execução agendada pulada
-é o silêncio que isto existe para quebrar. **A primeira execução em que o alvo
-passa fecha a issue dele** com um comentário nomeando aquela execução (AT-212) — ninguém
-precisa lembrar. Só uma execução na **branch default** (a agenda, ou um
-`workflow_dispatch` nela) mexe em issues: um `workflow_dispatch` vermelho numa
-branch falha na própria execução, registra um aviso, e nem abre nem comenta na
-issue da agenda, e um verde numa branch não fecha nada. As execuções ficam
-em fila **por ref** (`concurrency: propriedades-<ref>`): dois dispatches em
-branches diferentes rodam lado a lado, dois na mesma ref esperam um pelo outro.
-Ele **não** é gate nem check obrigatório — nada espera por ele.
+**A failure opens an issue** titled `Prova de propriedade falhou: <target>`,
+one per target, and a repeat failure of the same target **comments on the open
+issue** instead of opening another. The bootstrap has a title of its own: with
+the cluster down, the three targets are `skipped`, and a skipped scheduled run
+is the silence this exists to break. **The first run in which the target
+passes closes its issue** with a comment naming that run (AT-212) — nobody has
+to remember to. Only a run on the **default branch** (the schedule, or a
+`workflow_dispatch` on it) touches issues: a red `workflow_dispatch` on a
+branch fails in its own run, logs a warning, and neither opens nor comments on
+the schedule's issue, and a green one on a branch closes nothing. Runs are
+queued **per ref** (`concurrency: propriedades-<ref>`): two dispatches on
+different branches run side by side, two on the same ref wait for each other.
+It is **not** a gate and not a required check — nothing waits on it.
 
-Medido nas execuções que construíram o workflow (4 vCPUs, 15 GiB de RAM, 87 GB de
-disco livre no `ubuntu-latest`):
+Measured on the runs that built the workflow (4 vCPUs, 15 GiB RAM, 87 GB of
+free disk on `ubuntu-latest`):
 
-| passo | duração |
+| step | duration |
 |---|---|
-| bootstrap (build das imagens + cluster + operators + app) | 705 s |
+| bootstrap (image build + cluster + operators + app) | 705 s |
 | `make smoke-k8s` | 1 s |
 | `make hpa-test` | 19 s |
 | `make rollout-test` | 24 s |
 | `make test-restore` | 21 s |
-| `make test-restore-mutacao` | 31 s (execução `35473548113`) |
-| `make test-reprojecao-k8s` | 16 s (execução `35471428634`); 18 s com o cenário de quatro eventos (execução `36498776825`) |
-| `make test-reprojecao-artefatos-k8s` | 4 s (execução `36498695123`, job inteiro 10 min 28 s) |
-| `make test-rotacao-chave-mestra-k8s` | 47 s (execução `36502355798`, job inteiro 12 min 10 s) |
-| job inteiro | 12 min 56 s |
+| `make test-restore-mutacao` | 31 s (run `35473548113`) |
+| `make test-reprojecao-k8s` | 16 s (run `35471428634`); 18 s with the four-event scenario (run `36498776825`) |
+| `make test-reprojecao-artefatos-k8s` | 4 s (run `36498695123`, whole job 10 min 28 s) |
+| `make test-rotacao-chave-mestra-k8s` | 47 s (run `36502355798`, whole job 12 min 10 s) |
+| whole job | 12 min 56 s |
 
-(Primeira execução inteira verde, `34784563928`, em 2026-09-13.)
+(First fully green run, `34784563928`, on 2026-09-13.)
 
-Com `BRABO_SKIP_OBSERVABILITY=1` e os operators em paralelo (AT-177), a
-fase do helm foi de 253 s (execução `36362479629`, na `dev`) para 89–90 s, o
-bootstrap de 710 s para 547–555 s e o job inteiro de 13 min 43 s para
-10 min 59 s (execuções `36367504128` e `36368334920`). O build das imagens (141–161 s)
-e a espera do `seed-smoke` (ainda 180 s) não mudam com isso.
+With `BRABO_SKIP_OBSERVABILITY=1` and the operators in parallel (AT-177), the
+helm phase went from 253 s (run `36362479629`, on `dev`) to 89–90 s, the
+bootstrap from 710 s to 547–555 s and the whole job from 13 min 43 s to
+10 min 59 s (runs `36367504128` and `36368334920`). The image build (141–161 s)
+and the `seed-smoke` wait (still 180 s) are unchanged by it.
 
-**O build das imagens continua um `docker build` simples, de propósito** (AT-178, medido
-e recusado). Construir as quatro imagens pelo `docker-bake.hcl` com o
-cache `type=gha` que o `ci.yml` já usa — em paralelo, carregadas no daemon,
-o bootstrap então rodando com `BRABO_SKIP_BUILD=1` — foi tentado numa branch
-e rodou verde duas vezes:
+**The image build stays a plain `docker build`, on purpose** (AT-178, measured
+and declined). Building the four images through `docker-bake.hcl` with the
+`type=gha` cache `ci.yml` already uses — in parallel, loaded into the daemon,
+the bootstrap then running with `BRABO_SKIP_BUILD=1` — was tried on a branch
+and ran green twice:
 
-| | build das imagens | job inteiro |
+| | image build | whole job |
 |---|---|---|
-| `docker build` no bootstrap (execuções `36367504128`, `36368334920`) | 161 s, 145 s | 10 min 59 s |
-| bake, primeira execução na ref (`36369702417`) | 177 s (setup do buildx incluído) | 11 min 44 s |
-| bake, cache quente (`36370592556`) | 116 s (setup do buildx incluído) | 11 min 32 s |
+| `docker build` in the bootstrap (runs `36367504128`, `36368334920`) | 161 s, 145 s | 10 min 59 s |
+| bake, first run on the ref (`36369702417`) | 177 s (buildx setup included) | 11 min 44 s |
+| bake, warm cache (`36370592556`) | 116 s (buildx setup included) | 11 min 32 s |
 
-Quente, o passo ganha 30–45 s; frio, perde 15–30 s; no nível do job a
-diferença fica dentro do ruído entre execuções. A execução que importa é a semanal
-na `main`, e o cache do Actions despeja uma entrada que ninguém leu por 7 dias —
-uma cadência semanal é exatamente onde o cache está frio com mais frequência. O
-`no-cache-filter = ["runtime"]` do bakefile (AT-110) também reconstrói todo
-estágio final de qualquer jeito, que é o que mantém pequeno o ganho quente. Reveja só com
-uma medição mostrando cache quente na execução agendada.
+Warm, the step gains 30–45 s; cold, it loses 15–30 s; at the job level the
+difference is inside the run-to-run noise. The run that matters is the weekly
+one on `main`, and the Actions cache evicts an entry nobody read for 7 days —
+a weekly cadence is exactly where the cache is most often cold. The
+`no-cache-filter = ["runtime"]` of the bakefile (AT-110) also rebuilds every
+final stage anyway, which is what keeps the warm gain small. Revisit only with
+a measurement showing a warm cache on the scheduled run.
 
-A cadência segue esse custo. Quase todo ele é o bootstrap, que uma
-execução noturna pagaria sete vezes por semana para reprovar propriedades cujo código
-muda muito menos que isso; semanal mantém o alarme dentro de uma sprint,
-e o `workflow_dispatch` cobre "acabei de mexer no backup". O timeout do job é
-90 minutos e o passo do restore sozinho tem teto de 20 — veja o comentário nesse
-passo para saber por que o teto pertence ao passo e não ao script.
+The cadence follows that cost. Almost all of it is the bootstrap, which a
+nightly run would pay seven times a week to re-prove properties whose code
+changes far less often than that; weekly keeps the alarm inside one sprint,
+and `workflow_dispatch` covers "I just touched the backup". The job timeout is
+90 minutes and the restore step alone is capped at 20 — see the comment on
+that step for why the cap belongs to the step and not to the script.
 
-**O que as primeiras execuções acharam**, cada um invisível ao `kubeconform` e a
-todo check de PR, e cada um corrigido na mesma mudança que criou o
-workflow — o `make deploy-local` estava quebrado na `dev` havia semanas sem
-ninguém rodá-lo:
+**What the first runs found**, each one invisible to `kubeconform` and to
+every PR check, and each one fixed in the same change that created the
+workflow — `make deploy-local` had been broken on `dev` for weeks without
+anyone running it:
 
-1. O `imageName` do cluster CNPG fixado só por digest
-   ([ADR 0159](adr/0159-imagem-de-terceiro-por-digest.md)) é recusado pelo
-   webhook do operator — *"Can't use just the image sha as we can't detect
-   upgrades"*. Agora ele leva `:16.10@sha256:…`.
-2. O Secret de origem do bootstrap não tinha `NEO4J_PASSWORD`, que o
-   `ExternalSecret` da base lê desde o grafo ([ADR 0099](adr/0099-neo4j-grafo-de-conhecimento-e-templates.md)):
-   o `brabo-secrets` nunca se materializava e todo pod ficava em
+1. The CNPG cluster's `imageName` pinned by digest alone
+   ([ADR 0159](adr/0159-imagem-de-terceiro-por-digest.md)) is refused by the
+   operator's webhook — *"Can't use just the image sha as we can't detect
+   upgrades"*. It now carries `:16.10@sha256:…`.
+2. The bootstrap's source Secret had no `NEO4J_PASSWORD`, which the base
+   `ExternalSecret` reads since the graph ([ADR 0099](adr/0099-neo4j-grafo-de-conhecimento-e-templates.md)):
+   `brabo-secrets` never materialized and every pod sat in
    `CreateContainerConfigError`.
-3. A api não recebia nem `NEO4J_URI` nem `NEO4J_USER` no cluster, e em
-   modo de produção ela recusa subir sem as três.
-4. O StatefulSet do Neo4j exportava `NEO4J_USER`/`NEO4J_PASSWORD`, que o
-   entrypoint da imagem transforma em chaves de config e rejeita (*"Unrecognized
-   setting"*) — o próprio defeito sobre o qual um comentário duas linhas abaixo avisava. Esses
-   manifestos nunca tinham rodado num cluster.
-5. O `migrate-api` não conseguia `CREATE EXTENSION vector` (o papel do app não é
-   superusuário), então a api subia sem tabelas. O cluster CNPG local agora
-   a cria como superusuário, no banco do app e em `template1`.
-6. `deploy/k8s/smoke.sh` e `rollout-test.sh` nunca mandavam o `kind` da sessão
-   que se tornou obrigatório na FASE 20 (o `docker/smoke.sh` o ganhou naquela hora), então os dois
-   falhavam com um 400 antes de provar qualquer coisa.
-7. O `make test-restore` morria no `pg_restore` com *"permission denied to create
-   extension vector"* — o caso que a tabela acima já nomeia — porque
-   nada no cluster local fornecia a extensão ao banco que o
-   restore cria.
-8. Com a extensão fornecida, o `pg_restore` ainda morria — agora com *"must be
-   owner of extension vector"*, no `COMMENT ON EXTENSION` do dump: só o
-   dono da extensão pode comentá-la, e onde o papel do app não é
-   superusuário (CNPG, qualquer Postgres gerenciado) a extensão pertence a outro papel.
-   **Este não é local ao cluster**: o mesmo `brabo-restore` é o
-   procedimento de incidente, então um restore de verdade num Postgres desses teria falhado
-   do mesmo jeito. O `restore.sh` agora restaura a partir do índice do dump
-   menos o comentário da extensão — uma string de descrição que a extensão instala,
-   de que nenhum dado e nenhuma validação depende. Reproduzido contra um container
-   `pgvector` simples com um papel não-superusuário antes e depois da mudança.
-9. `deploy/k8s/test-restore.sh` esperava com `kubectl wait
-   --for=condition=complete`, que nunca vê um Job que **falhou**, então o
-   restore quebrado acima gastava o teto inteiro de 20 minutos do passo para informar o que o
-   log do Job dizia em segundos (o teto do próprio script era 30). Agora ele consulta as duas
-   condições e falha assim que o Job fica `Failed`.
-10. `rollout-test.sh` procurava órfãs depois de um `sleep 15` fixo, que
-    não distingue *ainda assentando* de *órfã de vez*. Agora ele consulta até um
-    teto (`ROLLOUT_CONVERGENCE_SECONDS`, default 120) e registra, antes do
-    rollout, em que réplica cada sessão vivia — os pods antigos levam os logs
-    deles embora.
+3. The api got neither `NEO4J_URI` nor `NEO4J_USER` in the cluster, and in
+   production mode it refuses to boot without all three.
+4. The Neo4j StatefulSet exported `NEO4J_USER`/`NEO4J_PASSWORD`, which the
+   image's entrypoint turns into config keys and rejects (*"Unrecognized
+   setting"*) — the very defect a comment two lines below warned about. Those
+   manifests had never run in a cluster.
+5. `migrate-api` could not `CREATE EXTENSION vector` (the app role is not a
+   superuser), so the api came up with no tables. The local CNPG cluster now
+   creates it as superuser, in the app database and in `template1`.
+6. `deploy/k8s/smoke.sh` and `rollout-test.sh` never sent the session `kind`
+   that became mandatory in FASE 20 (`docker/smoke.sh` got it then), so both
+   failed with a 400 before proving anything.
+7. `make test-restore` died in `pg_restore` with *"permission denied to create
+   extension vector"* — the case the table above already names — because
+   nothing in the local cluster provided the extension to the database the
+   restore creates.
+8. With the extension provided, `pg_restore` still died — now with *"must be
+   owner of extension vector"*, on the dump's `COMMENT ON EXTENSION`: only the
+   extension's owner may comment on it, and wherever the app role is not a
+   superuser (CNPG, any managed Postgres) the extension belongs to another role.
+   **This one is not local to the cluster**: the same `brabo-restore` is the
+   incident procedure, so a real restore on such a Postgres would have failed
+   the same way. `restore.sh` now restores from the dump's table of contents
+   minus the extension comment — a description string the extension installs,
+   which no data and no validation depends on. Reproduced against a plain
+   `pgvector` container with a non-superuser role before and after the change.
+9. `deploy/k8s/test-restore.sh` waited with `kubectl wait
+   --for=condition=complete`, which never sees a Job that **failed**, so the
+   broken restore above spent the step's whole 20-minute cap to report what the
+   Job's log said in seconds (the script's own cap was 30). It now polls both
+   conditions and fails as soon as the Job is `Failed`.
+10. `rollout-test.sh` checked for orphans after a fixed `sleep 15`, which
+    cannot tell *still settling* from *orphaned for good*. It now polls up to a
+    ceiling (`ROLLOUT_CONVERGENCE_SECONDS`, default 120) and records, before the
+    rollout, which replica each session lived on — the old pods take their logs
+    with them.
 
-**Medido, e a causa provável desde então corrigida** (AT-078,
-[RN-588](business-rules/engine.md#rn-588)) — o `Monitor` do pod antigo apagando a
-linha de `session_states` que o par acabara de regravar; veja
-[Provando que nada ficou órfão](#rollout-do-engine) para o que uma órfã nova
-registraria. O que segue é o registro de antes da correção. **A prova de rollout
-tinha falhado uma vez em quatro execuções que chegaram a ela** (duas em dez até a execução `35448353884`, 2026-09-19, em que
-as cinco sessões viviam no mesmo pod antigo, quatro foram adotadas e uma terminou
-sem dono e sem drenagem; os únicos logs que a nomeavam morreram com aquele pod —
-e é por isso que a prova agora os guarda, veja
-[Provando que nada ficou órfão](#rollout-do-engine)). Com o mesmo script e a mesma espera fixa, a execução
-`34773908653` passou e a execução `34775712706` informou uma órfã — uma sessão
-`active` na api sem dono em nenhuma das três réplicas do engine, 15 s
-depois de o `rollout status` voltar. As duas execuções com a espera limitada passaram, e
-as duas convergiram em **3 s**, as cinco sessões adotadas. Uma convergência normal
-de 3 s torna "a órfã só precisava de mais de 15 s" a leitura menos provável;
-a mais provável é uma corrida intermitente na adoção ou na drenagem que a espera
-fixa por acaso pegou. Fica como está de propósito: o workflow existe para
-pegar exatamente isto, e a próxima ocorrência agora vai falhar com o teto que
-esperou, onde cada sessão vivia antes do rollout, e as linhas do engine que
-nomeiam a órfã. A correção é do engine, não desta prova.
+**Measured, and the likely cause since fixed** (AT-078,
+[RN-588](business-rules/engine.md#rn-588)) — the old pod's `Monitor` deleting the
+`session_states` row its peer had just re-written; see
+[Proving nothing was left orphaned](#rollout-do-engine) for what a new orphan
+would log. What follows is the record from before the fix. **The rollout proof
+had failed once out of four runs that reached it** (two out of ten by run `35448353884`, 2026-09-19, where
+all five sessions lived on the same old pod, four were adopted and one ended
+with no owner and no drain; the only logs that named it died with that pod —
+which is why the proof now keeps them, see
+[Proving nothing was left orphaned](#rollout-do-engine)). With the same script and the same fixed wait, run
+`34773908653` passed and run `34775712706` reported an orphan — a session
+`active` in the api with no owner in any of the three engine replicas, 15 s
+after `rollout status` returned. The two runs with the bounded wait passed, and
+both converged in **3 s**, all five sessions adopted. A normal convergence
+of 3 s makes "the orphan just needed more than 15 s" the less likely reading;
+the more likely one is an intermittent race in adoption or drain that the fixed
+wait happened to catch. It is left as it is on purpose: the workflow exists to
+catch exactly this, and the next occurrence will now fail with the ceiling it
+waited, where each session lived before the rollout, and the engine lines that
+name the orphan. The fix belongs to the engine, not to this proof.
 
-### Última execução verificada {#last-verified-run}
+### Last verified run {#last-verified-run}
 
-> **O workflow agendado é agora a fonte disto, e a data não é mais
-> editada à mão** (AT-126). A execução mais recente do
-> [`propriedades.yml`](#provas-de-propriedade-agendadas) que tem o
-> artefato `restore-ultima-execucao-boa` é a última vez que o restore passou no
-> Kubernetes **e** uma quebra deliberada dele foi pega na mesma execução:
-> `gh run list --workflow propriedades.yml --status success --limit 1`, depois
-> `gh run download <run> -n restore-ultima-execucao-boa` (guardado 90 dias). É
-> um artefato de workflow, não uma métrica: um gauge do Prometheus ao lado dos alertas
-> de backup exigiria código em `apps/api`, que esta mudança não tocou (o BRB-009 segue aberto nessa metade). O registro abaixo é mantido como foi escrito: é o
-> histórico da primeira verificação e do que ela achou.
+> **The scheduled workflow is now the source for this, and the date is no
+> longer edited by hand** (AT-126). The latest run of
+> [`propriedades.yml`](#provas-de-propriedade-agendadas) that has the
+> `restore-ultima-execucao-boa` artifact is the last time the restore passed on
+> Kubernetes **and** a deliberate break of it was caught in the same run:
+> `gh run list --workflow propriedades.yml --status success --limit 1`, then
+> `gh run download <run> -n restore-ultima-execucao-boa` (kept 90 days). It is
+> a workflow artifact, not a metric: a Prometheus gauge next to the backup
+> alerts would need code in `apps/api`, which this change did not touch (BRB-009 stays open on that half). The record below is kept as it was written: it is the
+> history of the first verification and of what it found.
 
-<!-- Atualize esta seção sempre que rodar o teste num ambiente novo. -->
+<!-- Update this section whenever you run the test on a new environment. -->
 
-| campo | valor |
+| field | value |
 |---|---|
-| data | 2026-07-27 |
-| ambiente | cluster k3d local, PostgreSQL 16.10 (CloudNativePG), MinIO |
-| comando | `make test-restore` |
-| RTO observado | ~40s do disparo do backup ao veredito (um banco de ~108 KB) |
+| date | 2026-07-27 |
+| environment | local k3d cluster, PostgreSQL 16.10 (CloudNativePG), MinIO |
+| command | `make test-restore` |
+| observed RTO | ~40s from triggering the backup to the verdict (a ~108 KB database) |
 
-Saída:
+Output:
 
 ```
 [restore]   ok    intact dump (108127 bytes)
@@ -2936,40 +2939,40 @@ Saída:
 [restore] RESTORE VALIDATED — all checks passed
 ```
 
-O RTO acima é de um banco de produção vazio — serve para provar
-o PROCEDIMENTO, não para dimensionar uma recuperação de verdade. Meça de novo com um
-dump representativo antes de prometer um RTO a alguém.
+The RTO above is for an empty production database — it's useful to prove
+the PROCEDURE, not to size a real recovery. Measure again with a
+representative dump before promising anyone an RTO.
 
-#### O que esta execução achou (e que o teste agora impede) {#what-this-run-found-and-that-the-test-now-prevents}
+#### What this run found (and that the test now prevents) {#what-this-run-found-and-that-the-test-now-prevents}
 
-1. **Divergência de versão major do Postgres.** O CloudNativePG local estava
-   rodando 17.4 enquanto o compose diz 16; o `pg_dump` recusava a
-   conexão com "server version mismatch". O `imageName` do cluster
-   foi fixado em 16.10.
-2. **Falso verde de um banco vazio.** Com zero linhas, toda comparação de
-   contagem vira `0 == 0` e a checagem de `seq` não olha nada.
-   Hoje o script falha explicitamente nos dois casos.
-3. **Uma contagem fixa de tabelas envelhece.** A validação comparava com um número
-   escrito no script, que já estava velho naquela mesma sessão.
-   Agora ela compara a LISTA de tabelas com a origem e diz qual
-   falta.
-4. **A imagem de backup carregava 48 CVEs HIGH/CRITICAL** vindas do `mc`
-   (Go congelado desde setembro de 2025) e do `gosu` na base
-   `postgres:16-alpine`. Trocada por `alpine` + `postgresql16-client`
-   + `aws-cli`, todos do apk e portanto atualizáveis: 48 → 0. Veja
-   a decisão 1b do ADR 0027.
+1. **Postgres major-version mismatch.** The local CloudNativePG was
+   running 17.4 while the compose says 16; `pg_dump` refused the
+   connection with "server version mismatch". The cluster's `imageName`
+   was pinned to 16.10.
+2. **False green from an empty database.** With zero rows, every count
+   comparison becomes `0 == 0` and the `seq` check looks at nothing.
+   Today the script explicitly fails in both cases.
+3. **A fixed table count ages.** The validation compared against a number
+   written in the script, which was already stale in that same session.
+   It now compares the LIST of tables against the source and says which
+   one is missing.
+4. **The backup image carried 48 HIGH/CRITICAL CVEs** coming from `mc`
+   (Go frozen since September 2025) and from `gosu` in the
+   `postgres:16-alpine` base. Swapped for `alpine` + `postgresql16-client`
+   + `aws-cli`, all from apk and therefore patchable: 48 → 0. See
+   decision 1b of ADR 0027.
 
-### Última execução verificada — compose, destino em disco {#last-verified-run--compose-disk-destination}
+### Last verified run — compose, disk destination {#last-verified-run--compose-disk-destination}
 
-| campo | valor |
+| field | value |
 |---|---|
-| data | 2026-09-09 |
-| ambiente | Docker compose, PostgreSQL 16 (imagem pgvector), destino em **disco** — sem cluster, sem bucket, sem `kubectl` |
-| comando | `docker/backup/test-restore-compose.sh` (o que o `make test-restore-compose` roda) |
-| banco | 55 tabelas, 422 eventos em 13 sessões — um banco povoado, não um vazio |
-| bare repos | 2 (`exp001.git`, `exp004.git`), 27 003 bytes arquivados |
+| date | 2026-09-09 |
+| environment | Docker compose, PostgreSQL 16 (pgvector image), destination on **disk** — no cluster, no bucket, no `kubectl` |
+| command | `docker/backup/test-restore-compose.sh` (what `make test-restore-compose` runs) |
+| database | 55 tables, 422 events across 13 sessions — a populated database, not an empty one |
+| bare repos | 2 (`exp001.git`, `exp004.git`), 27 003 bytes archived |
 
-Saída (os três passos, resumida):
+Output (the three steps, abridged):
 
 ```
 [backup] destination: disk at /backups
@@ -2984,205 +2987,205 @@ Saída (os três passos, resumida):
 [test-restore-compose] backup restored and intact
 ```
 
-O `backup_runs` ganhou a linha `status = 'ok'` de cada execução, com o **dump** como
-`object_key` — a mesma coluna que o `restore.sh` consulta para a janela do retrato.
+`backup_runs` got its `status = 'ok'` row for each run, with the **dump** as
+`object_key` — the same column `restore.sh` queries for the snapshot window.
 
-#### O que esta execução achou {#what-this-run-found}
+#### What this run found {#what-this-run-found}
 
-**O restore dos bare repos não conseguia escrever no volume em que restaura**, e só
-rodá-lo revelou isso. O `git_local_repos` é compartilhado por três imagens com três
-uids; ele fica com o dono de quem o montou primeiro (medido: `1000:1000`,
-modo 0755) e a imagem de backup roda como uid 70. O primeiro `--restaurar` morreu
-no meio da extração com `tar: can't make dir ./exp001.git: Permission denied`,
-deixando o alvo escrito pela metade. Duas mudanças vieram disso, as duas acima: o
-comando recusa **antes** de extrair e nomeia `--user <dono do volume>`, e quando ele de fato
-roda como root devolve a árvore extraída ao dono do diretório em vez de
-deixá-la com dono root — o que teria produzido um volume que restaura
-perfeitamente e em que api e engine não conseguem escrever.
+**The bare-repo restore could not write the volume it restores into**, and only
+running it revealed that. `git_local_repos` is shared by three images with three
+uids; it carries the owner of whoever mounted it first (measured: `1000:1000`,
+mode 0755) and the backup image runs as uid 70. The first `--restaurar` died
+mid-extraction with `tar: can't make dir ./exp001.git: Permission denied`,
+leaving the target part-written. Two changes came from it, both above: the
+command refuses **before** extracting and names `--user <volume owner>`, and when it does
+run as root it hands the extracted tree back to the directory's owner instead of
+leaving it root-owned — which would have produced a volume that restores
+perfectly and that api and engine cannot write to.
 
-Verificado depois com `git` de verdade (não a imagem de backup, que não tem):
-`git fsck --connectivity-only` limpo nos dois repos, refs e commits intactos,
-dono de volta em `1000:1000`.
+Verified afterwards with real `git` (not the backup image, which has none):
+`git fsck --connectivity-only` clean on both repos, refs and commits intact,
+ownership back at `1000:1000`.
 
 ---
 
-## Rotação das chaves do auth {#rotacao-das-chaves-do-auth}
+## Auth key rotation {#rotacao-das-chaves-do-auth}
 
-Decisões no
-[ADR 0031](adr/0031-auth-first-party-argon2id-e-rotacao-de-refresh.md) e no
+Decisions in
+[ADR 0031](adr/0031-auth-first-party-argon2id-e-rotacao-de-refresh.md) and
 [ADR 0032](adr/0032-corte-do-keycloak-e-sessao-em-cookie.md).
 
-O auth first-party tem **três** segredos, com consequências muito diferentes
-quando trocados. Confundir os dois primeiros é o erro caro aqui.
+First-party auth has **three** secrets, with very different consequences
+when swapped. Confusing the first two is the expensive mistake here.
 
-### `AUTH_JWT_SECRET` — rotação sem indisponibilidade {#rotacao-do-auth-jwt-secret}
+### `AUTH_JWT_SECRET` — zero-downtime rotation {#rotacao-do-auth-jwt-secret}
 
-O par Ed25519 que assina o access token é derivado dele. A rotação
-é a mesma dança de três passos da chave mestra (abaixo):
+The Ed25519 pair that signs the access token is derived from it. Rotation
+is the same three-step dance as the master key (below):
 
-1. `AUTH_JWT_SECRET_PREVIOUS` recebe o valor antigo; `AUTH_JWT_SECRET` recebe
-   o novo. Reinicie a api.
-2. As duas chaves aparecem em `/.well-known/jwks.json` e as duas verificam; só a
-   nova **assina**. A api emite um `WARN` uma vez por processo, na primeira
-   verificação ou leitura do JWKS depois do boot (a chave anterior é derivada sob
-   demanda, não no início), enquanto isso durar.
-3. Depois de 15 minutos (o TTL do access token), nenhum token da chave antiga
-   sobrevive. **Remova `AUTH_JWT_SECRET_PREVIOUS`** e reinicie.
+1. `AUTH_JWT_SECRET_PREVIOUS` gets the old value; `AUTH_JWT_SECRET` gets
+   the new one. Restart the api.
+2. Both keys appear at `/.well-known/jwks.json` and both verify; only the
+   new one **signs**. The api emits a `WARN` once per process, on the first
+   verification or JWKS read after boot (the previous key is derived on
+   demand, not at startup), for as long as that lasts.
+3. After 15 minutes (the access token's TTL), no token from the old key
+   survives. **Remove `AUTH_JWT_SECRET_PREVIOUS`** and restart.
 
-Ninguém é deslogado: os refresh tokens têm hash com `AUTH_TOKEN_PEPPER`,
-não com esta chave, e desde a [RN-613](business-rules/api.md#rn-613)
-o pepper é obrigatório e nunca emprestado desta chave.
+Nobody gets logged out: refresh tokens are hashed with `AUTH_TOKEN_PEPPER`,
+not with this key, and since [RN-613](business-rules/api.md#rn-613)
+the pepper is mandatory and never borrowed from this key.
 
-**A ordem, se esta instalação é anterior à RN-613: pepper PRIMEIRO, JWT depois.**
-Antes da RN-613 um pepper não definido caía em silêncio para `AUTH_JWT_SECRET` — e
-os composes de produção e de instalação nem passavam `AUTH_TOKEN_PEPPER` à
-api, então isso era toda instalação compose. Agora a api **recusa
-subir** sem o pepper, com uma mensagem dizendo o que fazer. A migração
-que não desloga ninguém:
+**The order, if this installation predates RN-613: pepper FIRST, JWT after.**
+Before RN-613 an unset pepper silently fell back to `AUTH_JWT_SECRET` — and
+the production and install composes didn't even pass `AUTH_TOKEN_PEPPER` to
+the api, so that was every compose installation. Now the api **refuses to
+boot** without the pepper, with a message saying what to do. The migration
+that logs nobody out:
 
-1. Defina `AUTH_TOKEN_PEPPER` com o valor **atual** de `AUTH_JWT_SECRET`
-   (copie-o; não gere um novo). Reinicie a api. Os hashes dos tokens são
-   byte a byte o que eram, então todo refresh token e PAT continua funcionando.
-   O `install.sh` faz este passo sozinho quando encontra o `.env` anterior na
-   pasta de onde roda, e diz isso no terminal sem imprimir o
-   valor; o Kubernetes já tinha `AUTH_TOKEN_PEPPER` no `ExternalSecret`.
-2. Só então rode a rotação de `AUTH_JWT_SECRET` com os três passos acima. Daqui em diante
-   os dois segredos são independentes, e um pepper igual ao segredo de JWT *antigo*
-   é o estado esperado, não uma sobra.
+1. Set `AUTH_TOKEN_PEPPER` to the **current** value of `AUTH_JWT_SECRET`
+   (copy it; don't generate a new one). Restart the api. The token hashes are
+   byte for byte what they were, so every refresh token and PAT keeps working.
+   `install.sh` does this step by itself when it finds the previous `.env` in
+   the folder it runs from, and says so on the terminal without printing the
+   value; Kubernetes already had `AUTH_TOKEN_PEPPER` in the `ExternalSecret`.
+2. Only then rotate `AUTH_JWT_SECRET` with the three steps above. From here on
+   the two secrets are independent, and a pepper equal to the *old* JWT
+   secret is the expected state, not a leftover.
 
-**Se alguém rotacionar o JWT antes de separar**, numa versão anterior à RN-613
-essa rotação *era* uma troca de pepper: todo mundo é deslogado, todo link de
-e-mail/reset aberto morre e todo PAT para de autenticar — o logout global
-descrito na próxima seção. Não há como desfazer a não ser pondo o valor antigo
-de volta como `AUTH_TOKEN_PEPPER` (o que revive os tokens antigos que não
-expiraram, e invalida tudo o que foi emitido no meio). Na RN-613 e depois o
-erro não acontece em silêncio: sem pepper a api não sobe. O único
-jeito de ainda cair nele é gerar um pepper **novo** durante a migração
-em vez de copiar o segredo de JWT atual — mesmo logout global.
+**If someone rotates the JWT before separating**, on a version before RN-613
+that rotation *was* a pepper change: everyone is logged out, every open
+email/reset link dies and every PAT stops authenticating — the global logout
+described in the next section. There is no undo short of putting the old
+value back as `AUTH_TOKEN_PEPPER` (which revives the old tokens that haven't
+expired, and invalidates anything issued in between). On RN-613 and later the
+mistake can't happen silently: without a pepper the api doesn't boot. The one
+way to still hit it is generating a **new** pepper during the migration
+instead of copying the current JWT secret — same global logout.
 
-Verificação: `apps/api/test/infrastructure/security/ed25519-access-token-issuer.spec.ts`
-(describe "rotação de chave"); para o pepper,
+Verification: `apps/api/test/infrastructure/security/ed25519-access-token-issuer.spec.ts`
+(describe "rotação de chave"); for the pepper,
 `apps/api/test/infrastructure/security/auth-key-material.spec.ts` (describe
-"pepperAtual (RN-613)": a recusa no boot e a mensagem dela),
+"pepperAtual (RN-613)": the boot refusal and its message),
 `apps/api/test/application/use-cases/auth/rotacao-dos-segredos.spec.ts`
-(describe "a migração do RN-613": um refresh com hash pelo fallback antigo continua
-válido com o pepper definido como o segredo de JWT antigo, e sobrevive à
-rotação do JWT) e `scripts/dev/install-env.spec.ts` (o `.env` que o instalador
-escreve nos dois casos, pelo `docker compose config`).
+(describe "a migração do RN-613": a refresh hashed by the old fallback stays
+valid with the pepper set to the old JWT secret, and survives the JWT
+rotation) and `scripts/dev/install-env.spec.ts` (the `.env` the installer
+writes in both cases, through `docker compose config`).
 
-### `AUTH_TOKEN_PEPPER` — logout global, sem meio-termo {#troca-do-auth-token-pepper}
+### `AUTH_TOKEN_PEPPER` — global logout, no middle ground {#troca-do-auth-token-pepper}
 
-Esta é a chave HMAC para o hash dos refresh tokens e dos tokens de conta.
-Trocá-la invalida, tudo de uma vez:
+This is the HMAC key for hashing refresh tokens and account tokens.
+Changing it invalidates, all at once:
 
-- **todo** refresh token em circulação — todo mundo é deslogado;
-- **todo** link aberto de verificação de e-mail e de redefinição de senha;
-- **todo** personal access token (PAT) — um runner iniciado com `--token`
-  para de autenticar (chaves de dispositivo não são afetadas);
-- os contadores de lockout: toda conta travada destrava.
+- **every** refresh token in circulation — everyone gets logged out;
+- **every** open email-verification and password-reset link;
+- **every** personal access token (PAT) — a runner started with `--token`
+  stops authenticating (device keys are not affected);
+- the lockout counters: every locked account unlocks.
 
-As senhas sobrevivem (argon2id, sem pepper): as pessoas entram de novo normalmente. Um
-refresh rejeitado assim aparece como `refresh_unknown` em `auth_events`,
-não como `refresh_reuse_detected`.
+Passwords survive (argon2id, no pepper): people log back in normally. A
+refresh rejected this way shows up as `refresh_unknown` in `auth_events`,
+not as `refresh_reuse_detected`.
 
-Não há `AUTH_TOKEN_PEPPER_PREVIOUS`, e essa é uma decisão consciente:
-aceitar verificação dupla em todo refresh, para sempre, por um cenário
-que acontece uma vez na vida, não compensa. Se você precisar trocá-lo —
-suspeita de vazamento do banco, por exemplo — avise as pessoas antes: o sintoma
-para o usuário é ser deslogado sem motivo aparente e ver o
-link de redefinição dizer "expirado".
+There's no `AUTH_TOKEN_PEPPER_PREVIOUS`, and that's a conscious decision:
+accepting double verification on every refresh, forever, for a scenario
+that runs once in a blue moon, isn't worth it. If you need to change it —
+suspected database leak, for instance — warn people first: the symptom
+for the user is being logged out for no apparent reason and seeing the
+reset link say "expired".
 
-> A api **não** deixa de subir com um pepper novo. Ela simplesmente deixa de
-> reconhecer qualquer token antigo. Se o suporte relata "todo mundo foi deslogado
-> ao mesmo tempo", esta variável é o primeiro lugar para olhar — e, numa
-> versão anterior à [RN-613](business-rules/api.md#rn-613) em que ela
-> nunca foi definida, `AUTH_JWT_SECRET`. Ela **deixa** de subir sem um, em
-> produção: veja a ordem de migração acima.
+> The api does **not** fail to boot with a new pepper. It simply stops
+> recognizing any old token. If support reports "everyone got logged out
+> at the same time", this variable is the first place to look — and, on a
+> version before [RN-613](business-rules/api.md#rn-613) where it was
+> never set, `AUTH_JWT_SECRET`. It **does** fail to boot without one, in
+> production: see the migration order above.
 
-Verificação: `apps/api/test/application/use-cases/auth/rotacao-dos-segredos.spec.ts`
+Verification: `apps/api/test/application/use-cases/auth/rotacao-dos-segredos.spec.ts`
 ([RN-597](business-rules/api.md#rn-597)).
 
-### `BRABO_SERVICE_TOKEN` — rotação sem indisponibilidade, dos dois lados {#rotacao-do-brabo-service-token}
+### `BRABO_SERVICE_TOKEN` — zero-downtime rotation, on both sides {#rotacao-do-brabo-service-token}
 
-Este é o segredo compartilhado que autentica o tráfego api ↔ engine
-([RN-035](business-rules/api.md#rn-035)). Ele não tem nada a ver com sessão de
-usuário: errá-lo não desloga ninguém, quebra a comunicação
-interna.
+This is the shared secret that authenticates api ↔ engine traffic
+([RN-035](business-rules/api.md#rn-035)). It has nothing to do with a user
+session: getting it wrong doesn't log anyone out, it breaks internal
+communication.
 
-A dança é a mesma do `AUTH_JWT_SECRET`, com a diferença de que ela
-roda nas **duas** cargas — e a ordem importa, porque cada lado manda o
-atual e aceita os dois:
+The dance is the same as `AUTH_JWT_SECRET`, with the difference that it
+runs on **both** loads — and order matters, because each side sends its
+current one and accepts both:
 
-1. `BRABO_SERVICE_TOKEN_PREVIOUS` recebe o valor antigo na **api e no
-   engine**; `BRABO_SERVICE_TOKEN` recebe o novo nos dois. Reinicie
-   os dois. Em produção a api, o engine e o broker conferem o valor
-   antigo com a mesma regra do novo, então se o valor antigo é o default
-   público ou tem menos de 16 caracteres, cada um deles recusa subir neste
-   passo e nomeia a variável
+1. `BRABO_SERVICE_TOKEN_PREVIOUS` gets the old value on **both api and
+   engine**; `BRABO_SERVICE_TOKEN` gets the new one on both. Restart
+   both. In production the api, the engine and the broker check the old
+   value with the same rule as the new one, so if the old value is the public
+   default or shorter than 16 characters, each of them refuses to boot at
+   this step and names the variable
    ([RN-598](business-rules/api.md#rn-598),
-   [RN-601](business-rules/engine.md#rn-601)). Sair de um
-   token fraco, portanto, quer dizer pular o `_PREVIOUS`, e pagar por isso com
-   a janela de `403`/`401` descrita abaixo.
-2. Enquanto os dois estão de pé com a variável nova, o tráfego funciona em qualquer
-   combinação de pods antigos e novos — é isso que torna o rollout seguro
-   no meio do caminho.
-3. Quando o rollout dos dois Deployments terminou, **remova
-   `BRABO_SERVICE_TOKEN_PREVIOUS`** e reinicie.
+   [RN-601](business-rules/engine.md#rn-601)). Rotating away from a
+   weak token therefore means skipping `_PREVIOUS`, and paying for it with
+   the `403`/`401` window described below.
+2. While both are up with the new variable, traffic works in any
+   combination of old and new pods — that's what makes the rollout safe
+   mid-way through.
+3. Once both Deployments' rollout is done, **remove
+   `BRABO_SERVICE_TOKEN_PREVIOUS`** and restart.
 
-Pular o passo 1 e só trocar o valor atual produz `403`/`401`
-durante toda a janela em que um pod antigo continua de qualquer lado — o
-sintoma do
-[diagnóstico acima](#diagnostico-do-deploy).
+Skipping step 1 and just swapping the current value produces `403`/`401`
+for the entire window where an old pod remains on either side — the
+symptom in the
+[diagnosis above](#diagnostico-do-deploy).
 
-Verificação: na api, `apps/api/test/infrastructure/security/service-token.spec.ts`
-(describe "rotação do BRABO_SERVICE_TOKEN") e
-`apps/api/test/interfaces/engine-service.guard.spec.ts`; no engine,
-`apps/engine/test/engine_web/plugs/verify_service_token_test.exs` e
-`apps/engine/test/engine/runtime_service_token_test.exs` (a regra do boot); no
-broker, `apps/broker/src/config.spec.ts`.
+Verification: on the api, `apps/api/test/infrastructure/security/service-token.spec.ts`
+(describe "rotação do BRABO_SERVICE_TOKEN") and
+`apps/api/test/interfaces/engine-service.guard.spec.ts`; on the engine,
+`apps/engine/test/engine_web/plugs/verify_service_token_test.exs` and
+`apps/engine/test/engine/runtime_service_token_test.exs` (the boot rule); on
+the broker, `apps/broker/src/config.spec.ts`.
 
-> **Onde as variáveis `_PREVIOUS` chegam ao processo.** Nos três
+> **Where the `_PREVIOUS` variables reach the process.** In the three
 > composes (`docker-compose.yml`, `docker-compose.prod.yml`,
-> `docker-compose.install.yml`) todas estão mapeadas no `environment:`
-> do serviço que as lê, vazias por padrão — definir uma no `.env`
-> e recriar o serviço basta
-> ([RN-595](business-rules/api.md#rn-595); guardado por
-> `scripts/ci/previous-nos-composes.spec.ts`, que deriva a lista do
-> código). **No Kubernetes elas chegam aos Pods pelo cofre de segredos**
-> (AT-220): o `ExternalSecret`
-> (`deploy/k8s/base/common/externalsecrets.yaml`) puxa o objeto `brabo`
-> inteiro com `dataFrom.extract`, então um `_PREVIOUS` que existe lá cai em
-> `brabo-secrets` e um que não existe simplesmente não está lá — sem falha de sync
-> fora de uma rotação. Elas nunca são listadas uma a uma: uma entrada `data` cuja
-> propriedade falta reprova o sync do Secret inteiro, e um `_PREVIOUS`
-> ausente é o estado normal. De qualquer jeito, confirme dentro do
-> container (`printenv`) antes de confiar no passo 2.
+> `docker-compose.install.yml`) all of them are mapped in the `environment:`
+> of the service that reads them, empty by default — setting one in `.env`
+> and recreating the service is enough
+> ([RN-595](business-rules/api.md#rn-595); guarded by
+> `scripts/ci/previous-nos-composes.spec.ts`, which derives the list from the
+> code). **In Kubernetes they reach the Pods through the secret store**
+> (AT-220): the `ExternalSecret`
+> (`deploy/k8s/base/common/externalsecrets.yaml`) pulls the whole `brabo`
+> object with `dataFrom.extract`, so a `_PREVIOUS` that exists there lands in
+> `brabo-secrets` and one that doesn't simply isn't there — no sync failure
+> outside a rotation. They are never listed one by one: a `data` entry whose
+> property is missing fails the sync of the whole Secret, and a missing
+> `_PREVIOUS` is the normal state. Either way, confirm it inside the
+> container (`printenv`) before relying on step 2.
 
-#### Fazendo no Kubernetes {#rotacao-no-kubernetes}
+#### Doing it in Kubernetes {#rotacao-no-kubernetes}
 
-A mesma dança, com o objeto `brabo` no provedor de segredos fazendo as vezes do
-`.env`. No cluster local esse objeto é o Secret `brabo` que o bootstrap
-criou; em staging/prod é a entrada do provedor para onde o `SecretStore` aponta.
+The same dance, with the `brabo` object in the secrets provider standing in for
+`.env`. In the local cluster that object is the Secret `brabo` the bootstrap
+created; in staging/prod it is the provider entry the `SecretStore` points at.
 
-1. **Acrescente** a chave `_PREVIOUS` (valor antigo) e **substitua** a chave atual (valor
-   novo) no objeto `brabo` — as duas na mesma mudança. Localmente:
+1. **Add** the `_PREVIOUS` key (old value) and **replace** the current key (new
+   value) in the `brabo` object — both in the same change. Locally:
 
    ```bash
    kubectl -n brabo patch secret brabo --type merge -p \
      '{"stringData":{"AUTH_JWT_SECRET_PREVIOUS":"<old>","AUTH_JWT_SECRET":"<new>"}}'
    ```
 
-2. **Faça o operator sincronizar agora** em vez de esperar o `refreshInterval`
-   (1h), e confira que a chave chegou:
+2. **Make the operator sync now** instead of waiting for the `refreshInterval`
+   (1h), and check the key arrived:
 
    ```bash
    kubectl -n brabo annotate externalsecret brabo-secrets force-sync="$(date +%s)" --overwrite
    kubectl -n brabo get secret brabo-secrets -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}' | grep _PREVIOUS
    ```
 
-3. **Reinicie** quem a lê. O `envFrom` é lido quando o container inicia:
-   o Secret mudar não muda um Pod rodando. `api` para
-   `AUTH_JWT_SECRET` e `CREDENTIALS_MASTER_KEY`, `api` **e** `engine` para
+3. **Restart** whoever reads it. `envFrom` is read when the container starts:
+   the Secret changing does not change a running Pod. `api` for
+   `AUTH_JWT_SECRET` and `CREDENTIALS_MASTER_KEY`, `api` **and** `engine` for
    `BRABO_SERVICE_TOKEN`:
 
    ```bash
@@ -3190,30 +3193,30 @@ criou; em staging/prod é a entrada do provedor para onde o `SecretStore` aponta
    kubectl -n brabo exec deploy/api -- printenv AUTH_JWT_SECRET_PREVIOUS
    ```
 
-4. **Aposente-a** quando a condição da própria rotação for cumprida (15 min para
-   `AUTH_JWT_SECRET`, os dois rollouts terminados para `BRABO_SERVICE_TOKEN`,
-   `falhas=0` e zero pendentes para a chave mestra): **remova** a chave `_PREVIOUS`
-   do objeto `brabo`, force o sync de novo (passo 2 — a chave
-   some de `brabo-secrets`, não fica para trás) e reinicie de novo
-   (passo 3). Até o reinício os Pods mantêm o valor antigo em memória, e a
-   api continua avisando que há uma rotação em andamento.
+4. **Retire it** when the rotation's own condition is met (15 min for
+   `AUTH_JWT_SECRET`, both rollouts done for `BRABO_SERVICE_TOKEN`,
+   `falhas=0` and zero pending for the master key): **remove** the `_PREVIOUS`
+   key from the `brabo` object, force the sync again (step 2 — the key
+   disappears from `brabo-secrets`, it isn't left behind) and restart again
+   (step 3). Until the restart the Pods keep the old value in memory, and the
+   api keeps warning that a rotation is in progress.
 
    ```bash
    kubectl -n brabo patch secret brabo --type json -p \
      '[{"op":"remove","path":"/data/AUTH_JWT_SECRET_PREVIOUS"}]'
    ```
 
-Verificação: os quatro passos foram exercitados contra o chart do External Secrets
-Operator fixado em `deploy/k8s/helm/charts.env` (0.19.2) num cluster k3d
-descartável, com o `SecretStore` local: a chave apareceu em
-`brabo-secrets` depois do `force-sync` e sumiu depois da remoção, com o
-`ExternalSecret` continuando `SecretSynced`. Desde a AT-146 os mesmos quatro passos rodam
-toda semana para `CREDENTIALS_MASTER_KEY`, dentro do ensaio da chave mestra
-(`make test-rotacao-chave-mestra-k8s`, veja
-[Verificando sem esperar um incidente](#rotacao-da-chave-mestra)) — as
-outras chaves `_PREVIOUS` ainda não têm execução automatizada. O que roda em todo PR é
-o `scripts/ci/previous-nos-composes.spec.ts`, que reprova se o
-`ExternalSecret` deixa de usar `dataFrom.extract` ou lista um `_PREVIOUS` em
+Verification: the four steps were exercised against the External Secrets
+Operator chart pinned in `deploy/k8s/helm/charts.env` (0.19.2) in a throwaway
+k3d cluster, with the local `SecretStore`: the key appeared in
+`brabo-secrets` after the `force-sync` and disappeared after removal, with the
+`ExternalSecret` staying `SecretSynced`. Since AT-146 the same four steps run
+every week for `CREDENTIALS_MASTER_KEY`, inside the master key rehearsal
+(`make test-rotacao-chave-mestra-k8s`, see
+[Verifying without waiting for an incident](#rotacao-da-chave-mestra)) — the
+other `_PREVIOUS` keys still have no automated run. What runs on every PR is
+`scripts/ci/previous-nos-composes.spec.ts`, which fails if the
+`ExternalSecret` stops using `dataFrom.extract` or lists a `_PREVIOUS` in
 `data:`.
 
 ```bash
@@ -3221,12 +3224,12 @@ o `scripts/ci/previous-nos-composes.spec.ts`, que reprova se o
 openssl rand -base64 48
 ```
 
-### Conta travada por lockout {#conta-travada-por-lockout}
+### Account locked by lockout {#conta-travada-por-lockout}
 
-O lockout é curto (30s a 15 minutos) e se resolve sozinho: a
-janela deslizante esvazia. **Não há endpoint de destravamento**, de propósito — veja
-a [RN-031](business-rules/api.md#rn-031). Se você precisa destravar alguém
-agora:
+The lockout is short (30s to 15 minutes) and resolves itself: the
+sliding window drains. **There's no unlock endpoint**, on purpose — see
+[RN-031](business-rules/api.md#rn-031). If you need to unlock someone right
+now:
 
 ```sql
 -- A chave é um HMAC do e-mail, não o e-mail. Ache-a pelo evento recente:
@@ -3239,57 +3242,57 @@ select subject_key, count(*), max(occurred_at)
 delete from auth_lockout_hits where bucket_key = '<subject_key>';
 ```
 
-Uma redefinição de senha bem-sucedida também destrava a conta.
+A successful password reset also unlocks the account.
 
-Verificação: **nenhuma** para as duas consultas acima — elas foram conferidas contra
-o schema por leitura, nunca executadas por um spec. O próprio lockout (a
-janela, o contador, o que o destrava) é coberto por
+Verification: **none** for the two queries above — they were checked against
+the schema by reading, never executed by a spec. The lockout itself (the
+window, the counter, what unlocks it) is covered by
 `apps/api/test/application/use-cases/auth/lockout.spec.ts`.
 
-> **O rastro nunca é apagado.** `auth_lockout_hits` é um contador
-> efêmero; `auth_events` é append-only e sobrevive a tudo, inclusive
-> à remoção do usuário (sem chave estrangeira, de propósito).
+> **The trail is never erased.** `auth_lockout_hits` is an ephemeral
+> counter; `auth_events` is append-only and survives everything, including
+> the user being removed (no foreign key, on purpose).
 
-## Rotação da chave mestra {#rotacao-da-chave-mestra}
+## Master key rotation {#rotacao-da-chave-mestra}
 
-Decisões no [ADR 0027](adr/0027-fase5-backup-hardening-release.md).
+Decisions in [ADR 0027](adr/0027-fase5-backup-hardening-release.md).
 
-`CREDENTIALS_MASTER_KEY` embrulha as DEKs que cifram os segredos do usuário:
-chaves de API de LLM e tokens de git. Ela é rotacionada periodicamente e, obrigatoriamente,
-depois de qualquer suspeita de vazamento.
+`CREDENTIALS_MASTER_KEY` wraps the DEKs that encrypt the user's secrets:
+LLM API keys and git tokens. It's rotated periodically and, mandatorily,
+after any suspected leak.
 
-### O que está em jogo {#whats-at-stake}
+### What's at stake {#whats-at-stake}
 
-Trocar a variável e reiniciar a api com uma chave só torna toda
-credencial existente ilegível, tudo de uma vez, sem erro de boot — a falha
-só aparece no primeiro uso, como "não foi possível decifrar", e não há volta
-a não ser restaurando a chave antiga.
+Changing the variable and restarting the api with a single key makes every
+existing credential unreadable, all at once, with no boot error — the failure
+only shows up on first use, as "unable to decrypt", and there's no way back
+short of restoring the old key.
 
-É por isso que a rotação tem três passos, não um. Durante o do meio, as duas
-chaves coexistem:
+That's why rotation has three steps, not one. During the middle one, both
+keys coexist:
 
-| variável | papel |
+| variable | role |
 |---|---|
-| `CREDENTIALS_MASTER_KEY` | chave ATUAL — sempre usada para cifrar |
-| `CREDENTIALS_MASTER_KEY_PREVIOUS` | chave anterior — tentada só quando a atual falha |
+| `CREDENTIALS_MASTER_KEY` | CURRENT key — always used to encrypt |
+| `CREDENTIALS_MASTER_KEY_PREVIOUS` | previous key — tried only when the current one fails |
 
-Duas tabelas guardam envelopes: `user_credentials` e
+Two tables hold envelopes: `user_credentials` and
 `project_git_connections`.
 
-Desde a [RN-563](business-rules/api.md#rn-563) cada envelope leva também um
-**`key_id`** — a impressão digital da chave que o embrulhou. É ele que torna
-o progresso do passo 2 respondível em SQL. Duas coisas sobre ele importam às 3h:
+Since [RN-563](business-rules/api.md#rn-563) each envelope also carries a
+**`key_id`** — the fingerprint of the key that wrapped it. It is what makes
+the progress of step 2 answerable in SQL. Two things about it matter at 3am:
 
-- **Ele nunca decide se uma linha abre.** A leitura continua tentando a chave
-  atual e caindo para a anterior; o AES-GCM autentica, e ele é a
-  autoridade. O rótulo é metadado, e uma linha cujo rótulo discorda do
-  envelope é re-embrulhada corretamente assim mesmo ([ADR 0158](adr/0158-o-id-da-chave-mestra-gravado-no-envelope.md)).
-- **`key_id IS NULL` quer dizer "escrita antes de essa coluna existir", nunca "na
-  chave atual".** Numa instalação anterior a ela, tudo é `NULL`
-  até a primeira rotação, e as consultas abaixo contam isso como pendente — que
-  é a resposta honesta.
+- **It never decides whether a row opens.** Reading still tries the current
+  key and falls back to the previous one; AES-GCM authenticates, and it is the
+  authority. The label is metadata, and a row whose label disagrees with its
+  envelope is still re-wrapped correctly ([ADR 0158](adr/0158-o-id-da-chave-mestra-gravado-no-envelope.md)).
+- **`key_id IS NULL` means "written before that column existed", never "on the
+  current key".** On an installation that predates it, everything is `NULL`
+  until the first rotation, and the queries below count that as pending — which
+  is the honest answer.
 
-Pegue a impressão digital atual do próprio log da api; ela imprime uma linha no boot:
+Get the current fingerprint from the api's own log; it prints one line at boot:
 
 ```bash
 kubectl -n brabo logs -l app.kubernetes.io/name=api --tail=200 \
@@ -3297,7 +3300,7 @@ kubectl -n brabo logs -l app.kubernetes.io/name=api --tail=200 \
 # chave mestra corrente: key_id=4f2b91c0a77e13d5
 ```
 
-### Antes: dimensione {#before-size-it-up}
+### Before: size it up {#before-size-it-up}
 
 ```sql
 select 'user_credentials' as tabela, count(*) from user_credentials
@@ -3305,36 +3308,36 @@ union all
 select 'project_git_connections', count(*) from project_git_connections;
 ```
 
-O re-embrulho é um UPDATE por linha. Milhares de linhas levam segundos; é
-bom saber a ordem de grandeza antes de começar.
+The re-wrap is an UPDATE per row. Thousands of rows take seconds; it's
+good to know the order of magnitude before starting.
 
-### 1. Publique as duas chaves {#1-publish-both-keys}
+### 1. Publish both keys {#1-publish-both-keys}
 
-Gere a nova e publique **as duas** no provedor de segredos, mantendo
-a antiga em `CREDENTIALS_MASTER_KEY_PREVIOUS`:
+Generate the new one and publish **both** to the secrets provider, keeping
+the old one in `CREDENTIALS_MASTER_KEY_PREVIOUS`:
 
 ```bash
 openssl rand -hex 32   # a chave nova
 ```
 
-No cluster local o Secret de origem é criado pelo bootstrap; em
-staging/prod o valor vai para o provedor de onde o External Secrets lê.
-Depois reinicie a api para ela carregar as duas:
+In the local cluster the source Secret is created by the bootstrap; in
+staging/prod the value goes into the provider that External Secrets reads
+from. Then restart the api so it loads both:
 
-> Publicar `CREDENTIALS_MASTER_KEY_PREVIOUS` no objeto `brabo` do
-> provedor a põe em `brabo-secrets` no próximo sync (o `ExternalSecret`
-> puxa o objeto inteiro) — force o sync e confirme que ela chegou como em
-> [Fazendo no Kubernetes](#rotacao-no-kubernetes), depois reinicie. Nos
-> composes é o `.env` mais recriar a api.
+> Publishing `CREDENTIALS_MASTER_KEY_PREVIOUS` in the `brabo` object of the
+> provider puts it in `brabo-secrets` on the next sync (the `ExternalSecret`
+> pulls the whole object) — force the sync and confirm it arrived as in
+> [Doing it in Kubernetes](#rotacao-no-kubernetes), then restart. In the
+> composes it's the `.env` plus recreating the api.
 
 ```bash
 kubectl -n brabo rollout restart deployment/api
 kubectl -n brabo rollout status  deployment/api
 ```
 
-Confirme que a api está em modo de rotação — ela avisa no log, de propósito, e o
-aviso nomeia **as duas** impressões digitais, que é contra o que as consultas abaixo
-comparam:
+Confirm the api is in rotation mode — it warns in the log, on purpose, and the
+warning names **both** fingerprints, which is what the queries below compare
+against:
 
 ```bash
 kubectl -n brabo logs -l app.kubernetes.io/name=api --tail=50 \
@@ -3342,20 +3345,20 @@ kubectl -n brabo logs -l app.kubernetes.io/name=api --tail=50 \
 # ... rotação em andamento (atual key_id=<NEW>, anterior key_id=<OLD>). ...
 ```
 
-> Daqui em diante **nada quebra**: um segredo novo já nasce na chave
-> nova, um segredo antigo continua legível pela anterior. Você pode
-> pausar neste estado por horas se precisar — mas não por semanas:
-> aceitar duas chaves dobra a superfície de uma chave vazada, que é
-> exatamente o motivo de você estar rotacionando.
+> From here on **nothing breaks**: a new secret is already born on the new
+> key, an old secret is still readable via the previous one. You can
+> pause in this state for hours if you need to — but not for weeks:
+> accepting two keys doubles the surface of a leaked key, which is
+> exactly why you're rotating.
 
-### 2. Re-embrulhe o acervo {#2-re-wrap-the-store}
+### 2. Re-wrap the store {#2-re-wrap-the-store}
 
 ```bash
 kubectl -n brabo exec deploy/api -- node scripts/rewrap-deks.js
 ```
 
-Saída esperada — o script imprime em português, e é isto que ele
-de fato escreve (`apps/api/src/scripts/rewrap-deks.ts`, `main`):
+Expected output — the script prints in Portuguese, and this is what it
+actually writes (`apps/api/src/scripts/rewrap-deks.ts`, `main`):
 
 ```
 [rewrap] resultado
@@ -3366,35 +3369,38 @@ de fato escreve (`apps/api/src/scripts/rewrap-deks.ts`, `main`):
 [rewrap] concluído. Agora remova CREDENTIALS_MASTER_KEY_PREVIOUS e reinicie a api.
 ```
 
-Os contadores: `re-embrulhados`, `já na chave atual` e `falhas`. Há dois outros desfechos.
-Quando nada precisou ser re-embrulhado, a última linha é `[rewrap] nada a fazer — o
-acervo já está na chave atual.`. Quando alguma linha falhou, cada uma vai para o `stderr` como
-`[rewrap] <tabela>#<id>: <motivo>`, a execução termina com `[rewrap] <N>
+The counters read: `re-embrulhados` = re-wrapped, `já na chave atual` =
+already on the current key, `falhas` = failures. Two other endings exist.
+When nothing needed re-wrapping, the last line is `[rewrap] nada a fazer — o
+acervo já está na chave atual.` ("nothing to do — the store is already on the
+current key"). When any row failed, each one goes to `stderr` as
+`[rewrap] <table>#<id>: <reason>`, the run ends with `[rewrap] <N>
 registro(s) não abriram com nenhuma das duas chaves. NÃO remova
-CREDENTIALS_MASTER_KEY_PREVIOUS até resolver.`, e o código de saída é 1.
+CREDENTIALS_MASTER_KEY_PREVIOUS até resolver.` ("N row(s) opened with
+neither key — do NOT remove PREVIOUS until resolved"), and the exit code is 1.
 
-Propriedades que importam se algo interromper o script:
+Properties that matter if something interrupts the script:
 
-- **Idempotente.** Rodá-lo de novo conta as linhas já convertidas como
-  `já na chave atual` e não reescreve nada. Interrompido? Rode de
-  novo.
-- **Só o envelope muda.** O texto cifrado do segredo fica byte a
-  byte o mesmo, então parar no meio deixa o acervo consistente: parte na
-  chave nova, parte na antiga, e as duas legíveis enquanto o PREVIOUS
-  existir.
-- **`falhas > 0` bloqueia o passo 3.** São linhas que não abrem com
-  nenhuma das chaves — em geral vindas de outro ambiente, ou de uma
-  rotação anterior interrompida com a chave já descartada.
-  O script identifica cada uma por id, e nomeia POR QUE falhou — uma linha de
-  outro ambiente ("embrulhado pela chave `<kid>`"), uma linha cujo rótulo
-  discorda do envelope ("rótulo incoerente ou registro adulterado"),
-  e uma linha sem rótulo nenhum são três diagnósticos diferentes com três
-  respostas diferentes. Não remova o PREVIOUS: sem ele você perde também o que
-  ainda abria.
+- **Idempotent.** Running it again counts already-converted rows as
+  `já na chave atual` and rewrites nothing. Interrupted? Run it
+  again.
+- **Only the envelope changes.** The secret's ciphertext stays byte for
+  byte the same, so stopping halfway leaves the store consistent: part on
+  the new key, part on the old, and both readable as long as PREVIOUS
+  exists.
+- **`falhas > 0` blocks step 3.** These are rows that don't open with
+  either key — usually coming from a different environment, or from an
+  earlier rotation that was interrupted with the key already discarded.
+  The script identifies each one by id, and names WHY it failed — a row from
+  another environment ("embrulhado pela chave `<kid>`"), a row whose label
+  disagrees with its envelope ("rótulo incoerente ou registro adulterado"),
+  and a row with no label at all are three different diagnoses with three
+  different answers. Don't remove PREVIOUS: without it you also lose what
+  still opened.
 
-**Interrompido, e quer saber onde parou?** Pergunte ao banco em vez de
-rodar o script de novo pelo contador — com `<NEW>` a impressão digital atual
-do log acima:
+**Interrupted, and want to know where it stopped?** Ask the database instead of
+re-running the script for its counter — with `<NEW>` the current fingerprint
+from the log above:
 
 ```sql
 select 'user_credentials' as tabela, count(*) as pendentes
@@ -3404,15 +3410,15 @@ select 'project_git_connections', count(*)
   from project_git_connections where key_id is distinct from '<NEW>';
 ```
 
-`is distinct from`, nunca `<>`: linhas com `key_id IS NULL` têm de contar como
-pendentes, e `<>` as descartaria em silêncio.
+`is distinct from`, never `<>`: rows with `key_id IS NULL` must count as
+pending, and `<>` would silently drop them.
 
-### 3. Descarte a chave antiga {#3-discard-the-old-key}
+### 3. Discard the old key {#3-discard-the-old-key}
 
-Só depois de `falhas=0` **e** a consulta acima responder `0` nas duas tabelas. As
-duas dizem coisas diferentes e você quer as duas: `falhas=0` quer dizer que nada se recusou
-a abrir nesta execução, e a consulta quer dizer que nada ficou para trás — inclusive
-linhas que uma execução anterior, interrompida, nunca alcançou.
+Only once `falhas=0` **and** the query above answers `0` on both tables. The
+two say different things and you want both: `falhas=0` means nothing refused
+to open on this run, and the query means nothing is left behind — including
+rows that a previous, interrupted run never reached.
 
 ```bash
 # remova CREDENTIALS_MASTER_KEY_PREVIOUS do provedor, depois
@@ -3420,121 +3426,121 @@ kubectl -n brabo annotate externalsecret brabo-secrets force-sync="$(date +%s)" 
 kubectl -n brabo rollout restart deployment/api
 ```
 
-Verifique que o aviso de rotação sumiu do log e que uma
-credencial existente ainda funciona (o caminho mais direto é a tela de
-credenciais do projeto, ou qualquer turno de agente que use uma chave de LLM).
+Verify that the rotation warning is gone from the log and that an
+existing credential still works (the most direct path is the project's
+credentials screen, or any agent turn that uses an LLM key).
 
-### Verificando sem esperar um incidente {#verifying-without-waiting-for-an-incident}
+### Verifying without waiting for an incident {#verifying-without-waiting-for-an-incident}
 
-**O ciclo inteiro tem uma verificação nomeada, e ela roda no CI**
+**The whole cycle has a named verification, and it runs in CI**
 ([RN-562](business-rules/api.md#rn-562)):
 
 ```bash
 pnpm --filter api test -- test/scripts/rewrap-deks.spec.ts
 ```
 
-Esse spec conduz a sequência desta página contra um Postgres de verdade e **as duas**
-tabelas: cifra com K1, publica K2, re-embrulha, descarta K1, e ainda decifra. Ele
-também fixa as duas propriedades em que este procedimento se apoia — idempotência (uma segunda
-execução informa `re-embrulhados=0`) e a linha ilegível sendo contada e nomeada
-sem abortar as outras.
+That spec drives the sequence of this page against a real Postgres and **both**
+tables: encrypt with K1, publish K2, re-wrap, drop K1, and still decrypt. It
+also pins the two properties this procedure leans on — idempotence (a second
+run reports `re-embrulhados=0`) and the unreadable row being counted and named
+without aborting the others.
 
-Cobertura mais estreita, em memória, das mesmas primitivas — inclusive o caso em que
-nenhuma chave funciona, e o caso em que o rótulo `key_id` mente — mora em
+Narrower, in-memory coverage of the same primitives — including the case where
+neither key works, and the case where the `key_id` label lies — lives in
 `test/infrastructure/security/envelope-encryption.service.spec.ts`.
 
-O `rewrap` também roda em qualquer ambiente: num de teste, o ciclo completo à mão
-cabe em poucos minutos.
+`rewrap` also runs in any environment: on a test one, the full cycle by hand
+fits in a few minutes.
 
-**Já rodou de verdade? Não.** A resposta do mantenedor (2026-09-27): esta
-rotação **nunca** foi executada num ambiente real. Então o spec acima
-não é uma rede de segurança sob um procedimento praticado — até a AT-146 era a única
-prova, e nunca tocou a imagem, o `ExternalSecret` nem um reinício da api.
+**Has it ever run for real? No.** The maintainer's answer (2026-09-27): this
+rotation has **never** been executed in a real environment. So the spec above
+is not a safety net under a practised procedure — until AT-146 it was the only
+proof, and it never touched the image, the `ExternalSecret` or an api restart.
 
-**O ensaio, no cluster, toda semana (AT-146).**
+**The rehearsal, in the cluster, every week (AT-146).**
 `make test-rotacao-chave-mestra-k8s` (`deploy/k8s/test-rotacao-chave-mestra.sh`)
-roda os três passos desta página contra o cluster local, com a mesma
-mecânica: ele escreve uma credencial de LLM com valor aleatório pela API
-e confere que todo envelope abre na chave de hoje; o **passo 1** publica a chave
-nova e a antiga como `_PREVIOUS` no Secret de origem `brabo` (o substituto
-local do provedor — nunca o `brabo-secrets` direto), força o
-sync do `ExternalSecret`, espera o `_PREVIOUS` chegar, reinicia a api e
-exige o aviso de rotação nomeando **as duas** impressões digitais; o **passo 2** exige
-linhas pendentes pela consulta acima, roda o `node scripts/rewrap-deks.js` da imagem
-(`falhas=0`), exige **zero** pendentes, e roda de novo (`nada a fazer`);
-o **passo 3** remove o `_PREVIOUS` da origem, exige que ele **suma**
-de `brabo-secrets` depois do sync, reinicia a api, exige a linha de boot
-com a impressão digital nova e nenhum aviso de rotação, e confere que todo envelope
-abre só com a chave nova — e que a credencial do início decifra
-para o **mesmo valor** (comparado por sha256 dentro do pod; o valor nunca
-sai dele). O veredito é o código de saída. Ele é o **último** alvo do
-agendado `.github/workflows/propriedades.yml`, porque troca um segredo e
-reinicia a api, e deixa o cluster na chave nova sem `_PREVIOUS`
-— uma rotação terminada, não uma pela metade. Primeira execução verde: `36502355798`
+runs the three steps of this page against the local cluster, with the same
+mechanics: it writes an LLM credential with a random value through the API
+and checks every envelope opens on today's key; **step 1** publishes the new
+key and the old one as `_PREVIOUS` in the `brabo` source Secret (the local
+stand-in for the provider — never `brabo-secrets` directly), forces the
+`ExternalSecret` sync, waits for `_PREVIOUS` to arrive, restarts the api and
+requires the rotation warning naming **both** fingerprints; **step 2** requires
+pending rows by the query above, runs the image's `node scripts/rewrap-deks.js`
+(`falhas=0`), requires **zero** pending, and runs it again (`nada a fazer`);
+**step 3** removes `_PREVIOUS` from the source, requires it to **disappear**
+from `brabo-secrets` after the sync, restarts the api, requires the boot line
+with the new fingerprint and no rotation warning, and checks every envelope
+opens with the new key alone — and that the credential from the start decrypts
+to the **same value** (compared by sha256 inside the pod; the value never
+leaves it). The verdict is the exit code. It is the **last** target of the
+scheduled `.github/workflows/propriedades.yml`, because it swaps a secret and
+restarts the api, and it leaves the cluster on the new key with no `_PREVIOUS`
+— a finished rotation, not a half-way one. First green run: `36502355798`
 (2026-09-29, 47 s).
 
-O que o ensaio **não** cobre, declarado: linhas de `project_git_connections`
-(criar uma conexão de git pela API valida um token contra um
-provider real, e o cluster da prova não tem saída de rede — a tabela é lida pelo
-verificador e pelo `rewrap`, em geral com 0 linhas; o envelope dela é o mesmo código,
-provado nas duas tabelas pelo spec acima), e o provedor de segredos de staging/produção
-(aqui a origem é o Secret local que o `SecretStore` do overlay
-lê; o `ExternalSecret` e o operator são os de verdade). É um
-ensaio num cluster descartável, **não** uma rotação de ambiente real:
-"nunca rodou de verdade" continua verdade até alguém rotacionar um.
+What the rehearsal does **not** cover, declared: `project_git_connections`
+rows (creating a git connection through the API validates a token against a
+real provider, and the proof cluster has no egress — the table is read by the
+verifier and by `rewrap`, usually with 0 rows; its envelope is the same code,
+proven on both tables by the spec above), and the staging/production secrets
+provider (here the source is the local Secret the overlay's `SecretStore`
+reads; the `ExternalSecret` and the operator are the real ones). It is a
+rehearsal in a throwaway cluster, **not** a rotation of any real environment:
+"never ran for real" stays true until someone rotates one.
 
-### Interação com o restore {#interaction-with-restore}
+### Interaction with restore {#interaction-with-restore}
 
-**Restaurar um dump num ambiente com outra chave mestra devolve
-um banco intacto com credenciais inúteis.** O dump leva
-as DEKs embrulhadas, não a chave. Se você restaurou um backup de produção num
-ambiente de teste e as credenciais não abrem, não é corrupção:
-é a chave errada — e desde a [RN-563](business-rules/api.md#rn-563) você pode
-confirmar isso numa comparação em vez de por eliminação, lendo o `key_id`
-de qualquer linha e pondo-o ao lado da linha `chave mestra corrente` no
-log de boot da api. Veja
+**Restoring a dump into an environment with a different master key gives
+you back an intact database with useless credentials.** The dump carries
+the wrapped DEKs, not the key. If you restored a production backup into a
+test environment and the credentials don't open, it's not corruption:
+it's the wrong key — and since [RN-563](business-rules/api.md#rn-563) you can
+confirm it in one comparison instead of by elimination, by reading `key_id`
+off any row and putting it next to the `chave mestra corrente` line in the
+api's boot log. See
 [Restore](#restore).
 
-É por isso que a chave mestra faz parte do plano de recuperação: um backup de banco
-sem a chave correspondente não recupera os segredos do usuário.
+That's why the master key is part of the recovery plan: a database backup
+without the matching key doesn't recover the user's secrets.
 
-### Quando algo dá errado {#when-something-goes-wrong}
+### When something goes wrong {#when-something-goes-wrong}
 
-| sintoma | causa |
+| symptom | cause |
 |---|---|
-| a api sobe sem aviso de rotação, mas o script exige o PREVIOUS | a variável nunca chegou ao pod; o ESO só ressincroniza a cada `refreshInterval` (1h) |
-| `falhas` igual ao total | o PREVIOUS publicado não é a chave que embrulhou o acervo |
-| `já na chave atual` igual ao total, sem ter rodado antes | as duas variáveis têm o mesmo valor — o serviço ignora o PREVIOUS nesse caso |
-| uma credencial para de funcionar DEPOIS do passo 3 | alguma linha ficou para trás; republique o PREVIOUS imediatamente e rode o script de novo. A consulta de progresso do passo 2 é o que impede isto, e é a checagem a rodar primeiro |
-| a consulta de pendentes responde o total inteiro, num banco que ninguém rotacionou ainda | esperado: o `key_id` é escrito da próxima escrita em diante, então uma instalação anterior à [RN-563](business-rules/api.md#rn-563) o tem `NULL` em todo lugar até a primeira rotação. `NULL` conta como pendente de propósito — "não sei qual chave" não é "já na atual" |
-| o `rewrap` diz que uma linha está numa chave que não é nem a atual nem a anterior | a linha veio de outro ambiente — o mais comum é um dump restaurado entre instalações. Veja [Interação com o restore](#rotacao-da-chave-mestra) abaixo; o `key_id` da linha contra o do log de boot da api diz de relance |
+| the api boots with no rotation warning, but the script requires PREVIOUS | the variable never reached the pod; ESO only resyncs every `refreshInterval` (1h) |
+| `falhas` equal to the total | the published PREVIOUS isn't the key that wrapped the store |
+| `já na chave atual` equal to the total, without having run before | both variables have the same value — the service ignores PREVIOUS in that case |
+| a credential stops working AFTER step 3 | some row was left behind; republish PREVIOUS immediately and run the script again. The progress query in step 2 is what prevents this, and it is the check to run first |
+| the pending query answers the full total, on a database nobody rotated yet | expected: `key_id` is written from the next write on, so an installation that predates [RN-563](business-rules/api.md#rn-563) has it `NULL` everywhere until the first rotation. `NULL` counts as pending on purpose — "I don't know which key" is not "already current" |
+| `rewrap` says a row is on a key that is neither the current nor the previous one | the row came from another environment — most often a dump restored across installations. See [Interaction with restore](#rotacao-da-chave-mestra) below; the `key_id` in the row versus the one in the api's boot log tells you at a glance |
 
 ---
 
-## Incidente de custo {#incidente-de-custo}
+## Cost incident {#incidente-de-custo}
 
-Agentes gastam tokens a cada turno, e um agente preso num laço gasta
-rápido. Esta seção é para o momento em que o custo por hora dispara e alguém
-precisa decidir o que cortar.
+Agents spend tokens on every turn, and an agent stuck in a loop spends
+fast. This section is for the moment cost per hour spikes and someone
+needs to decide what to cut.
 
-### Sinal {#signal}
+### Signal {#signal}
 
-O alerta *Custo por hora acima do limite* dispara quando o gasto projetado passa
-de USD 5/hora em qualquer projeto:
+The *Cost per hour above the limit* alert fires when projected spend goes
+above USD 5/hour on any project:
 
 ```promql
 max(sum by (project) (rate(brabo_llm_cost_micros_total[10m])) * 3600 / 1000000)
 ```
 
-O alerta é um **aviso**, não um freio. O freio de verdade são os
-`budgets` do domínio, e eles agem por projeto/sessão, nunca globalmente
+The alert is a **warning**, not a brake. The real brake is the domain's
+`budgets`, and it acts per project/session, never globally
 ([RN-019](business-rules/api.md#rn-019)).
 
-### 1. Qual projeto, qual agente {#1-which-project-which-agent}
+### 1. Which project, which agent {#1-which-project-which-agent}
 
-Grafana → painel **Brabo · visão executiva** → painel de custo por projeto.
-Ou direto do banco, que também te dá o agente e o
-modelo:
+Grafana → **Brabo · executive view** dashboard → cost-per-project panel.
+Or straight from the database, which also gives you the agent and the
+model:
 
 ```sql
 select s.project_id,
@@ -3551,14 +3557,14 @@ select s.project_id,
  limit 20;
 ```
 
-Duas leituras mudam a ação:
+Two readings change the action:
 
-- **Um agente dominando a lista** com muitas chamadas curtas quer dizer laço:
-  o ToolLoop repetindo a mesma ferramenta sem convergir.
-- **Poucas chamadas e custo alto** quer dizer modelo caro em trabalho barato —
-  binding errado, não laço.
+- **One agent dominating the list** with many short calls means a loop:
+  the ToolLoop repeating the same tool without converging.
+- **Few calls and high cost** means an expensive model on cheap work —
+  wrong binding, not a loop.
 
-### 2. Confira o orçamento {#2-check-the-budget}
+### 2. Check the budget {#2-check-the-budget}
 
 ```sql
 select b.project_id, b.session_id,
@@ -3570,22 +3576,22 @@ select b.project_id, b.session_id,
  order by pct desc nulls last;
 ```
 
-A `policy` decide o comportamento no teto:
+`policy` decides the behavior at the ceiling:
 
-- **`block`** — a chamada é recusada. É o default e o que você
-  quer em produção.
-- **`allow`** — o teto vira mero registro; o gasto continua. Um
-  projeto em `allow` gastando muito **não para sozinho**. Confira
-  isto antes de qualquer outra coisa: é a causa mais comum de "o orçamento
-  não segurou".
+- **`block`** — the call is refused. This is the default and what you
+  want in production.
+- **`allow`** — the ceiling becomes a mere record; spending continues. A
+  project on `allow` spending heavily **won't stop on its own**. Check
+  this before anything else: it's the most common cause of "the budget
+  didn't hold".
 
-### 3. Corte o gasto {#3-cut-the-spend}
+### 3. Cut the spend {#3-cut-the-spend}
 
-Em ordem de reversibilidade, do mais brando ao mais drástico.
+In order of reversibility, from mildest to most drastic.
 
-**a) Tire os agentes da autonomia automática.** Eles param de agir
-sozinhos e voltam a exigir aprovação por ação, sem perder
-contexto:
+**a) Take the agents out of automatic autonomy.** They stop acting on
+their own and go back to requiring per-action approval, without losing
+context:
 
 ```sql
 update agent_autonomy
@@ -3594,40 +3600,40 @@ update agent_autonomy
    and mode = 'auto_approve';
 ```
 
-`agent_autonomy.mode` é o enum `permission_policy`
-(`auto_approve | require_approval | deny`) — não há valor `manual`,
-e uma versão anterior deste passo o usava e falhava na hora. O
-`and mode = 'auto_approve'` é deliberado: sem ele, o update
-transformaria toda linha `deny` do projeto em `require_approval`, afrouxando
-exatamente o que alguém tinha fechado. As linhas `"*"` (modo automático, RN-153) são
-cobertas pelo mesmo update.
+`agent_autonomy.mode` is the `permission_policy` enum
+(`auto_approve | require_approval | deny`) — there is no `manual` value,
+and an earlier version of this step used it and failed on the spot. The
+`and mode = 'auto_approve'` is deliberate: without it, the update would
+turn every `deny` row of the project into `require_approval`, loosening
+exactly what someone had closed. The `"*"` rows (auto mode, RN-153) are
+covered by the same update.
 
-O que este passo **não** corta: um padrão em `allow` no
-`permissions.json` do projeto ainda auto-aprova o que casa — `decide()` lê
-o arquivo depois de `agent_autonomy`, e o arquivo pode subir a decisão de volta
-para `auto_approve` (`apps/api/src/domain/actions/decide.ts`, `decide`).
-Se o gasto vem de comandos que o arquivo permite, vá para (c).
+What this step does **not** cut: a pattern in `allow` in the project's
+`permissions.json` still auto-approves what it matches — `decide()` reads
+the file after `agent_autonomy`, and the file can raise the decision back
+to `auto_approve` (`apps/api/src/domain/actions/decide.ts`, `decide`).
+If the spend comes from commands the file allows, go to (c).
 
-Os blocos SQL desta seção são rodados contra o schema migrado por
-`apps/api/test/runbook/sql-do-incidente-de-custo.spec.ts`, que também
-confere que (a) muda `auto_approve` e deixa `deny` em paz — um
-valor inválido ou uma coluna renomeada aqui reprova a suíte da api, não o
-incidente.
+The SQL blocks of this section are run against the migrated schema by
+`apps/api/test/runbook/sql-do-incidente-de-custo.spec.ts`, which also
+checks that (a) changes `auto_approve` and leaves `deny` alone — an
+invalid value or a renamed column here fails the api suite, not the
+incident.
 
-**b) Troque o binding de modelo por um local.** O Ollama custa zero; a qualidade
-cai, o gasto para na hora:
+**b) Switch the model binding to a local one.** Ollama costs zero; quality
+drops, spending stops on the spot:
 
 ```sql
 -- veja o binding vigente e o escopo que o resolve
 select scope, scope_id, model_id from model_bindings where scope_id = '<projeto>';
 ```
 
-Depois aponte o binding do projeto para um modelo `local` pela tela de
-configurações (o escopo mais específico vence: sessão > agente > projeto >
+Then point the project's binding at a `local` model through the settings
+screen (the most specific scope wins: session > agent > project >
 workspace — [RN-020](business-rules/api.md#rn-020)).
 
-**c) Baixe o teto e garanta que é `block`.** Faz o próprio domínio
-recusar as próximas chamadas:
+**c) Lower the ceiling and make sure it's `block`.** Makes the domain
+itself refuse the next calls:
 
 ```sql
 update budgets
@@ -3636,40 +3642,40 @@ update budgets
  where project_id = '<projeto>';
 ```
 
-**d) Feche as sessões do projeto.** Último recurso: interrompe trabalho em
-andamento. Use a transição normal (`closing`), nunca `kill` no pod
-— matar o pod não fecha uma sessão, só cria uma órfã
-(veja [Rollout do engine](#rollout-do-engine)).
+**d) Close the project's sessions.** Last resort: interrupts work in
+progress. Use the normal transition (`closing`), never `kill` on the pod
+— killing the pod doesn't close a session, it just creates an orphan
+(see [Engine rollout](#rollout-do-engine)).
 
-### 4. Depois {#4-afterward}
+### 4. Afterward {#4-afterward}
 
-- **O Psicólogo já tem a evidência.** Se a causa foi um laço de
-  agente, a análise dele aponta o agente alvo e a Anamnese pode
-  propor um patch de instrução. Corrigir a instrução é o que impede
-  de acontecer de novo; mexer no orçamento só compra tempo.
-- **Confira que o alerta chegou.** As regras moram no Grafana, não no
-  Prometheus: se o Grafana estava fora do ar, não houve aviso, e o silêncio
-  não queria dizer saúde.
+- **The Psychologist already has the evidence.** If the cause was an
+  agent loop, its analysis points at the target agent and Anamnesis can
+  propose an instruction patch. Fixing the instruction is what prevents
+  it happening again; touching the budget only buys time.
+- **Check that the alert arrived.** The rules live in Grafana, not
+  Prometheus: if Grafana was down, there was no warning, and the silence
+  didn't mean health.
 
-### O que esta seção não conserta {#what-this-section-doesnt-fix}
+### What this section doesn't fix {#what-this-section-doesnt-fix}
 
-Custo já incorrido. Metering é registro, não reembolso: o `token_usage`
-conta o que foi gasto, e nada aqui devolve dinheiro do
-provider. A única prevenção real é `policy = 'block'` com um
-teto sensato **antes** do incidente.
+Cost already incurred. Metering is a record, not a refund: `token_usage`
+counts what was spent, and nothing here gives money back from the
+provider. The only real prevention is `policy = 'block'` with a sensible
+ceiling **before** the incident.
 
 ---
 
-## Observabilidade {#observabilidade}
+## Observability {#observabilidade}
 
-Como acompanhar uma sessão, achar custo, e diagnosticar quando não há dados.
-Decisões no
+How to follow a session, find cost, and diagnose when there's no data.
+Decisions in
 [ADR 0026](adr/0026-fase5-observabilidade-e-graceful-shutdown.md).
 
-### Observabilidade local, sem cluster {#observabilidade-local}
+### Local observability, no cluster {#observabilidade-local}
 
-Tudo abaixo desta subseção supõe o cluster de pé. Para métricas
-e logs sem subir Kubernetes, há um overlay de Compose
+Everything below this subsection assumes the cluster is up. For metrics
+and logs without bringing up Kubernetes, there's a Compose overlay
 ([ADR 0070](adr/0070-observabilidade-no-compose-local.md)):
 
 ```bash
@@ -3677,64 +3683,64 @@ pnpm dev:obs     # sobe a stack de dev + Prometheus, Loki, Alloy e Grafana
 pnpm obs:down    # derruba só os quatro, deixando os apps de pé
 ```
 
-O comando termina conferindo o que subiu — se diz `ok` em toda
-linha, o painel tem dados; se reclama, diz qual peça
-faltou.
+The command finishes by checking what came up — if it says `ok` on every
+line, the panel has data; if it complains, it says which piece was
+missing.
 
-Verificação: essa checagem final é `scripts/dev/observabilidade-pronta.mjs`,
-e é uma **autoverificação, não uma prova** — ela só roda quando alguém sobe o
-overlay, e não tem spec nem workflow. Uma mudança que quebra o
-overlay aparece da próxima vez que alguém rodar `pnpm dev:obs`.
+Verification: that closing check is `scripts/dev/observabilidade-pronta.mjs`,
+and it is a **self-check, not a proof** — it runs only when someone brings the
+overlay up, and it has no spec and no workflow. A change that breaks the
+overlay surfaces the next time someone runs `pnpm dev:obs`.
 
-| ferramenta | endereço | serve para |
+| tool | address | serves for |
 |---|---|---|
-| Grafana | <http://localhost:3001> | painéis e logs, sem login |
-| Logs | <http://localhost:3001/d/brabo-logs> | um serviço por vez, ou os três juntos |
-| Prometheus | <http://localhost:9090> | conferir um alvo e séries cruas |
-| Loki | <http://localhost:3100> | consulta direta (o caminho normal é o Grafana) |
+| Grafana | <http://localhost:3001> | dashboards and logs, no login |
+| Logs | <http://localhost:3001/d/brabo-logs> | one service at a time, or all three together |
+| Prometheus | <http://localhost:9090> | checking a target and raw series |
+| Loki | <http://localhost:3100> | direct query (the normal path is Grafana) |
 
-**Os painéis são os MESMOS do cluster** — o Compose monta
-`deploy/k8s/observability/dashboards/` direto, e os UIDs dos datasources
-(`brabo-prometheus`, `brabo-loki`) são os mesmos. Um painel novo vale
-nos dois ambientes sem cópia.
+**The dashboards are the SAME as the cluster's** — Compose mounts
+`deploy/k8s/observability/dashboards/` directly, and the datasource UIDs
+(`brabo-prometheus`, `brabo-loki`) are the same. A new dashboard is valid
+in both environments with no copying.
 
-**O que este overlay não faz:** tracing. Sem um OpenTelemetry
-Collector no meio não há Tempo, e isso é decisão, não
-descuido ([ADR 0026](adr/0026-fase5-observabilidade-e-graceful-shutdown.md),
-decisão 9). O `trace_id` ainda vai para o log e basta para
-cruzar api e engine à mão.
+**What this overlay doesn't do:** tracing. Without an OpenTelemetry
+Collector in the middle there's no Tempo, and that's a decision, not an
+oversight ([ADR 0026](adr/0026-fase5-observabilidade-e-graceful-shutdown.md),
+decision 9). The `trace_id` still goes into the log and is enough to
+cross-reference api and engine by hand.
 
-Três coisas que confundem as pessoas, e vale saber antes de abrir uma
+Three things that confuse people, and are worth knowing before opening an
 issue:
 
-1. **Um painel de custo/tokens vazio é esperado num banco novo.** Essas
-   métricas têm rótulos (`project`, `provider`), e no `prom-client` uma
-   métrica rotulada não existe antes da primeira observação. Uma chamada de
-   LLM e a série aparece.
-2. **Só `api`, `engine` e `web` vão para o Loki.** Postgres e Ollama ficam
-   de fora por ruído; a própria stack de observabilidade fica de fora porque,
-   no mesmo projeto Compose, ela ingeriria o próprio log em laço.
-3. **O nível `OUTRO`** é a linha de continuação de árvore do `pino-pretty`,
-   que não tem nível próprio. Não é log perdido.
+1. **An empty cost/tokens panel is expected on a fresh database.** Those
+   metrics have labels (`project`, `provider`), and in `prom-client` a
+   labeled metric doesn't exist before its first observation. One LLM
+   call and the series appears.
+2. **Only `api`, `engine`, and `web` go to Loki.** Postgres and Ollama are
+   left out for noise; the observability stack itself is left out because,
+   in the same Compose project, it would ingest its own log in a loop.
+3. **The `OUTRO` (OTHER) level** is `pino-pretty`'s tree continuation
+   line, which has no level of its own. It's not a lost log.
 
-### Onde as coisas estão {#where-things-are}
+### Where things are {#where-things-are}
 
-| ferramenta | endereço local | serve para |
+| tool | local address | serves for |
 |---|---|---|
-| Grafana | <http://localhost:3001> | painéis, traces, logs, alertas |
-| Prometheus | `kubectl -n monitoring port-forward svc/prometheus-server 9090:80` | conferir um alvo e séries cruas |
-| Tempo | datasource do Grafana | traces |
-| Loki | datasource do Grafana | logs |
+| Grafana | <http://localhost:3001> | dashboards, traces, logs, alerts |
+| Prometheus | `kubectl -n monitoring port-forward svc/prometheus-server 9090:80` | checking a target and raw series |
+| Tempo | Grafana datasource | traces |
+| Loki | Grafana datasource | logs |
 
-Dois painéis na pasta **Brabo**: *visão executiva* (custo/hora e
-tokens/min por projeto, sessões ativas, decisões de ação) e
-*visão operacional* (fila do Oban por estado, latência p50/p95 de LLM por provider,
-tarefas bloqueadas, sessões por réplica).
+Two dashboards in the **Brabo** folder: *executive view* (cost/hour and
+tokens/min per project, active sessions, action decisions) and
+*operational view* (Oban queue by state, LLM p50/p95 latency by provider,
+blocked tasks, sessions per replica).
 
-### Acompanhando uma sessão da raiz até uma chamada de ferramenta {#following-a-session-from-the-root-to-a-tool-call}
+### Following a session from the root to a tool call {#following-a-session-from-the-root-to-a-tool-call}
 
-1. Pegue o `trace_id` da sessão. É o campo do meio do
-   `traceparent` guardado em `sessions.trace_parent`:
+1. Grab the session's `trace_id`. It's the middle field of the
+   `traceparent` stored in `sessions.trace_parent`:
 
    ```bash
    # 00-<trace_id>-<span_id>-01
@@ -3742,108 +3748,108 @@ tarefas bloqueadas, sessões por réplica).
      http://localhost:3000/projects/$PROJ/sessions/$SESS | jq -r .traceParent
    ```
 
-2. No Grafana → **Explore** → datasource **Tempo** → aba **TraceQL**,
-   cole o `trace_id`. A árvore volta com `session.create` (api)
-   na raiz e, abaixo dele, `agent.turn` → `tool.call` / `llm.turn` /
+2. In Grafana → **Explore** → **Tempo** datasource → **TraceQL** tab,
+   paste the `trace_id`. The tree comes back with `session.create` (api)
+   at the root and, below it, `agent.turn` → `tool.call` / `llm.turn` /
    `gate.scanner` (engine).
 
-3. A partir de um span, o botão **Logs for this span** salta para as linhas do Loki
-   com aquele `trace_id`. O caminho inverso — de uma linha de log para o trace
-   — é o link **TraceID** que aparece no detalhe da linha.
+3. From a span, the **Logs for this span** button jumps to the Loki lines
+   with that `trace_id`. The reverse path — from a log line to the trace
+   — is the **TraceID** link that shows up in the line's detail.
 
-4. Custo daquela sessão: o painel *visão executiva* filtra por
-   projeto. Para um valor exato por sessão, a fonte é o banco
-   (`token_usage.cost_micros`), não a métrica — a métrica é agregada
-   por projeto e provider de propósito, para não criar uma série por
-   sessão.
+4. Cost for that session: the *executive view* dashboard filters by
+   project. For an exact per-session value, the source is the database
+   (`token_usage.cost_micros`), not the metric — the metric is aggregated
+   by project and provider on purpose, to avoid creating one series per
+   session.
 
-### Quando não há trace no Tempo {#quando-nao-ha-trace-no-tempo}
+### When there's no trace in Tempo {#quando-nao-ha-trace-no-tempo}
 
-O nome desta seção mudou junto com o comportamento (ADR 0035), e a
-distinção é o primeiro passo do diagnóstico: **um span é sempre criado, em
-qualquer ambiente.** O que `OTEL_EXPORTER_OTLP_ENDPOINT` controla é a
-EXPORTAÇÃO. Então "não vejo trace no Grafana" e "não há trace" são
-problemas diferentes.
+This section's name changed along with its behavior (ADR 0035), and the
+distinction is the first diagnostic step: **a span is always created, in
+any environment.** What `OTEL_EXPORTER_OTLP_ENDPOINT` controls is
+EXPORTING. So "I don't see a trace in Grafana" and "there's no trace" are
+different problems.
 
-Antes de qualquer coisa, veja de que lado está a falha — o log responde
-sozinho:
+Before anything else, see which side the failure is on — the log answers
+on its own:
 
 ```bash
 kubectl -n brabo logs -l app.kubernetes.io/name=api --tail=20 | grep -o '"trace_id":"[^"]*"' | head
 ```
 
-- **Há `trace_id` no log, nenhum trace no Tempo** → o problema é a
-  exportação: siga de 1 a 4 abaixo.
-- **Nenhum `trace_id` no log** → o problema é de contexto, e é mais raro:
-  ou o `startTracing()` da api não rodou (veja
-  `apps/api/src/tracing-boot.ts` — ele tem de ser o primeiro import do `main.ts`),
-  ou o `Engine.Telemetry.Otel.setup/0` não foi chamado antes da árvore de
-  supervisão.
+- **There's a `trace_id` in the log, no trace in Tempo** → the problem is
+  exporting: follow 1 through 4 below.
+- **No `trace_id` in the log** → the problem is context, and it's rarer:
+  either the api's `startTracing()` didn't run (see
+  `apps/api/src/tracing-boot.ts` — it has to be `main.ts`'s first import),
+  or `Engine.Telemetry.Otel.setup/0` wasn't called before the supervision
+  tree.
 
-Em ordem, do mais ao menos provável:
+In order, most to least likely:
 
-**1. A variável não está definida.** Sem `OTEL_EXPORTER_OTLP_ENDPOINT` o
-span é criado e descartado no fim, então há `trace_id` no
-log e nada no Tempo. Em desenvolvimento isso é esperado (sem collector);
-num cluster, é defeito.
+**1. The variable isn't set.** Without `OTEL_EXPORTER_OTLP_ENDPOINT` the
+span is created and discarded at the end, so there's a `trace_id` in the
+log and nothing in Tempo. In development that's expected (no collector);
+in a cluster, it's a defect.
 
 ```bash
 kubectl -n brabo exec deploy/api -- printenv OTEL_EXPORTER_OTLP_ENDPOINT
 kubectl -n brabo exec deploy/engine -- printenv OTEL_EXPORTER_OTLP_ENDPOINT
 ```
 
-**2. A NetworkPolicy está bloqueando.** Esta é a falha mais silenciosa
-de todas: os spans são criados, o envio falha, e todo o resto fica
-verde.
+**2. The NetworkPolicy is blocking it.** This is the most silent failure
+of all: the spans are created, the send fails, and everything else stays
+green.
 
 ```bash
 kubectl -n brabo get networkpolicy allow-otlp-egress
 kubectl -n brabo logs -l app.kubernetes.io/name=engine --tail=50 | grep -i "error exporting"
 ```
 
-**3. Protocolo errado.** O exporter do Elixir fala **HTTP/protobuf (4318)**,
-não gRPC. Apontá-lo para a 4317 dá `socket_closed_remotely` em todo
-lote.
+**3. Wrong protocol.** Elixir's exporter speaks **HTTP/protobuf (4318)**,
+not gRPC. Pointing it at 4317 gives `socket_closed_remotely` on every
+batch.
 
-**4. O Collector não está recebendo nada.**
+**4. The Collector isn't receiving anything.**
 
 ```bash
 kubectl -n monitoring logs deploy/otel-collector-opentelemetry-collector --tail=30
 ```
 
-### Quando um painel está vazio {#when-a-panel-is-empty}
+### When a panel is empty {#when-a-panel-is-empty}
 
-Quase sempre um **nome de métrica**. Os nomes são referenciados por string em três
-lugares que não se enxergam: os painéis, as regras de alerta e
-este runbook. Confira contra o que o serviço de fato expõe:
+Almost always a **metric name**. Names are referenced by string in three
+places that don't see each other: the dashboards, the alert rules, and
+this runbook. Check against what the service actually exposes:
 
 ```bash
 curl -sS http://localhost:3000/metrics | grep '^brabo_' | cut -d'{' -f1 | sort -u
 kubectl -n brabo exec deploy/engine -- wget -qO- http://127.0.0.1:4000/metrics | grep -E '^(brabo|oban)_'
 ```
 
-E se o serviço a expõe mas o Prometheus não a tem, o
-problema é a coleta:
+And if the service exposes it but Prometheus doesn't have it, the
+problem is the scrape:
 
 ```bash
 kubectl -n monitoring port-forward svc/prometheus-server 9090:80
 # depois: http://localhost:9090/targets — os jobs são `brabo-api` e `brabo-engine`
 ```
 
-### Quando não há log no Loki {#when-theres-no-log-in-loki}
+### When there's no log in Loki {#when-theres-no-log-in-loki}
 
-O Alloy é um DaemonSet e lê `/var/log/pods` do nó, filtrando
-pelo namespace `brabo`.
+Alloy is a DaemonSet and reads `/var/log/pods` from the node, filtering
+by the `brabo` namespace.
 
 ```bash
 kubectl -n monitoring logs -l app.kubernetes.io/name=alloy --tail=30 | grep -i error
 ```
 
-Avisos de `tailer stopped ... pods not found` são normais depois de um
-rollout — o Alloy continua perseguindo pods que já foram removidos.
+Warnings about `tailer stopped ... pods not found` are normal after a
+rollout — Alloy keeps chasing pods that have already been removed.
 
-Os apps **não** conseguem falar com o Loki direto, e isso é intencional:
-`allow-otlp-egress` só abre 4317/4318. Para consultar de fora:
+The apps **can't** talk to Loki directly, and that's intentional:
+`allow-otlp-egress` only opens 4317/4318. To query from outside:
 
 ```bash
 kubectl -n monitoring port-forward svc/loki 3100:3100
@@ -3851,422 +3857,422 @@ curl -sS -G http://localhost:3100/loki/api/v1/query_range \
   --data-urlencode '{app="api"} | json | trace_id != ""' --data 'limit=5'
 ```
 
-### Alertas {#alerts}
+### Alerts {#alerts}
 
-Provisionados e visíveis em **Alerting → Alert rules** (pasta Brabo), a partir de
-`deploy/k8s/observability/alerts/brabo-alerts.yaml`. As regras levam os
-títulos em português — é isso que você procura no Grafana:
+Provisioned and visible under **Alerting → Alert rules** (Brabo folder), from
+`deploy/k8s/observability/alerts/brabo-alerts.yaml`. The rules carry their
+titles in Portuguese — that is what you search for in Grafana:
 
-| alerta (título no Grafana) | severidade | dispara depois de | o que investigar |
+| alert (title in Grafana) | severity | fires after | what to investigate |
 |---|---|---|---|
-| *Fila do Oban crescendo sem consumo* | `critical` | 10 min | nenhuma réplica do engine Ready; pool do Postgres esgotado; um worker preso num job |
-| *Sessão presa em closing* | `warning` | 15 min | [o drain não terminou](#quando-a-sessao-escapa), ou a transição para `closed` falhou |
-| *Custo por hora acima do limite* | `warning` | 5 min | [qual projeto e qual agente](#incidente-de-custo); o orçamento do domínio continua sendo o controle duro |
-| *Backup do Postgres atrasado* — último backup bom com mais de 26 h | `critical` | na hora | o CronJob não rodou, ou rodou e falhou — `brabo_backup_last_status` distingue os dois; veja [Restore](#restore). "Nunca teve backup" (`-1`) **não** o dispara |
-| *Última execução do backup falhou* | `warning` | na hora | um backup bom de ontem ainda pode existir, e é por isso que este passa despercebido por dias; a causa está em `backup_runs.error_message` |
+| *Fila do Oban crescendo sem consumo* — Oban queue growing with no consumption | `critical` | 10 min | no engine replica Ready; Postgres pool exhausted; a worker stuck on a job |
+| *Sessão presa em closing* — session stuck in `closing` | `warning` | 15 min | [the drain didn't complete](#quando-a-sessao-escapa), or the transition to `closed` failed |
+| *Custo por hora acima do limite* — cost per hour above the limit | `warning` | 5 min | [which project and which agent](#incidente-de-custo); the domain's budget remains the hard control |
+| *Backup do Postgres atrasado* — last good backup older than 26 h | `critical` | at once | the CronJob didn't run, or ran and failed — `brabo_backup_last_status` tells the two apart; see [Restore](#restore). "Never had a backup" (`-1`) does **not** fire it |
+| *Última execução do backup falhou* — last backup run failed | `warning` | at once | a good backup from yesterday may still exist, which is why this one goes unnoticed for days; the cause is in `backup_runs.error_message` |
 
-São regras do **Grafana**, não do Prometheus (desvio registrado no ADR
-0026): elas deixam de ser avaliadas se o Grafana cair. Não há
-Alertmanager nem destino de notificação configurado.
+These are **Grafana** rules, not Prometheus (deviation recorded in ADR
+0026): they stop being evaluated if Grafana goes down. There's no
+Alertmanager or notification destination configured.
 
-### Limites conhecidos {#known-limits}
+### Known limits {#known-limits}
 
-- Nenhum trace de agente **real** foi observado de ponta a ponta: verificar isso
-  exige um LLM configurado (Ollama ou uma chave de API). O mecanismo foi
-  validado emitindo spans direto no trace da sessão.
-- O web não exporta spans próprios — ele **gera** o
-  `traceparent` e o manda no cabeçalho, e a api o adota como
-  pai. Os logs do navegador vão para o console, não para o Loki.
-- Retenção curta: Tempo 24h, Loki 24h, Prometheus 2h. É um ambiente
-  local.
+- No **real** agent trace has been observed end to end: verifying that
+  requires a configured LLM (Ollama or an API key). The mechanism was
+  validated by emitting spans directly into the session's trace.
+- The web doesn't export its own spans — it **generates** the
+  `traceparent` and sends it in the header, and the api adopts it as
+  parent. Browser logs go to the console, not to Loki.
+- Short retention: Tempo 24h, Loki 24h, Prometheus 2h. It's a local
+  environment.
 
 ---
 
-## Registro de gates {#registro-de-gates}
+## Gate registry {#registro-de-gates}
 
-Os gates do fluxo são declarados em `apps/api/config/gates.yml`
-([ADR 0054](adr/0054-gates-como-registro-declarativo.md)). Duas coisas
-operacionais valem saber.
+The flow's gates are declared in `apps/api/config/gates.yml`
+([ADR 0054](adr/0054-gates-como-registro-declarativo.md)). Two operational
+things are worth knowing.
 
-**O arquivo viaja dentro da imagem.** O `docker/api/Dockerfile.prod` o copia
-nos dois estágios, do mesmo jeito que faz com as migrations, e o
-`.dockerignore` o reinclui explicitamente — toda a `docs/` é ignorada, e
-este é o único arquivo de lá que é dado de produção, não
-documentação. Em runtime ele fica em `/app/apps/api/config/gates.yml`; o loader
-sobe a partir de `__dirname` até achá-lo, sem variável de
-ambiente.
+**The file travels inside the image.** `docker/api/Dockerfile.prod` copies
+it in both stages, the same way it does with migrations, and
+`.dockerignore` re-includes it explicitly — all of `docs/` is ignored, and
+this is the only file from there that's production data, not
+documentation. At runtime it sits at `/app/apps/api/config/gates.yml`; the loader
+climbs up from `__dirname` until it finds it, with no environment
+variable.
 
-**Um arquivo ilegível não derruba a api.** O carregamento é preguiçoso:
-quem chama `GET /internal/gates` recebe o erro, e o resto do
-processo segue. Se a rota devolve erro, confira que o arquivo
-entrou:
+**An unreadable file doesn't bring down the api.** Loading is lazy:
+whoever calls `GET /internal/gates` gets the error, and the rest of the
+process keeps going. If the route returns an error, check that the file
+made it in:
 
 ```bash
 kubectl -n brabo exec deploy/api -- cat /app/apps/api/config/gates.yml | head -5
 ```
 
-Vazio ou ausente quer dizer que a imagem foi construída sem ele — provavelmente um
-`.dockerignore` mexido, ou um build a partir de um contexto sem `docs/`.
+Empty or missing means the image was built without it — likely a tweaked
+`.dockerignore`, or a build from a context that has no `docs/`.
 
-**O registro viaja; o que ele aponta, não.** Um gate `teste`/`ci`
-nomeia arquivos sob `apps/api/test/`, `scripts/ci/` e `.github/`, e nenhum
-deles está na imagem. Até isto ser separado, o loader exigia
-esses arquivos em runtime e a rota respondia `500` em toda instalação
-— medido na v6.1.0 como doze 5xx em cerca de 55 minutos, com
-`RegistroDeGatesInvalido` listando os onze alvos como "não existe".
-Reproduza a falha antiga com:
+**The registry travels; what it points at does not.** A `teste`/`ci` gate
+names files under `apps/api/test/`, `scripts/ci/` and `.github/`, and none
+of them are in the image. Until this was separated, the loader required
+those files at runtime and the route answered `500` in every installation
+— measured on v6.1.0 as twelve 5xx in about 55 minutes, with
+`RegistroDeGatesInvalido` listing all eleven targets as "does not exist".
+Reproduce the old failure with:
 
 ```bash
 docker exec <api> node -e "require('/app/infrastructure/gates/gate-registry.loader').carregarRegistro()"
 ```
 
-Numa imagem corrigida isso não imprime nada. Se lança
-`RegistroDeGatesInvalido` nomeando um `.spec.ts` ou um workflow, a imagem é
-de antes da correção ([RN-070](business-rules/api.md#rn-070)); se
-lança nomeando o *conteúdo* de um gate (um gate `block` sem `script`, um
-gate `active` sem evidência), o próprio registro está errado e o
-repositório é onde corrigir.
+On a fixed image that prints nothing. If it throws
+`RegistroDeGatesInvalido` naming a `.spec.ts` or a workflow, the image is
+from before the fix ([RN-070](business-rules/api.md#rn-070)); if it
+throws naming a gate's *content* (a `block` gate without `script`, an
+`active` gate without evidence), the registry itself is wrong and the
+repository is where to fix it.
 
-A tela não mostra esta falha: o `PrGateTimeline` cai para a
-esteira completa quando `GET /gates` falha ([RN-084](business-rules/api.md#rn-084)),
-então o único sinal era o log da api. O `docker/smoke.sh` agora chama as duas
-rotas que servem o registro contra a imagem de produção, `GET /gates`
-com o bearer do usuário e `GET /internal/gates` com o service token.
-Uma função confere o corpo das duas, e reprova no `500`, numa
-lista vazia e num registro sem `merge-protegida`. É isso que impede
-a falha de voltar em silêncio. O token chega ao `curl` pelo
-stdin (`--config -`), nunca pelo argv, então não aparece no `ps` nem no
-log do CI.
+The screen does not show this failure: `PrGateTimeline` falls back to the
+full pipeline when `GET /gates` fails ([RN-084](business-rules/api.md#rn-084)),
+so the only signal was the api's log. `docker/smoke.sh` now calls both
+routes that serve the registry against the production image, `GET /gates`
+with the user's bearer and `GET /internal/gates` with the service token.
+One function checks the body of both, and it fails on the `500`, on an
+empty list and on a registry without `merge-protegida`. That is what keeps
+the failure from coming back silently. The token reaches `curl` through
+stdin (`--config -`), never through argv, so it does not show in `ps` or in
+the CI log.
 
-Para ver o registro como a api o vê, já validado:
+To see the registry the way the api sees it, already validated:
 
 ```bash
 kubectl -n brabo exec deploy/api -- \
   curl -sH "x-brabo-service-token: $BRABO_SERVICE_TOKEN" localhost:3000/internal/gates
 ```
 
-A medição de passagem NÃO roda em produção: é
-`pnpm --filter api validacao:gates`, a partir do repositório, contra o
-banco. Veja
+Passage measurement does NOT run in production: it's
+`pnpm --filter api validacao:gates`, from the repository, against the
+database. See
 [docs/explanation/gates.md](explanation/gates.md).
 
 ---
 
-## Ambiente de inferência {#ambiente-de-inferencia}
+## Inference environment {#ambiente-de-inferencia}
 
-Quando o agente responde vazio, truncado, extremamente devagar, ou "esquece"
-as próprias instruções, o problema quase nunca está no código de domínio —
-está aqui. As cinco primeiras causas foram achadas em nove execuções seguidas da
-demo de gates e estão registradas no
-[ADR 0020](adr/0020-destravar-gates-qa-secops.md); todas as variáveis estão
-expostas no `docker-compose.yml`.
+When the agent responds empty, truncated, extremely slowly, or "forgets"
+its own instructions, the problem is almost never in the domain code —
+it's here. The first five causes were found across nine straight runs of
+the gates demo and are recorded in
+[ADR 0020](adr/0020-destravar-gates-qa-secops.md); all the variables are
+exposed in `docker-compose.yml`.
 
-| variável | sintoma quando errada |
+| variable | symptom when wrong |
 |---|---|
-| **GPU** | o serviço `ollama` sem dispositivo reservado deixa a GPU parada e roda 100% na CPU: um prompt de ~7.000 tokens leva ~50s só para a ingestão. O override é opcional (`docker-compose.gpu.yml`, `pnpm dev:gpu`), mantido fora do compose principal porque sem `nvidia-container-toolkit` no host a reserva **faz o serviço não subir** |
-| `OLLAMA_CONTEXT_LENGTH` | o default de 4096 trunca **em silêncio** um prompt feito para 128k. O agente perde as próprias instruções e começa a imitar o schema das ferramentas, que é o que sobra no fim do contexto |
-| `OLLAMA_MAX_LOADED_MODELS` | com `OLLAMA_KEEP_ALIVE` alto, os modelos se acumulam: 15,2 GB de pesos residentes numa máquina de 15 GB, e o agente responde vazio por falta de memória |
-| `OLLAMA_REQUEST_TIMEOUT_MS` | timeout curto demais para um modelo grande num prompt longo |
-| `OLLAMA_MODE` (bootstrap de dev, [RN-461](business-rules/infra.md#rn-461), ADR 0114) | preso em `host` depois que o Ollama nativo na máquina do desenvolvedor foi desinstalado ou parado — todo turno de LLM local falha com `ECONNREFUSED` contra `http://host.docker.internal:<porta>`, e o serviço `ollama` do compose nunca sobe para cobrir (ele fica atrás de `profiles: ["local-llm"]`, e é esta variável que mantém esse profile desligado). Correção: `Docker › Reconfigurar Ollama` no `pnpm bootstrap`, que limpa `OLLAMA_MODE`/`OLLAMA_HOST` do `.env` e força a detecção a perguntar de novo no próximo `Create`/`Reset total` |
-| `NINE_ROUTER_BASE_URL` ([RN-909](business-rules/api.md#rn-909), ADR 0222) | o provider `9router` falha com `ECONNREFUSED` (origem `infra`) e o teste de conexão da credencial recusa. O padrão `http://host.docker.internal:20128/v1` só resolve dentro do container: a api da instalação e a de produção alcançam o host pelo `extra_hosts: host.docker.internal:host-gateway`; rodando no host (smoke), aponte para `http://localhost:20128/v1`. Com o 9Router parado o erro é o mesmo, então confira primeiro se ele escuta na porta 20128 |
-| `START_OUTBOX_DRAIN` / `START_ANAMNESE` | o Psicólogo e a Anamnese consomem turnos de LLM em paralelo com os agentes de execução e derrubam a conexão do dev no meio do ciclo |
-| `TOOL_LOOP_MAX_ITERATIONS*` | um teto BAIXO demais e o agente para sem entregar, com `iteration limit reached` e origem `model` — o que engana, porque o modelo não fez julgamento errado nenhum, nem chegou a julgar. O teto é por TIPO ([RN-085](business-rules/engine.md#rn-085)): `8` para agentes conversacionais, `60` para o dev agent e o QA. Antes de subi-lo, confira se o agente TEM `token_budget_micros`; sem ele o teto é a única guarda de custo que existe |
-| `TERMINAL_OUTPUT_MAX_BYTES` | subi-lo demais traz de volta o modo de falha que o teto existe para evitar: a saída de cada comando fica no histórico do laço e viaja em TODO turno seguinte. Não é questão de janela de contexto: a maior chamada bem-sucedida da execução que revelou isto primeiro tinha só 28.993 tokens de entrada ([RN-074](business-rules/engine.md#rn-074)) |
-| `API_JSON_BODY_LIMIT` (api) / `TRANSPORT_MAX_BODY_BYTES` (engine) | o `413 request entity too large` no gate de QA/SecOps tinha a causa na própria api do Brabo, nunca no provider — o Express nunca teve limite de corpo configurado e valia o default de 100 KB, contra os 8 MB que o Phoenix aceita na perna engine→api mais pesada (`POST .../llm-turn`, que reenvia o histórico inteiro a cada iteração). `API_JSON_BODY_LIMIT` (default 10 MB) fecha essa ponta; `TRANSPORT_MAX_BODY_BYTES` (default 8 MiB) é o teto que a compactação de contexto do engine respeita POR CIMA da janela do modelo, para disparar antes de o corpo estourar o limite do HTTP ([RN-412](business-rules/api.md#rn-412), [ADR 0098](adr/0098-limites-de-transporte-e-janela-efetiva-de-compactacao.md)) |
+| **GPU** | the `ollama` service with no device reserved leaves the GPU idle and runs 100% on CPU: a ~7,000-token prompt takes ~50s just for ingestion. The override is opt-in (`docker-compose.gpu.yml`, `pnpm dev:gpu`), kept out of the main compose because without `nvidia-container-toolkit` on the host the reservation **makes the service fail to start** |
+| `OLLAMA_CONTEXT_LENGTH` | the default of 4096 **silently** truncates a prompt built for 128k. The agent loses its own instructions and starts imitating the tools' schema, which is what's left at the end of the context |
+| `OLLAMA_MAX_LOADED_MODELS` | with `OLLAMA_KEEP_ALIVE` set high, models pile up: 15.2 GB of resident weights on a 15 GB machine, and the agent responds empty for lack of memory |
+| `OLLAMA_REQUEST_TIMEOUT_MS` | too short a timeout for a large model on a long prompt |
+| `OLLAMA_MODE` (dev bootstrap, [RN-461](business-rules/infra.md#rn-461), ADR 0114) | stuck at `host` after the native Ollama on the developer's machine was uninstalled or stopped — every local-LLM turn fails with `ECONNREFUSED` against `http://host.docker.internal:<port>`, and the compose `ollama` service never starts to cover for it (it's gated behind `profiles: ["local-llm"]`, and this variable is what keeps that profile off). Fix: `Docker › Reconfigurar Ollama` in `pnpm bootstrap`, which clears `OLLAMA_MODE`/`OLLAMA_HOST` from `.env` and forces the detection to ask again on the next `Create`/`Reset total` |
+| `NINE_ROUTER_BASE_URL` ([RN-909](business-rules/api.md#rn-909), ADR 0222) | the `9router` provider fails with `ECONNREFUSED` (origin `infra`) and the credential's connection test refuses. The default `http://host.docker.internal:20128/v1` only resolves inside the container: the installation's api and the production api reach the host through `extra_hosts: host.docker.internal:host-gateway`; when running on the host (smoke), point it at `http://localhost:20128/v1`. With 9Router stopped the error is the same, so first check whether it listens on port 20128 |
+| `START_OUTBOX_DRAIN` / `START_ANAMNESE` | the Psychologist and Anamnesis consume LLM turns in parallel with the execution agents and drop the dev's connection mid-cycle |
+| `TOOL_LOOP_MAX_ITERATIONS*` | a ceiling that's too LOW and the agent stops without delivering, with `iteration limit reached` and origin `model` — which is misleading, because the model made no wrong judgment at all, it never got to judge. The ceiling is per TYPE ([RN-085](business-rules/engine.md#rn-085)): `8` for conversational agents, `60` for the dev agent and QA. Before raising it, check whether the agent HAS `token_budget_micros`; without it the ceiling is the only cost guard that exists |
+| `TERMINAL_OUTPUT_MAX_BYTES` | raising it too much brings back the failure mode the ceiling exists to prevent: each command's output stays in the loop's history and travels on EVERY following turn. It's not a context-window issue: the largest successful call from the execution that first revealed this had only 28,993 input tokens ([RN-074](business-rules/engine.md#rn-074)) |
+| `API_JSON_BODY_LIMIT` (api) / `TRANSPORT_MAX_BODY_BYTES` (engine) | the `413 request entity too large` on the QA/SecOps gate had its cause in Brabo's own api, never in the provider — Express never had a body limit configured and the default of 100 KB was in effect, against the 8 MB Phoenix accepts on the heaviest engine→api leg (`POST .../llm-turn`, which resends the entire history on every iteration). `API_JSON_BODY_LIMIT` (default 10 MB) closes that end; `TRANSPORT_MAX_BODY_BYTES` (default 8 MiB) is the ceiling the engine's context compaction respects ON TOP OF the model's window, so it fires before the body blows the HTTP limit ([RN-412](business-rules/api.md#rn-412), [ADR 0098](adr/0098-limites-de-transporte-e-janela-efetiva-de-compactacao.md)) |
 
-Se o modelo do `9router` chama `Read` ou `Bash` (ferramentas que o Brabo não tem) na conta OAuth do Claude, a causa é a **camuflagem do OAuth** do 9Router ([RN-966](business-rules/api.md#rn-966)), não o agente: o 9Router renomeia as ferramentas e acrescenta falsas do Claude Code, e nenhuma configuração a desliga. Use API key do Claude ou outro provider.
+If the `9router` model calls `Read` or `Bash` (tools Brabo does not have) on the Claude OAuth account, the cause is 9Router's **OAuth camouflage** ([RN-966](business-rules/api.md#rn-966)), not the agent: 9Router renames the tools and adds fake Claude Code ones, and no setting turns it off. Use a Claude API key or another provider.
 
-> **Cuidado — a guarda não limpa a fila.** `START_ANAMNESE=false`
-> bloqueia enfileiramentos **novos**, não os antigos. Já houve 20
-> `AnamneseWorker`s acumulados em `executing` de execuções anteriores, que rodam
-> no próximo boot independentemente da guarda. A fila precisa ser
-> **expurgada**, não só ter a guarda desligada.
+> **Careful — the guard doesn't clear the queue.** `START_ANAMNESE=false`
+> blocks **new** enqueues, not the old ones. There have been 20
+> `AnamneseWorker`s piled up in `executing` from previous runs, which run
+> on the next boot regardless of the guard. The queue needs to be
+> **purged**, not just have the guard turned off.
 
-> **Ligar a Anamnese ou o Psicólogo: duas variáveis, não
-> uma.** Os dois foram pausados em 2026-08-10 por decisão de produto, não por bug. O
-> Psicólogo ainda está; a Anamnese foi religada pelo dono em
+> **Turning the Anamnesis or the Psychologist on: two variables, not
+> one.** Both were paused on 2026-08-10 by product decision, not a bug. The
+> Psychologist still is; the Anamnesis was turned back on by the owner on
 > 2026-10-01 ([RN-680](business-rules/engine.md#rn-680)) — `ANAMNESE_ENABLED`
-> volta ao default `true` no código e nos três composes, e uma rodada
-> sem sujeito elegível não faz chamada de LLM e diz por quê no log do engine
-> (`sem_sujeito_elegivel`). Pausá-la de novo é `ANAMNESE_ENABLED=false`. `ANAMNESE_ENABLED` / `PSYCHOLOGIST_ENABLED` são as
-> flags de produto (uma rodada NOVA pode acontecer?); `START_ANAMNESE` é a chave
-> de boot (o tick periódico é sequer agendado?). A Anamnese periódica precisa das duas
-> em `true`; o Psicólogo não tem chave de boot, porque o gatilho automático dele
-> é o fechamento de sessão.
+> defaults to `true` again in the code and the three composes, and a round
+> with no eligible subject makes no LLM call and says why in the engine log
+> (`sem_sujeito_elegivel`). Pausing it again is `ANAMNESE_ENABLED=false`. `ANAMNESE_ENABLED` / `PSYCHOLOGIST_ENABLED` are the
+> product flags (may a NEW round happen at all); `START_ANAMNESE` is the boot
+> key (is the periodic tick even scheduled). The periodic Anamnesis needs both
+> at `true`; the Psychologist has no boot key, because its automatic trigger
+> is session close.
 >
-> Até a [RN-540](business-rules/engine.md#rn-540) as duas flags `*_ENABLED`
-> **não estavam mapeadas** no serviço `engine` de nenhum dos composes, e o `docker compose`
-> não repassa o ambiente do host — então defini-las no `.env` não fazia
-> nada, em silêncio, enquanto três lugares no código prometiam que a pausa
-> era reversível. Agora estão mapeadas, com o default do próprio código (`false`
-> nos dois arquivos na época; `ANAMNESE_ENABLED` é `true` desde a RN-680). O compose de **instalação**
-> (`docker/docker-compose.install.yml`) era o terceiro arquivo e ficou fora
-> dessa correção; desde a AT-202 ele mapeia as mesmas flags com os mesmos defaults, e
-> `scripts/ci/flags-do-engine-no-compose.spec.ts` confere os **três** arquivos
-> e reprova o build da próxima flag booleana que não estiver mapeada, ou que
-> levar default diferente do código (`START_OUTBOX_DRAIN` e
-> `START_ANAMNESE` são `false` no compose de produção de propósito, e o
-> spec declara essa divergência pelo nome). O compose de instalação levava
-> o mesmo `false` — copiado da produção junto com o motivo da produção
-> ("ele existe para validar as imagens") — e desde a AT-219 repete o
-> `true` do código. Era um defeito da instalação, não uma escolha de custo:
-> `START_OUTBOX_DRAIN` é a única coisa que drena a outbox da api para o
-> engine, então numa instalação de uma máquina uma sessão fechada nunca parava os
-> processos dela e um dev agent esperando uma aprovação, um gate ou o container
-> nunca era acordado. Nenhuma das chaves gasta tokens com as flags de produto desligadas: com
-> `ANAMNESE_ENABLED=false` o `kickoff/0` da Anamnese não agenda job nenhum,
-> e o drain só enfileira o Psicólogo com `PSYCHOLOGIST_ENABLED=true`.
-> Numa instalação, a Anamnese está, portanto, ligada ou desligada só por
-> `ANAMNESE_ENABLED` (default `true` desde a RN-680). No Kubernetes não havia nada a corrigir — um
-> Deployment/ConfigMap não intercepta nada, e o `brabo-config` nunca carregou
-> estas variáveis. As duas flags são lidas no boot: mude-as e
+> Until [RN-540](business-rules/engine.md#rn-540) the two `*_ENABLED` flags were
+> **not mapped** in either compose's `engine` service, and `docker compose`
+> does not forward the host environment — so setting them in `.env` did
+> nothing at all, silently, while three places in the code promised the pause
+> was reversible. They are mapped now, with the code's own default (`false`
+> in both files at the time; `ANAMNESE_ENABLED` is `true` since RN-680). The **install** compose
+> (`docker/docker-compose.install.yml`) was the third file and was left out of
+> that fix; since AT-202 it maps the same flags with the same defaults, and
+> `scripts/ci/flags-do-engine-no-compose.spec.ts` checks all **three** files
+> and fails the build for the next boolean flag that isn't mapped, or that
+> carries a default other than the code's (`START_OUTBOX_DRAIN` and
+> `START_ANAMNESE` are `false` in the production compose on purpose, and the
+> spec declares that divergence by name). The install compose used to carry
+> the same `false` — copied from production together with production's reason
+> ("it exists to validate the images") — and since AT-219 it repeats the
+> code's `true`. That was a defect of the install, not a cost choice:
+> `START_OUTBOX_DRAIN` is the only thing that drains the api's outbox into the
+> engine, so on a one-machine install a closed session never stopped its
+> processes and a dev agent waiting on an approval, a gate or the container
+> was never woken. Neither key spends tokens with the product flags off: with
+> `ANAMNESE_ENABLED=false` the Anamnesis `kickoff/0` schedules no job at all,
+> and the drain only enqueues the Psychologist with `PSYCHOLOGIST_ENABLED=true`.
+> On an install, the Anamnesis is therefore on or off by
+> `ANAMNESE_ENABLED` alone (default `true` since RN-680). On Kubernetes there was nothing to fix — a
+> Deployment/ConfigMap intercepts nothing, and `brabo-config` never carried
+> these variables. Both flags are read at boot: change them and
 > `docker compose up -d engine`.
 
-### Um gate semântico num modelo pequeno {#a-semantic-gate-on-a-small-model}
+### A semantic gate on a small model {#a-semantic-gate-on-a-small-model}
 
-O QA é o papel que cabe pior num 7B local: o julgamento varia entre
-execuções, o que faz da demo um critério de aceite executável e **não**
-um teste de regressão. Para torná-la confiável, aponte `DEMO_QA_MODEL` para um
-modelo de API — o binding por agente (escopo `agent`, que vence `project`)
-existe exatamente para isso.
+QA is the role that fits worst in a local 7B: the judgment varies between
+runs, which makes the demo an executable acceptance criterion and **not**
+a regression test. To make it reliable, point `DEMO_QA_MODEL` at an API
+model — the per-agent binding (`agent` scope, which beats `project`)
+exists exactly for this.
 
-A máquina de gates em si não varia: ordem imutável, retorno na mesma
-branch, teto de correções, vereditos como artefato e um terminal
-`awaiting_user` são todos verificados por ExUnit
+The gate machine itself doesn't vary: immutable order, return on the same
+branch, a ceiling on corrections, verdicts as an artifact, and a terminal
+`awaiting_user` are all verified by ExUnit
 ([RN-014](business-rules/api.md#rn-014), [RN-015](business-rules/api.md#rn-015)).
 
 ---
 
-## Instalando {#instalando}
+## Installing {#instalando}
 
 ```sh
 curl -fsSLO https://github.com/viralabs-dev/brabo/releases/latest/download/install.sh && bash install.sh
 ```
 
-**Baixe um arquivo, depois rode-o com `bash`.** As duas formas mais curtas que parecem
-equivalentes não são, e o script recusa as duas **pelo nome**, antes de
-baixar qualquer coisa, imprimindo a linha acima:
+**Download a file, then run it with `bash`.** The two shorter forms that look
+equivalent are not, and the script refuses both **by name**, before
+downloading anything, printing the line above:
 
-- **Nunca `curl … | sh`.** O motivo é mecânico, não de estilo: com o
-  script chegando pelo pipe, o `stdin` do processo **é** o download,
-  então qualquer `read` lê bytes do próprio script ou bate em EOF. Um instalador que
-  não consegue perguntar teria de escolher sozinho os locais das pastas na máquina de outra pessoa
-  ([RN-526](business-rules/produto.md#rn-526)).
-- **Nem `sh -c "$(curl …)"`** — esta foi a forma documentada até a
-  AT-083, e nunca funcionou. O script confere **o próprio hash** contra o
-  manifesto assinado, e sob `X -c "…"` não há arquivo para calcular hash: `$0` é o
-  nome do shell. Com `dash` como `sh` (Debian, Ubuntu) ele morria ainda antes, no
-  `set -o pipefail`. Não há chave para pular essa autoverificação, e não
-  haverá ([ADR 0150](adr/0150-instalador-de-uma-linha.md)) — a correção é
-  existir um arquivo. Rodá-lo sob um shell que não é bash também é uma recusa
-  nomeada própria.
+- **Never `curl … | sh`.** The reason is mechanical, not stylistic: with the
+  script arriving through the pipe, the process's `stdin` **is** the download,
+  so any `read` reads bytes of the script itself or hits EOF. An installer that
+  cannot ask would have to pick folder locations on someone else's machine by
+  itself ([RN-526](business-rules/produto.md#rn-526)).
+- **Not `sh -c "$(curl …)"` either** — this was the documented form until
+  AT-083, and it never worked. The script checks **its own hash** against the
+  signed manifest, and under `X -c "…"` there is no file to hash: `$0` is the
+  shell's name. With `dash` as `sh` (Debian, Ubuntu) it died even earlier, on
+  `set -o pipefail`. There is no switch to skip that self-check, and there will
+  not be one ([ADR 0150](adr/0150-instalador-de-uma-linha.md)) — the fix is for
+  a file to exist. Running it under a non-bash shell is its own named refusal
+  too.
 
-O script verifica **a própria origem** antes de fazer qualquer coisa — a assinatura
-do `checksums.txt` da Release, e depois o próprio hash dentro desse
-manifesto verificado. Uma falha em qualquer passo é uma **recusa nomeada**, nunca um aviso.
+The script verifies **its own origin** before doing anything — the signature
+of the Release's `checksums.txt`, and then its own hash inside that verified
+manifest. A failure at either step is a **named refusal**, never a warning.
 
-Ele precisa de **um** entre `sha256sum` (coreutils, Linux) ou `shasum -a 256` (vem
-com o macOS) para fazer qualquer disso, e resolve qual **antes do primeiro
-download** — não no meio de uma checagem. Faltar os dois é uma recusa **própria**,
-nomeando as duas ferramentas e dizendo que nada foi baixado; é uma dependência
-faltando do sistema operacional, e deliberadamente *não* é redigida como
-as recusas de hash abaixo. Essas duas são desfechos diferentes pedindo coisas
-diferentes — uma se corrige instalando, a outra **parando** — e a medição da AT-091
-é o que pôs a linha entre elas: `sha256sum: command not found`
-no macOS aparecia como *"o cosign baixado NÃO bate com o hash pinado neste
-script. Isso não é um aviso: pare e investigue."*, o que tanto bloqueava toda
-instalação no macOS quanto ensinava o leitor a ignorar essa frase. O `--print-plan`
-não precisa de nenhuma das ferramentas e declara quais o script aceita
+It needs **one** of `sha256sum` (coreutils, Linux) or `shasum -a 256` (ships
+with macOS) to do any of that, and it resolves which one **before the first
+download** — not in the middle of a check. Missing both is its **own** refusal,
+naming the two tools and saying nothing was downloaded; it is a missing
+dependency of the operating system, and it is deliberately *not* worded like
+the hash refusals below. Those two are different outcomes asking for different
+things — one is fixed by installing, the other by **stopping** — and the AT-091
+measurement is what put the line between them: `sha256sum: command not found`
+on macOS used to surface as *"o cosign baixado NÃO bate com o hash pinado neste
+script. Isso não é um aviso: pare e investigue."*, which both blocked every
+macOS install and taught the reader to ignore that sentence. `--print-plan`
+needs neither tool and declares which ones the script accepts
 (`conferir-hash`).
 
-A detecção tem **teto de 5s** na chamada ao Docker que faz (`docker compose ls`
-fala com o daemon, e um daemon lento ou parado atrás de um socket vivo
-travaria tudo *antes da primeira pergunta*). Bater no teto não é
-erro — é o mesmo desfecho de não ter Docker nenhum, e o resto
-dos sinais ainda é lido.
+Detection has a **5s ceiling** on the Docker call it makes (`docker compose ls`
+talks to the daemon, and a slow or stopped daemon behind a live socket would
+hang the whole thing *before the first question*). Hitting the ceiling is not
+an error — it is the same outcome as having no Docker at all, and the rest of
+the signals are still read.
 
-Sem TTY ele **informa e sai com 0**: imprime o que achou e o
-comando a rodar num terminal. Isso é deliberado, e é a mesma forma
-que o `consentir-base.mjs` já tem.
+Without a TTY it **reports and exits 0**: it prints what it found and the
+command to run in a terminal. That is deliberate, and it is the same shape
+`consentir-base.mjs` already has.
 
-**O que ele nunca apaga:** a sua base de projetos e a sua pasta de espelho. Volumes
-nomeados só vão com confirmação, listados um a um antes.
+**What it never deletes:** your project base and your mirror folder. Named
+volumes only go with confirmation, listed one by one first.
 
-Ele sobe a stack a partir do **próprio compose**
-(`docker/docker-compose.install.yml`), que pega as imagens de variáveis
-e não constrói nada — e ele **baixa esse compose da Release**
+It brings the stack up from **its own compose**
+(`docker/docker-compose.install.yml`), which takes the images from variables
+and builds nothing — and it **downloads that compose from the Release**
 ([RN-570](business-rules/produto.md#rn-570),
-[ADR 0160](adr/0160-o-compose-do-instalador-viaja-assinado.md)). Quatro arquivos
-viajam com o instalador como assets `brabo-install-*`, no **mesmo**
-`checksums.txt` assinado que cobre o binário do runner: o compose, o
-`postgres/init.sql` e o `ollama/pull-models.sh` de que ele faz bind-mount, e o
-`backup/test-restore-compose.sh` que a migração roda. Logo depois de verificar
-a si mesmo — antes de qualquer pergunta, antes de escrever qualquer coisa — o script baixa
-os quatro e confere cada hash contra esse manifesto. Três recusas nomeadas, todas
-numa máquina intocada:
+[ADR 0160](adr/0160-o-compose-do-instalador-viaja-assinado.md)). Four files
+travel with the installer as `brabo-install-*` assets, in the **same** signed
+`checksums.txt` that covers the runner binary: the compose, the
+`postgres/init.sql` and `ollama/pull-models.sh` it bind-mounts, and the
+`backup/test-restore-compose.sh` the migration runs. Right after verifying
+itself — before any question, before writing anything — the script downloads
+the four and checks each hash against that manifest. Three named refusals, all
+on an untouched machine:
 
-| a mensagem começa com | quer dizer | faça |
+| message starts with | means | do |
 |---|---|---|
-| *"a Release não publica …"* | a Release é anterior ao ADR 0160, ou o passo de publicação dela falhou no meio | instale a partir de um checkout do repositório naquela tag, ou espere a próxima release |
-| *"o manifesto assinado não cobre …"* | o manifesto existe mas não tem linha para aquele asset | igual ao de cima — a Release está incompleta |
-| *"… NÃO bate com o manifesto assinado"* | o arquivo baixado não é o que o manifesto assinado descreve | **pare e trate como incidente**; não tente contornar |
+| *"a Release não publica …"* | the Release predates ADR 0160, or its publishing step failed half-way | install from a checkout of the repository at that tag, or wait for the next release |
+| *"o manifesto assinado não cobre …"* | the manifest exists but has no line for that asset | same as above — the Release is incomplete |
+| *"… NÃO bate com o manifesto assinado"* | the downloaded file is not what the signed manifest describes | **stop and treat it as an incident**; do not retry around it |
 
-As cópias verificadas são escritas sob `docker/` na pasta de onde você rodou o
-script — a mesma pasta do `.env` — só quando são necessárias pela primeira vez.
-O que já estava lá (o compose da versão anterior, numa atualização) é
-**substituído, nunca lido**, e o script nomeia o que substituiu; de dentro de um
-checkout git noutro commit isso deixa o `git status` sujo.
+The verified copies are written under `docker/` in the folder you ran the
+script from — the same folder as `.env` — only when they are first needed.
+Whatever was already there (the previous version's compose, on an upgrade) is
+**replaced, never read**, and the script names what it replaced; from inside a
+git checkout at another commit that leaves `git status` dirty.
 
-> **Releases publicadas antes do ADR 0160 não levam esses assets.** O
-> instalador delas ainda usa o caminho relativo, e a linha única acima falha num
-> diretório vazio com *"no such file or directory"* depois de escrever o `.env` (a
-> lacuna que a [RN-549](business-rules/ci.md#rn-549) mediu). Para essas tags, rode o
-> instalador a partir de um checkout do repositório na tag que você está instalando.
+> **Releases published before ADR 0160 do not carry these assets.** Their
+> installer still uses the relative path, and the one-liner above fails in an
+> empty directory with *"no such file or directory"* after writing `.env` (the
+> gap [RN-549](business-rules/ci.md#rn-549) measured). For those tags, run the
+> installer from a checkout of the repository at the tag you are installing.
 
-> No caminho de *migração* a prova de restauração (`test-restore-compose.sh`) recebe o
-> `.env` da instalação por `BRABO_ENV_FILE` (passado ao Compose como
-> `--env-file`), porque o Compose procura o `.env` ao lado do arquivo de compose — não
-> no diretório de onde você roda. Se você rodar a prova à mão contra uma
-> instalação, exporte `BRABO_ENV_FILE=/caminho/para/.env` antes; um caminho que não
-> existe é recusado, nunca substituído por outro arquivo. Uma prova que falha ainda
-> não apaga nada ([RN-530](business-rules/infra.md#rn-530)).
+> On the *migration* path the restore proof (`test-restore-compose.sh`) gets the
+> installation's `.env` through `BRABO_ENV_FILE` (passed to Compose as
+> `--env-file`), because Compose looks for `.env` next to the compose file — not
+> in the directory you run from. If you run the proof by hand against an
+> installation, export `BRABO_ENV_FILE=/path/to/.env` first; a path that does not
+> exist is refused, never replaced by another file. A failing proof still
+> deletes nothing ([RN-530](business-rules/infra.md#rn-530)).
 
-Duas origens:
+Two sources:
 
 ```sh
 install.sh                  # --source=ghcr (default): por digest, assinatura verificada
 install.sh --source=local   # buildx bake; exige árvore limpa numa tag
 ```
 
-Os segredos são gerados uma vez e persistidos no `.env` com modo **600** — o
-arquivo é criado vazio e trancado *antes* de receber conteúdo, porque uma janela
-em que os segredos são legíveis por todos é exatamente o que este arquivo não pode ter.
+Secrets are generated once and persisted into `.env` with mode **600** — the
+file is created empty and locked *before* receiving content, because a window
+where the secrets are world-readable is exactly what this file cannot have.
 
-Não há **passo de migrate**, e não deveria haver: o compose encadeia
-`api` → `migrate-api` com `service_completed_successfully`, então o `up --wait`
-espera as migrations. Um segundo lugar ordenando migrations seria uma segunda
-fonte da mesma verdade.
+There is **no migrate step**, and there should not be: the compose chains
+`api` → `migrate-api` with `service_completed_successfully`, so `up --wait`
+waits for the migrations. A second place ordering migrations would be a second
+source of the same truth.
 
-Depois de a stack subir ele **pergunta antes de afirmar**: `/health` na api e no
-engine, e só então diz que instalou.
+After the stack is up it **asks before claiming**: `/health` on the api and on
+the engine, and only then does it say it installed.
 
-Ele **instala o agente local** — o binário é verificado contra o
-manifesto assinado e posto com `install -m 0755`, então não há `chmod` manual
-([RN-531](business-rules/produto.md#rn-531)) — e pergunta UMA base, escrevendo-a nos
-dois lados: `BRABO_PROJECTS_BASE` no `.env` e `base` no
-`runner.json` do runner. Uma Release sem binário para esta plataforma não interrompe
-a instalação: ela diz isso e aponta para `npm install -g @brabo/runner`.
+It **installs the local agent** — the binary is verified against the signed
+manifest and placed with `install -m 0755`, so there is no manual `chmod`
+([RN-531](business-rules/produto.md#rn-531)) — and it asks ONE base, writing it to
+both sides: `BRABO_PROJECTS_BASE` in `.env` and `base` in the runner's
+`runner.json`. A Release with no binary for this platform does not interrupt
+the installation: it says so and points at `npm install -g @brabo/runner`.
 
-Sobre uma instalação existente ele **migra ou para** — um `up` em volumes
-de outra versão é dano que não avisa. A ordem é backup →
-**PROVAR** que restaura → perguntar → apagar → instalar → restaurar, e a prova no
-meio é o que dá ao instalador o direito de apagar
+Over an existing installation it **migrates or stops** — an `up` on volumes
+from another version is damage that gives no warning. The order is backup →
+**PROVE** it restores → ask → delete → install → restore, and the proof in the
+middle is what gives the installer the right to delete
 ([RN-530](business-rules/infra.md#rn-530)).
 
-E ele sabe **qual** versão está substituindo ([RN-542](business-rules/produto.md#rn-542)).
-As imagens são resolvidas **antes** de a detecção rodar, então a pergunta nunca é
-cega: o marcador registra a `versao` instalada, o manifesto leva a que
-está para ser instalada, e a oferta é específica para a relação entre elas.
+And it knows **which** version it is replacing ([RN-542](business-rules/produto.md#rn-542)).
+The images are resolved **before** detection runs, so the question is never
+blind: the marker records the installed `versao`, the manifest carries the one
+about to be installed, and the offer is specific to the relation between them.
 
-| relação | o que oferece | default |
+| relation | what it offers | default |
 |---|---|---|
-| mais nova | *"Atualizar 5.0.0 → 5.1.0?"* | **sim** — é o que você veio fazer, e o backup provado a torna reversível |
-| a mesma | *"Já é a 5.0.0. Reinstalar do zero mesmo assim?"* | não — não há ganho a oferecer |
-| mais velha | a nomeia **downgrade**, avisando que migrations de banco não rodam para trás | não — pode não ter volta |
-| desconhecida | um marcador do schema 1 não tem versão; ele diz isso, e não adivinha | não |
+| newer | *"Atualizar 5.0.0 → 5.1.0?"* | **yes** — it is what you came to do, and the proven backup makes it reversible |
+| same | *"Já é a 5.0.0. Reinstalar do zero mesmo assim?"* | no — there is no gain to offer |
+| older | names it a **downgrade**, warning that database migrations do not run backwards | no — it may have no way back |
+| unknown | a marker from schema 1 has no version; it says so, and does not guess | no |
 
-Qualquer que seja o ramo que você escolher, a instalação é **apagada e recriada do
-zero** em vez de iniciada por cima dos volumes antigos. Meia migração é
-pior que nenhuma.
+Whichever branch you take, the installation is **deleted and recreated from
+scratch** rather than started on top of the old volumes. Half a migration is
+worse than none.
 
-Um `install.sh` chamado pelo menu do `pnpm bootstrap` (*Docker › Instalar*)
-só **informa** o plano. Isso é mecânico, não preferência: um item de menu
-roda com stdin em `/dev/null` para o menu poder continuar lendo teclas do mesmo
-terminal, e este instalador é feito para *perguntar*. A nota no item leva
-o comando de uma linha que instala de verdade.
+An `install.sh` invoked from the `pnpm bootstrap` menu (*Docker › Instalar*)
+only **reports** the plan. That is mechanical, not a preference: a menu item
+runs with stdin on `/dev/null` so the menu can keep reading keys from the same
+terminal, and this installer is built to *ask*. The note on the item carries
+the one-line command that installs for real.
 
-> **O que ele não faz:** ligar o **broker** de containers sem perguntar —
-> veja [o broker numa instalação](#broker-na-instalacao) logo abaixo. O
-> agente local ele **pareia**, desde a [RN-547](business-rules/produto.md#rn-547): ele
-> cria a primeira conta, gera a chave de dispositivo de máquina na máquina,
-> registra a metade pública, carimba o `kid` e instala a unit de **máquina**
-> ([ADR 0155](adr/0155-a-primeira-conta-nasce-no-terminal.md)) — e quando um
-> elo falha ele nomeia o comando a repetir, veja
-> [Quando o instalador não fecha a instalação](#instalador-nao-fecha).
-> O que fica na tela do projeto é um pareamento **preso a um projeto**: essa chave de
-> dispositivo e o `brabo-runner.config.json` ainda vêm de lá
+> **What it does not do:** turn the container **broker** on without asking —
+> see [the broker in an installation](#broker-na-instalacao) right below. The
+> local agent it **does** pair, since [RN-547](business-rules/produto.md#rn-547): it
+> creates the first account, generates the machine device key on the machine,
+> registers the public half, stamps the `kid` and installs the **machine** unit
+> ([ADR 0155](adr/0155-a-primeira-conta-nasce-no-terminal.md)) — and when a
+> link fails it names the command to repeat, see
+> [When the installer does not close the installation](#instalador-nao-fecha).
+> What stays on the project screen is a **project-bound** pairing: that device
+> key and `brabo-runner.config.json` still come from there
 > ([ADR 0118](adr/0118-configuracao-automatica-do-runner-pelo-navegador.md)).
-> Inspecione tudo com `install.sh --print-plan`, que não toca em nada.
+> Inspect the whole thing with `install.sh --print-plan`, which touches nothing.
 
-Verificação: `.github/workflows/install-e2e.yml` roda a linha única acima numa
-máquina **limpa**, sob um pty de verdade, em toda tag final — o instalador, a
-stack, a primeira conta, a chave de máquina e o agente pegando o primeiro
-projeto. Em todo PR os specs `scripts/dev/install*.spec.ts` provam as peças
-que não precisam de Release: o plano e o estado (`install.spec.ts`), o
-`.env` pelo próprio parser do Compose (`install-env.spec.ts`), os passos de fechamento
-(`install-fechamento.spec.ts`), as invocações recusadas
-(`install-invocacao.spec.ts`), os arquivos baixados
-(`install-arquivos-da-instalacao.spec.ts`), a pergunta do broker
-(`install-broker.spec.ts`), e que o próprio E2E não apodreceu
-(`install-e2e.spec.ts`). O caminho de **migração** — backup, provar, apagar,
-instalar, restaurar — não tem execução de ponta a ponta: a máquina do E2E é limpa, então a
-pergunta nunca é feita, e só o repasse do `.env` da prova de restauração tem spec
+Verification: `.github/workflows/install-e2e.yml` runs the one-liner above on
+a **clean** machine, under a real pty, on every final tag — the installer, the
+stack, the first account, the machine key and the agent picking up the first
+project. On every PR the `scripts/dev/install*.spec.ts` specs prove the pieces
+that do not need a Release: the plan and the state (`install.spec.ts`), the
+`.env` through Compose's own parser (`install-env.spec.ts`), the closing steps
+(`install-fechamento.spec.ts`), the refused invocations
+(`install-invocacao.spec.ts`), the downloaded files
+(`install-arquivos-da-instalacao.spec.ts`), the broker question
+(`install-broker.spec.ts`), and that the E2E itself has not rotted
+(`install-e2e.spec.ts`). The **migration** path — backup, prove, delete,
+install, restore — has no end-to-end run: the E2E machine is clean, so the
+question is never asked, and only the restore proof's `.env` hand-off has a spec
 (`scripts/dev/prova-de-restauracao-env.spec.ts`).
 
-### O broker de containers numa instalação {#broker-na-instalacao}
+### The container broker in an installation {#broker-na-instalacao}
 
-Projetos nos modos **Container** e **Pasta montada** rodam dentro de um container, e
-quem sobe esse container é o **broker**
-([ADR 0144](adr/0144-a-segunda-raiz-do-broker.md)). Sem ele nenhum dos modos
-jamais executa: `container_start` termina `failed` com `BrokerIndisponivelError`
-e os dev agents ficam em `dev.blocked_by_container`. O modo **Runner** não
-depende dele — ali o agente local usa o Docker da sua máquina.
+Projects in **Container** and **Mounted** mode run inside a container, and the
+one that brings that container up is the **broker**
+([ADR 0144](adr/0144-a-segunda-raiz-do-broker.md)). Without it neither mode
+ever executes: `container_start` ends `failed` with `BrokerIndisponivelError`
+and the dev agents stay in `dev.blocked_by_container`. **Runner** mode does not
+depend on it — there the local agent uses the Docker on your machine.
 
-Desde o [ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md) o
-broker é a **quinta imagem publicada** (`ghcr.io/viralabs-dev/brabo-broker`, por
-digest, assinada como as outras quatro) e o compose de instalação tem o
-serviço — **desligado por padrão**, sob o mesmo profile `container-broker` do
-compose de validação. O instalador **pergunta** (*"Ligar o broker de container?
-[s/N]"*), logo depois da base de projetos, e diz em texto o que ligá-lo
-concede: o broker recebe **o socket do Docker desta máquina**, e quem
-comanda o broker comanda o seu Docker. O que o contém são as cinco camadas
-do [ADR 0130](adr/0130-broker-de-container.md): nenhuma porta publicada, uma rede
-(`internal: true`, sem internet) que só a api alcança, o service token,
-cinco operações sobre o container de UM projeto, e uma spec que o broker compõe
-a partir do que o Arquiteto decidiu — não há requisição que ligue
-`privileged`, rede do host ou um `-v` livre.
+Since [ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md) the
+broker is the **fifth published image** (`ghcr.io/viralabs-dev/brabo-broker`, by
+digest, signed like the other four) and the installation compose has the
+service — **off by default**, under the same `container-broker` profile as the
+validation compose. The installer **asks** (*"Ligar o broker de container?
+[s/N]"*), right after the projects base, and says in text what turning it on
+grants: the broker receives **this machine's Docker socket**, and whoever
+commands the broker commands your Docker. What contains it is the five layers
+of [ADR 0130](adr/0130-broker-de-container.md): no published port, a network
+(`internal: true`, no internet) that only the api reaches, the service token,
+five operations on ONE project's container, and a spec the broker composes
+from what the Architect decided — there is no request that turns on
+`privileged`, host networking or a free `-v`.
 
-| resposta | o que acontece |
+| answer | what happens |
 |---|---|
-| **`s`** / **`sim`** | ele mede o grupo do socket **de dentro de um container** (a própria imagem do broker, sem rede, só leitura, o socket ligado com `--mount` para que um socket ausente seja erro em vez de uma pasta vazia criada no seu host), calcula onde o Docker guarda o volume da pasta gerenciada, e escreve `COMPOSE_PROFILES=container-broker`, `BROKER_URL=http://broker:8090`, `DOCKER_GID` e `PROJECT_WORKSPACES_HOST_ROOT` no `.env` — as quatro juntas |
-| Enter, `n`, qualquer outra coisa | desligado. O `.env` não recebe nenhuma das quatro linhas, e o resumo final diz *"Broker de container: DESLIGADO"* |
-| sem terminal | desligado, e ele diz isso — nenhuma pergunta é feita onde ninguém pode responder |
+| **`s`** / **`sim`** | it measures the socket's group **from inside a container** (the broker image itself, no network, read-only, the socket bound with `--mount` so a missing socket is an error instead of an empty folder created on your host), computes where Docker keeps the managed-folder volume, and writes `COMPOSE_PROFILES=container-broker`, `BROKER_URL=http://broker:8090`, `DOCKER_GID` and `PROJECT_WORKSPACES_HOST_ROOT` into `.env` — the four together |
+| Enter, `n`, anything else | off. `.env` gets none of the four lines, and the final summary says *"Broker de container: DESLIGADO"* |
+| no terminal | off, and it says so — no question is asked where no one can answer |
 
-**Duas recusas e duas pendências, todas nomeadas:**
+**Two refusals and two pending items, all named:**
 
-- *"não consegui medir o grupo do socket do Docker…"* — a medição falhou
-  (Docker rootless ou remoto: o socket não está em `/var/run/docker.sock`,
-  que é o caminho que o compose monta). Nada foi escrito. Rode de novo e
-  responda **não**, ou corrija o que a mensagem cita do Docker. Ele nunca escreve um
-  `999` adivinhado no lugar.
-- *"… não é um socket …"* — mesmo desfecho, mesma correção.
-- pendência *"a raiz da pasta gerenciada…"* — o
-  `<DockerRootDir>/volumes/brabo_project_workspaces/_data` calculado não bateu com o
-  `Mountpoint` real do volume depois de a stack subir (ou o `docker info` não
-  disse onde os volumes moram). Projetos **Pasta montada** funcionam; projetos **Container**
-  não, até você corrigir `PROJECT_WORKSPACES_HOST_ROOT` — a mensagem leva o
-  valor que o daemon informou e o comando para recriar o broker.
-- pendência *"o broker de container: a api NÃO o alcançou…"* — o serviço subiu
-  saudável mas a api não o alcançou na rede interna. `docker
-  compose -f docker/docker-compose.install.yml logs broker` diz por quê.
+- *"não consegui medir o grupo do socket do Docker…"* — the measurement failed
+  (rootless or remote Docker: the socket is not at `/var/run/docker.sock`,
+  which is the path the compose mounts). Nothing was written. Run again and
+  answer **no**, or fix what the message quotes from Docker. It never writes a
+  guessed `999` in its place.
+- *"… não é um socket …"* — same outcome, same fix.
+- pending *"a raiz da pasta gerenciada…"* — the computed
+  `<DockerRootDir>/volumes/brabo_project_workspaces/_data` did not match the
+  volume's real `Mountpoint` after the stack came up (or `docker info` did not
+  say where volumes live). **Mounted** projects work; **Container** projects do
+  not until you fix `PROJECT_WORKSPACES_HOST_ROOT` — the message carries the
+  value the daemon reported and the command to recreate the broker.
+- pending *"o broker de container: a api NÃO o alcançou…"* — the service came
+  up healthy but the api could not reach it on the internal network. `docker
+  compose -f docker/docker-compose.install.yml logs broker` says why.
 
-`COMPOSE_PROFILES` no `--env-file` é o que faz o `up -d --wait` subir o
-broker sem flag nenhuma na linha de comando — medido no Compose v5.5.1. A
-variável da imagem, `BRABO_BROKER_IMAGE`, é escrita **ligando-o você ou
-não**: o Compose interpola o arquivo inteiro antes de filtrar por profile, então uma
-variável obrigatória num serviço desligado ainda recusa o arquivo.
+`COMPOSE_PROFILES` in the `--env-file` is what makes `up -d --wait` bring the
+broker up with no flag on the command line — measured on Compose v5.5.1. The
+image variable, `BRABO_BROKER_IMAGE`, is written **whether you turn it on or
+not**: Compose interpolates the whole file before filtering by profile, so a
+required variable on a disabled service still refuses the file.
 
-**Ligando depois** (mesma pasta do `.env`):
+**Turning it on later** (same folder as `.env`):
 
 ```bash
 # 1. o grupo do socket COMO UM CONTAINER O VÊ — com a própria imagem do broker,
@@ -4294,8 +4300,8 @@ docker compose -f docker/docker-compose.install.yml --env-file .env exec -T api 
 # esperado: {"status":"ok","servico":"broker"}
 ```
 
-**Desligando:** remova as quatro linhas do `.env`, depois remova o container do
-broker e recrie a api sem `BROKER_URL`:
+**Turning it off:** remove the four lines from `.env`, then remove the broker
+container and recreate the api without `BROKER_URL`:
 
 ```bash
 docker compose -f docker/docker-compose.install.yml --env-file .env \
@@ -4303,70 +4309,70 @@ docker compose -f docker/docker-compose.install.yml --env-file .env \
 docker compose -f docker/docker-compose.install.yml --env-file .env up -d --wait
 ```
 
-`up --remove-orphans` **não** faz o primeiro passo — medido: um serviço
-sob um profile desligado continua *definido* no arquivo, então o container dele
-não é órfão e continua rodando. Nada nos seus projetos é apagado; projetos Container
-e Pasta montada param de executar, e a tela do projeto deixa de oferecê-los
-([ADR 0161](adr/0161-a-tela-so-oferece-o-modo-que-a-instalacao-executa.md)).
+`up --remove-orphans` does **not** do the first step — measured: a service
+under a disabled profile is still *defined* in the file, so its container is
+not an orphan and keeps running. Nothing in your projects is deleted; Container
+and Mounted projects stop executing, and the project screen stops offering
+them ([ADR 0161](adr/0161-a-tela-so-oferece-o-modo-que-a-instalacao-executa.md)).
 
-Verificação: ligá-lo **na instalação** está provado — a pergunta e
-as recusas dela pelo `scripts/dev/install-broker.spec.ts` em todo PR, e o caminho
-inteiro pelo `.github/workflows/install-e2e.yml` em toda tag final, que responde
-*sim* e exige o broker ligado, a api o alcançando, e `COMPOSE_PROFILES` e
-`BROKER_URL` escritos no `.env`. Ligá-lo **depois** pelos cinco comandos acima, e desligá-lo,
-**não têm verificação**: nada os roda, e a ressalva do
-`up --remove-orphans` foi medida uma vez à mão.
+Verification: turning it on **at install time** is proven — the question and
+its refusals by `scripts/dev/install-broker.spec.ts` on every PR, and the whole
+path by `.github/workflows/install-e2e.yml` on every final tag, which answers
+*sim* and requires the broker on, the api reaching it, and `COMPOSE_PROFILES` and
+`BROKER_URL` written to `.env`. Turning it on **later** by the five commands above, and turning it
+**off**, have **no verification**: nothing runs them, and the
+`up --remove-orphans` caveat was measured once by hand.
 
-### Modelos locais numa instalação {#modelos-locais-na-instalacao}
+### Local models in an installation {#modelos-locais-na-instalacao}
 
-Logo depois do broker, o `install.sh` pergunta `Ligar os modelos locais? [s/N]`
-([RN-691](business-rules/produto.md#rn-691)). Ele diz o custo antes — disco para a
-imagem do Ollama e os modelos que o `ollama-model-loader` baixa ao iniciar, RAM enquanto um
-modelo está carregado — e o que se perde sem eles: a checagem de duplicata semântica
-de histórias e regras é pulada, e os agentes não têm modelo local. Só um
-"s" digitado os liga; sem terminal eles ficam desligados.
+Right after the broker, `install.sh` asks `Ligar os modelos locais? [s/N]`
+([RN-691](business-rules/produto.md#rn-691)). It states the cost first — disk for the
+Ollama image and the models `ollama-model-loader` pulls on startup, RAM while a
+model is loaded — and what is lost without them: the semantic duplicate check
+of stories and rules is skipped, and agents have no local model. Only a typed
+"s" turns them on; without a terminal they stay off.
 
-Ligá-los mede a porta do host antes de escrever qualquer coisa: `11434`, ou a
-primeira livre até `11443` (um Ollama nativo costuma segurar a `11434`). A faixa
-inteira ocupada é uma recusa nomeada sem nada escrito. O `.env` recebe `OLLAMA_PORT`
-e `llm` na linha única de `COMPOSE_PROFILES`.
+Turning them on measures the host port before writing anything: `11434`, or the
+first free one up to `11443` (a native Ollama usually holds `11434`). The whole
+range busy is a named refusal with nothing written. `.env` gets `OLLAMA_PORT`
+and `llm` in the single `COMPOSE_PROFILES` line.
 
-Para ligá-los **depois**, na pasta da instalação: escolha uma porta livre, depois
-acrescente `OLLAMA_PORT=<porta>` ao `.env`, acrescente `llm` à linha existente de
-`COMPOSE_PROFILES` com uma vírgula (ou crie `COMPOSE_PROFILES=llm`), e rode
+To turn them on **later**, in the installation folder: pick a free port, then
+add `OLLAMA_PORT=<port>` to `.env`, append `llm` to the existing
+`COMPOSE_PROFILES` line with a comma (or create `COMPOSE_PROFILES=llm`), and run
 `docker compose -f docker/docker-compose.install.yml --env-file .env up -d --wait`.
 
-Verificação: a pergunta, a medição da porta e as linhas do `.env` são
-provadas pelo `scripts/dev/install-llm.spec.ts` em todo PR. O E2E da instalação
-responde *não* (baixar modelos custaria GBs por tag), então subir com o
-profile `llm` **não tem verificação de ponta a ponta**.
+Verification: the question, the port measurement and the `.env` lines are
+proven by `scripts/dev/install-llm.spec.ts` on every PR. The install E2E
+answers *não* (pulling models would cost GBs per tag), so startup with the
+`llm` profile has **no end-to-end verification**.
 
-### Reinstalando do zero {#reinstalar-do-zero}
+### Reinstalling from zero {#reinstalar-do-zero}
 
-Quando uma instalação anterior é encontrada (só conta o projeto compose chamado exatamente
-`brabo` — o compose de dev `brabo-dev` não,
-[RN-692](business-rules/produto.md#rn-692)), a migração roda o backup, prova o
-restore, e então pergunta
+When a previous installation is found (only the compose project named exactly
+`brabo` counts — the dev compose `brabo-dev` does not,
+[RN-692](business-rules/produto.md#rn-692)), the migration runs backup, proves the
+restore, and then asks
 `Apagar os volumes e reinstalar? [s = restaurar / z = do zero / N = parar]`.
-`z` apaga e reinstala **sem restaurar** os dados antigos; o backup provado
-fica na pasta que ele nomeia, e restaurá-lo depois é o
-[Restore](#restore). Provado pelo `scripts/dev/install-llm.spec.ts`.
+`z` deletes and reinstalls **without restoring** the old data; the proven
+backup stays in the folder it names, and restoring it later is
+[Restore](#restore). Proven by `scripts/dev/install-llm.spec.ts`.
 
 ---
 
-## Verificando um artefato publicado {#verificar-artefato-publicado}
+## Verifying a published artifact {#verificar-artefato-publicado}
 
-Toda tag final assina o que publica, com `cosign` **keyless** — a
-identidade que assina é o próprio workflow, e não há chave sob custódia
-em lugar nenhum ([ADR 0149](adr/0149-assinatura-dos-artefatos-publicados.md),
-[RN-524](business-rules/ci.md#rn-524)). É assim que **você** confere, fora do
+Every final tag signs what it publishes, with `cosign` **keyless** — the
+signing identity is the workflow itself, and there is no key in custody
+anywhere ([ADR 0149](adr/0149-assinatura-dos-artefatos-publicados.md),
+[RN-524](business-rules/ci.md#rn-524)). This is how **you** check it, outside
 CI.
 
-Os dois comandos precisam das duas flags `--certificate-*`. Elas não são
-enfeite opcional: sem elas o `cosign` aceitaria uma assinatura válida **de
-qualquer um**, que é a falha que todo este mecanismo existe para evitar.
+Both commands need the two `--certificate-*` flags. They are not optional
+decoration: without them `cosign` would accept a valid signature **from
+anyone**, which is the failure this whole mechanism exists to prevent.
 
-### Uma imagem, por digest {#an-image-by-digest}
+### An image, by digest {#an-image-by-digest}
 
 ```bash
 # O digest vem do .release/images.json, que é um asset da Release
@@ -4380,12 +4386,12 @@ cosign verify \
   "ghcr.io/viralabs-dev/brabo-api@${DIGEST}"
 ```
 
-### Os binários do runner {#the-runner-binaries}
+### The runner binaries {#the-runner-binaries}
 
-Um `checksums.txt` assinado cobre os quatro alvos (o Mac Intel não tem binário
-desde o [ADR 0174](adr/0174-runner-sem-binario-darwin-x64.md) — ele usa
-`npm install -g @brabo/runner`), então a verificação tem dois
-passos: a assinatura do manifesto, depois o binário contra o manifesto.
+One signed `checksums.txt` covers all four targets (Intel Mac has no binary
+since [ADR 0174](adr/0174-runner-sem-binario-darwin-x64.md) — it uses
+`npm install -g @brabo/runner`), so verification is two
+steps: the manifest's signature, then the binary against the manifest.
 
 ```bash
 gh release download vX.Y.Z --repo viralabs-dev/brabo-runner --pattern 'checksums.txt*' --pattern 'brabo-runner-*'
@@ -4402,56 +4408,56 @@ cosign verify-blob \
 sha256sum -c checksums.txt --ignore-missing
 ```
 
-### Quando a verificação falha {#when-verification-fails}
+### When verification fails {#when-verification-fails}
 
-**Não instale.** Uma assinatura que não verifica tem exatamente duas
-leituras — o artefato não é o que a esteira publicou, ou a esteira
-não o publicou — e nenhuma é motivo para continuar. Confira se a
-regex de identidade casa com o workflow que de fato publicou aquela tag (uma
-republicação por `workflow_dispatch` assina com a mesma identidade), e então
-trate como incidente e não como ruído.
+**Do not install.** A signature that does not verify has exactly two
+readings — the artifact is not what the pipeline published, or the pipeline
+did not publish it — and neither is a reason to continue. Check whether the
+identity regex matches the workflow that really published that tag (a
+republish by `workflow_dispatch` signs with the same identity), and then
+treat it as an incident rather than as noise.
 
-**O que isto NÃO cobre:** assinatura de código do sistema operacional para os
-binários do runner — notarização do macOS e Authenticode do Windows. Essas exigem uma
-identidade de assinatura paga e são um item de backlog separado; o sistema ainda vai avisar
-na primeira execução.
+**What this does NOT cover:** operating-system code-signing of the runner
+binaries — macOS notarization and Windows Authenticode. Those need a paid
+signing identity and are a separate backlog item; the OS will still warn on
+first run.
 
-### A oferta escrita de fonte, dentro de todo artefato publicado {#oferta-de-fonte-na-imagem}
+### The written offer of source, inside every published artifact {#oferta-de-fonte-na-imagem}
 
-Assinar responde *"isto é o que a esteira publicou?"*. Uma segunda pergunta
-viaja com a mesma imagem e tem outra resposta: **onde está a fonte
-do software GPL dentro dela?**
+Signing answers *"is this what the pipeline published?"*. A second question
+travels with the same image and has a different answer: **where is the source
+of the GPL software inside it?**
 
-A imagem do engine embute `git`, `busybox`, `libgcc`/`libstdc++` e outros 18 pacotes
-apk sob GPL, mais os quatro scanners que o engine chama por `exec`.
-Rodá-los como processos separados não contamina o Brabo, que continua
-MIT — mas *distribuir* a imagem exige que quem a recebe possa obter
-a fonte correspondente. Desde o [ADR 0119](adr/0119-imagens-publicadas-no-ghcr-por-digest.md)
-essa distribuição acontece em toda tag final.
+The engine image embeds `git`, `busybox`, `libgcc`/`libstdc++` and 18 other apk
+packages under GPL, plus the four scanners the engine invokes by `exec`.
+Running them as separate processes does not contaminate Brabo, which stays
+MIT — but *distributing* the image requires that whoever receives it can obtain
+the corresponding source. Since [ADR 0119](adr/0119-imagens-publicadas-no-ghcr-por-digest.md)
+that distribution happens on every final tag.
 
-A oferta escrita é o `THIRD_PARTY_NOTICES.md`, e ele vai **dentro** da
-imagem, porque quem roda `docker pull` não tem o repositório:
+The written offer is `THIRD_PARTY_NOTICES.md`, and it ships **inside** the
+image, because whoever runs `docker pull` does not have the repository:
 
 ```bash
 docker run --rm --entrypoint sh ghcr.io/viralabs-dev/brabo-engine:vX.Y.Z \
   -c 'cat /usr/share/doc/brabo/THIRD_PARTY_NOTICES.md'
 ```
 
-Ele nomeia todo componente, a versão exata e a licença, que é o que
-permite a qualquer um chegar à release upstream de cada um.
+It names every component, its exact version and its licence, which is what
+lets anyone reach the upstream release of each one.
 
-Desde a AT-120 o mesmo arquivo, no mesmo caminho e na mesma forma (dono root,
-`0644`, copiado antes do `USER`), vai dentro de **toda** imagem publicada —
-`brabo-api`, `brabo-web`, `brabo-broker` e `brabo-backup` além de
-`brabo-engine` — e ao lado dos binários do runner como o asset
-`THIRD_PARTY_NOTICES.md` da Release, coberto pelo mesmo
-`checksums.txt` assinado (RN-524). Essa foi a decisão do mantenedor, e é a
-conservadora: nenhum artefato é declarado isento. Troque `brabo-engine` por qualquer
-das outras quatro no comando acima. Antes da AT-120 esse comando falhava com
-"Permission denied" na imagem do engine: o BuildKit aplica `COPY --chmod=0644`
-também ao diretório que o `COPY` cria, então `/usr/share/doc/brabo` não tinha
-bit de execução e o usuário não-root da imagem não conseguia atravessá-lo. Cada
-Dockerfile agora cria o diretório `0755` antes. Para o runner:
+Since AT-120 the same file, in the same path and the same form (root-owned,
+`0644`, copied before the `USER`), ships inside **every** published image —
+`brabo-api`, `brabo-web`, `brabo-broker` and `brabo-backup` as well as
+`brabo-engine` — and next to the runner binaries as the
+`THIRD_PARTY_NOTICES.md` asset of the Release, covered by the same signed
+`checksums.txt` (RN-524). That was the maintainer's decision, and it is the
+conservative one: no artifact is declared exempt. Swap `brabo-engine` for any
+of the other four in the command above. Before AT-120 that command failed with
+"Permission denied" on the engine image: BuildKit applies `COPY --chmod=0644`
+to the directory the `COPY` creates too, so `/usr/share/doc/brabo` had no
+execute bit and the image's non-root user could not traverse it. Each
+Dockerfile now creates the directory `0755` first. For the runner:
 
 ```bash
 gh release download vX.Y.Z --repo viralabs-dev/brabo \
@@ -4459,56 +4465,56 @@ gh release download vX.Y.Z --repo viralabs-dev/brabo \
 sha256sum -c --ignore-missing checksums.txt
 ```
 
-Se esse arquivo falta num artefato, o artefato não deveria ser
-distribuído. O `scripts/ci/oferta-de-fonte-na-imagem.spec.ts` impede que cada `COPY`
-e o asset da Release sejam removidos por acidente, e o passo
-`A oferta de fonte está dentro das cinco imagens` do `ci.yml` lê o
-arquivo de volta de cada imagem que constrói e o compara com o checkout — mas
-só uma tag de verdade prova o artefato publicado.
+If that file is missing from an artifact, the artifact should not be
+distributed. `scripts/ci/oferta-de-fonte-na-imagem.spec.ts` keeps each `COPY`
+and the Release asset from being removed by accident, and the
+`A oferta de fonte está dentro das cinco imagens` step of `ci.yml` reads the
+file back out of each image it builds and compares it with the checkout — but
+only a real tag proves the published artifact.
 
-O arquivo também registra o que **não** está resolvido: separar os scanners num
-sidecar próprio, deixando a imagem do engine livre de copyleft, segue aberto como
-escolha de *arquitetura* e não de conformidade.
+The file also records what is **not** settled: separating the scanners into
+their own sidecar, leaving the engine image free of copyleft, stays open as an
+*architecture* choice rather than a compliance one.
 
 ---
 
-## Subindo uma imagem de terceiro {#subindo-imagem-de-terceiro}
+## Bumping a third-party image {#subindo-imagem-de-terceiro}
 
-Toda imagem de terceiro em `docker/` e `deploy/k8s/` é fixada **por
-digest**, com a tag de onde veio escrita **dentro da referência**, antes
-do digest ([ADR 0159](adr/0159-imagem-de-terceiro-por-digest.md),
-[ADR 0178](adr/0178-tag-inline-na-imagem-de-terceiro.md)). Os workflows em
-`.github/workflows/` **não** guardam literal de imagem: os `services:` deles leem a
-referência do compose de dev pelo `imagens-do-compose.yml`
-([ADR 0197](adr/0197-a-imagem-dos-workflows-vem-do-compose.md)), então subir
-o compose sobe o CI também:
+Every third-party image in `docker/` and `deploy/k8s/` is pinned **by
+digest**, with the tag it came from written **inside the reference**, before
+the digest ([ADR 0159](adr/0159-imagem-de-terceiro-por-digest.md),
+[ADR 0178](adr/0178-tag-inline-na-imagem-de-terceiro.md)). The workflows in
+`.github/workflows/` hold **no** image literal: their `services:` read the
+reference from the dev compose through `imagens-do-compose.yml`
+([ADR 0197](adr/0197-a-imagem-dos-workflows-vem-do-compose.md)), so bumping
+the compose bumps the CI too:
 
 ```yaml
 image: neo4j:5.26-community@sha256:d9cfe82983d27f5a75b3aaae8f316d04f9a698a3b7f6103a508f7caf8362f255
 ```
 
-Um **Dockerfile** toma a mesma forma na linha `FROM` — nunca um comentário no
-fim dela: o parser do Docker só aceita `#` no começo da linha, e um
-no fim faz o build falhar com *"FROM requires either one or three
+A **Dockerfile** takes the same shape on the `FROM` line — never a comment at
+the end of it: Docker's parser only takes `#` at the start of a line, and a
+trailing one makes the build fail with *"FROM requires either one or three
 arguments"*:
 
 ```dockerfile
 FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS runtime
 ```
 
-Isso é um **congelamento**. Desde o ADR 0197 os ecossistemas `docker-compose` (os
-composes em `docker/`) e `docker` (as linhas `FROM` em `docker/*/` e os
-manifestos em `deploy/k8s/`) do Dependabot propõem a subida toda semana, uma PR agrupada
-por ecossistema, na `dev`. Revisar essa PR são os passos 1 e 4 deste procedimento.
-Dois casos ainda voltam para cá:
+That is a **freeze**. Since ADR 0197 Dependabot's `docker-compose` (the
+composes in `docker/`) and `docker` (the `FROM` lines in `docker/*/` and the
+manifests in `deploy/k8s/`) ecosystems propose the bump weekly, one grouped PR
+per ecosystem, into `dev`. Reviewing that PR is this procedure's steps 1 and 4.
+Two cases still come back here:
 
-- **`neo4j` e `ollama` moram num compose E em `deploy/k8s/base/`**, e os
-  dois ecossistemas nunca dividem uma PR. Quando o registry republica a MESMA tag
-  com outro digest, as duas PRs reprovam no lint ("mesma tag inline, dois
-  digests"); junte as duas subidas numa PR só com o passo 3 abaixo.
-- As duas imagens que nenhum ecossistema lê (abaixo).
+- **`neo4j` and `ollama` live in a compose AND in `deploy/k8s/base/`**, and the
+  two ecosystems never share a PR. When the registry re-publishes the SAME tag
+  with another digest, both PRs fail the lint ("same inline tag, two
+  digests"); bring the two bumps into one PR with step 3 below.
+- The two images no ecosystem reads (below).
 
-Para mover uma à mão — digamos, `neo4j` de `5.26-community` para `5.27-community`:
+To move one by hand — say, `neo4j` from `5.26-community` to `5.27-community`:
 
 ```sh
 # 1. Confirme que a tag resolve para um ÍNDICE (uma manifest list). Se não,
@@ -4529,57 +4535,57 @@ grep -rn 'neo4j:5.26-community@sha256' docker/ deploy/k8s/
 node scripts/ci/imagens-pinadas.ts
 ```
 
-Duas imagens são subidas por este mesmo procedimento, à mão, faça o Dependabot
-o que fizer: o `imageName` do CloudNativePG
-em `deploy/k8s/overlays/local/db/cluster.yaml` (nenhum ecossistema
-lê essa chave) e a imagem do caso de QA do golden-set,
-`IMAGEM_DO_GOLDEN_SET_QA` em `apps/api/scripts/golden-set-qa-container.ts`
-(uma constante TypeScript, lida pelo `golden-set-qa.yml`).
+Two images are bumped by this same procedure, by hand, whatever Dependabot
+does: the CloudNativePG
+`imageName` in `deploy/k8s/overlays/local/db/cluster.yaml` (no ecosystem
+reads that key) and the golden-set QA case image,
+`IMAGEM_DO_GOLDEN_SET_QA` in `apps/api/scripts/golden-set-qa-container.ts`
+(a TypeScript constant, read by `golden-set-qa.yml`).
 
-O passo 3 não é burocracia opcional: a checagem recusa **a mesma tag inline
-levando dois digests diferentes**, porque o compose de dev e o cluster
-afirmando a mesma versão enquanto rodam bytes diferentes é como um CI verde deixa de
-querer dizer alguma coisa. Entre o compose de dev e o CI não há mais nada a alinhar:
-o CI lê o compose.
+Step 3 is not optional bookkeeping: the check refuses **the same inline tag
+carrying two different digests**, because the dev compose and the cluster
+claiming the same version while running different bytes is how a green CI stops
+meaning anything. Between the dev compose and the CI there is nothing to align
+any more: the CI reads the compose.
 
-Para dar a um workflow NOVO um serviço de terceiro, nunca escreva a referência no
-workflow: acrescente a imagem do serviço em `docker/docker-compose.yml`, uma linha em
-`IMAGENS_DOS_WORKFLOWS` em `scripts/ci/imagens-do-compose.ts`, a saída
-correspondente em `.github/workflows/imagens-do-compose.yml` (o spec dele reprova se os dois
-divergem), e no workflow um job `imagens:` com
-`uses: ./.github/workflows/imagens-do-compose.yml` mais
-`image: ${{ needs.imagens.outputs.<nome> }}`.
+To give a NEW workflow a third-party service, never write the reference in the
+workflow: add the service image to `docker/docker-compose.yml`, a line to
+`IMAGENS_DOS_WORKFLOWS` in `scripts/ci/imagens-do-compose.ts`, the matching
+output to `.github/workflows/imagens-do-compose.yml` (its spec fails if the two
+diverge), and in the workflow a job `imagens:` with
+`uses: ./.github/workflows/imagens-do-compose.yml` plus
+`image: ${{ needs.imagens.outputs.<name> }}`.
 
-O que a checagem **não** cobre, e por quê, está em
-[a cadeia de suprimentos do CI](explanation/cadeia-de-suprimentos-do-ci.md#container-images-digest-with-the-tag-alongside):
-as cinco imagens que o produto publica já estão resolvidas por digest pelo
-`.release/images.json` e pelo `make imagens-do-release`
-([ADR 0119](adr/0119-imagens-publicadas-no-ghcr-por-digest.md)) — nunca fixe
-essas à mão no overlay, que deliberadamente guarda o marcador.
+What the check does **not** cover, and why, is in
+[the CI supply chain](explanation/cadeia-de-suprimentos-do-ci.md#container-images-digest-with-the-tag-alongside):
+the five images the product publishes are already resolved by digest through
+`.release/images.json` and `make imagens-do-release`
+([ADR 0119](adr/0119-imagens-publicadas-no-ghcr-por-digest.md)) — never pin
+those by hand in the overlay, which deliberately holds the marker.
 
 ---
 
-## Acrescentando um provider compatível {#adicionando-um-provider-compativel}
+## Adding a compatible provider {#adicionando-um-provider-compativel}
 
-Vale para qualquer provider que fale o dialeto `/chat/completions` da OpenAI —
-que é o caso de praticamente todo hub e todo serviço de inferência
-gerenciado. A base já existe
+Applies to any provider that speaks OpenAI's `/chat/completions` dialect —
+which is the case for practically every hub and every managed inference
+service. The base already exists
 ([ADR 0041](adr/0041-base-openai-compativel-e-contrato-de-llm-providers.md));
-o que você escreve é **configuração**, não parsing.
+what you write is **configuration**, not parsing.
 
-### 1. Leia a doc oficial antes de escrever a primeira linha {#1-read-the-official-doc-before-writing-the-first-line}
+### 1. Read the official doc before writing the first line {#1-read-the-official-doc-before-writing-the-first-line}
 
-Quatro coisas precisam vir da documentação do provider, não de palpite:
-`baseUrl`, o cabeçalho de auth, o formato do `usage` no stream, e as
-peculiaridades do streaming. Registre a URL consultada e a data no topo do
-arquivo de config — é o único jeito de saber, meses depois, se a config
-está velha.
+Four things need to come from the provider's documentation, not guessing:
+`baseUrl`, the auth header, the `usage` format in the stream, and the
+streaming quirks. Record the consulted URL and the date at the top of the
+config file — it's the only way to know, months later, whether the config
+is stale.
 
-O que diverge do padrão da OpenAI vira uma **flag na base**,
-nunca um `if` espalhado. Se a divergência não cabe numa flag
-existente, acrescente uma — e só porque este provider real precisa.
+Whatever diverges from the OpenAI standard becomes a **flag in the base**,
+never an `if` scattered around. If the divergence doesn't fit an existing
+flag, add one — and only because this real provider needs it.
 
-### 2. Escreva a config {#2-write-the-config}
+### 2. Write the config {#2-write-the-config}
 
 ```ts
 // apps/api/src/infrastructure/llm/<provider>-provider.ts
@@ -4598,11 +4604,11 @@ export function meuProviderConfig(baseUrl = BASE_URL): OpenAICompatibleConfig {
 }
 ```
 
-Exporte a função de config, não só a classe: é para ela que a suíte de
-contrato aponta o servidor falso. Uma cópia da config escrita dentro do
-teste passaria verde mesmo se a de produção divergisse.
+Export the config function, not just the class: that's what the contract
+suite points at the fake server. A copy of the config written inside the
+test would pass green even if production's diverged.
 
-### 3. Rode a suíte de contrato contra ele {#3-run-the-contract-suite-against-it}
+### 3. Run the contract suite against it {#3-run-the-contract-suite-against-it}
 
 ```ts
 runLLMProviderContract('meu-provider', () => ({
@@ -4616,124 +4622,123 @@ runLLMProviderContract('meu-provider', () => ({
 }));
 ```
 
-Herdado de graça: streaming com frame partido, usage presente e
-ausente, tool calling, os quatro erros normalizados, o catálogo, e um
-servidor mudo.
+Inherited for free: streaming with a split frame, usage present and
+absent, tool calling, the four normalized errors, the catalog, and a mute
+server.
 
-### 4. Registre o provider e o tipo de credencial {#4-register-the-provider-and-the-credential-kind}
+### 4. Register the provider and the credential kind {#4-register-the-provider-and-the-credential-kind}
 
-1. **dois lugares, de propósito**: o tipo `LLMProviderName` em
-   `packages/shared/src/index.ts` (o web o usa também) e a lista de
-   runtime `LLM_PROVIDER_NAMES` em
-   `apps/api/src/domain/llm/llm-provider-names.ts`. Eles não podem morar
-   juntos: `packages/shared` é 100% tipos — um valor exportado de
-   lá quebra a imagem de produção da api no boot com
-   `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, e
-   `apps/api/test/packages-shared-so-tipos.spec.ts` reprova antes de
-   chegar lá. Esquecer a lista não passa em silêncio: a checagem de
-   exaustividade nos dois sentidos quebra o typecheck, assim como o `Record`
-   exaustivo `ROTULO_DO_PROVIDER` do web quebra até o provider
-   ganhar um rótulo;
-2. se for um hub, acrescente o nome a `HUBS` em `apps/web/src/lib/models.ts`
-   para ele cair no grupo certo do seletor;
-3. o registro de providers da api (`llm-infrastructure.module.ts`);
-4. o `pgEnum` do provider no schema mais uma migration, se o nome é
-   novo.
+1. **two places, on purpose**: the `LLMProviderName` type in
+   `packages/shared/src/index.ts` (the web uses it too) and the runtime
+   list `LLM_PROVIDER_NAMES` in
+   `apps/api/src/domain/llm/llm-provider-names.ts`. They can't live
+   together: `packages/shared` is 100% types — a value exported from
+   there breaks the api's production image at boot with
+   `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, and
+   `apps/api/test/packages-shared-so-tipos.spec.ts` fails before it gets
+   there. Forgetting the list doesn't pass silently: the exhaustiveness
+   check in both directions breaks the typecheck, just like the web's
+   exhaustive `ROTULO_DO_PROVIDER` `Record` breaks until the provider
+   gets a label;
+2. if it's a hub, add the name to `HUBS` in `apps/web/src/lib/models.ts`
+   so it falls into the right group in the selector;
+3. the api's provider registry (`llm-infrastructure.module.ts`);
+4. the provider's `pgEnum` in the schema plus a migration, if the name is
+   new.
 
-### 5. Semeie os modelos com o preço da doc {#5-seed-the-models-with-the-price-from-the-docs}
+### 5. Seed the models with the price from the docs {#5-seed-the-models-with-the-price-from-the-docs}
 
-Um preço digitado vem com `manual_pricing: true`. Isso protege a linha
-da sincronização de preço: para um provider que não expõe preço no
-catálogo, o número manual é o único que existe.
+A typed-in price comes with `manual_pricing: true`. That protects the row
+from the price sync: for a provider that doesn't expose price in its
+catalog, the manual number is the only one that exists.
 
-Se o provider expõe `GET /models`, **não semeie o catálogo inteiro** —
-deixe a sincronização descobri-lo. Ela escreve os modelos desabilitados, e
-o owner habilita o que importa pela tela de curadoria
+If the provider exposes `GET /models`, **don't seed the whole catalog** —
+let the sync discover it. It writes the models in a disabled state, and
+the owner enables what matters through the curation screen
 ([RN-043](business-rules/api.md#rn-043)).
 
-Se o catálogo do provider publica **modalidade** (aceita imagem, gera
-imagem) ou `reasoning`, emita-as no `parseCatalogo` dele — e só quando
-a doc oficial diz. Um campo que o provider não declara fica
-**omitido**, nunca `false`: `undefined` preserva o que já estava
-gravado, e `false` apagaria dado curado à mão
+If the provider's catalog publishes **modality** (accepts image, generates
+image) or `reasoning`, emit them in its `parseCatalogo` — and only when
+the official doc says so. A field the provider doesn't declare stays
+**omitted**, never `false`: `undefined` preserves what was already
+recorded, and `false` would wipe out hand-curated data
 ([RN-056](business-rules/api.md#rn-056)).
 
-### 6. Verifique com uma credencial real {#6-verify-with-a-real-credential}
+### 6. Verify with a real credential {#6-verify-with-a-real-credential}
 
 ```bash
 # na página Providers (rodapé do menu): cadastre a credencial, depois
 # "Atualizar catálogo" e confira o relatório por provider.
 ```
 
-O relatório mostra **todo** provider, inclusive os pulados, com o
-motivo e a origem da falha. `sem_credencial` quer dizer que a chave
-nunca chegou; `falha · origem infra` quer dizer que nem chegou ao
-provider; `falha · origem modelo` quer dizer que ele respondeu com uma recusa.
+The report shows **every** provider, including the skipped ones, with the
+reason and the origin of the failure. `sem_credencial` means the key
+never arrived; `falha · origem infra` means it couldn't even reach the
+provider; `falha · origem modelo` means it answered with a refusal.
 
-Verificação: os passos 2–4 são provados em todo PR — a suíte de contrato
-(`apps/api/test/contract/llm-provider.contract.ts`, rodada pelo
-`*.contract.spec.ts` de cada provider) contra um servidor falso, e o typecheck que quebra quando
-falta um nome em qualquer das listas. O passo 6 é **manual por natureza**: ele precisa de uma
-credencial real com crédito, que o CI não tem. Os arquivos `*.smoke.spec.ts` por
-provider são a forma roteirizada dele, e pulam sem uma
-chave — o ambiente tem credencial só para o OpenRouter (veja o
-`TODO(humano)` sobre os smokes de LLM no `CLAUDE.md`).
+Verification: steps 2–4 are proven on every PR — the contract suite
+(`apps/api/test/contract/llm-provider.contract.ts`, run by each provider's
+`*.contract.spec.ts`) against a fake server, and the typecheck that breaks when
+a name is missing from either list. Step 6 is **manual by nature**: it needs a
+real credential with credit, which CI does not have. The per-provider
+`*.smoke.spec.ts` files are the scripted form of it, and they skip without a
+key — the environment holds a credential only for OpenRouter (see the
+`TODO(humano)` on the LLM smokes in `CLAUDE.md`).
 
 ---
 
-## Procedimentos e como cada um é verificado {#procedimentos-e-verificacao}
+## Procedures and how each is verified {#procedimentos-e-verificacao}
 
-Todo procedimento de **operação** desta página, com o arquivo que o prova e
-o que roda essa prova. Seções de diagnóstico (o que fazer quando algo parece
-errado) e as seções do ambiente de desenvolvimento não estão aqui: são jeitos de
-achar uma causa, não procedimentos que podem passar ou reprovar.
+Every **operation** procedure of this page, with the file that proves it and
+what runs that proof. Diagnosis sections (what to do when something looks
+wrong) and the development-environment sections are not here: they are ways to
+find a cause, not procedures that can pass or fail.
 
-- **verification** nomeia o spec, script, workflow ou alvo `make` que
-  prova o procedimento, ou começa com **None** e diz isso. Uma prova parcial
-  nomeia o que cobre e o que não cobre.
-- **schedule** diz o que o roda sem ninguém lembrar: um workflow agendado
-  (`weekly`), todo pull request (`every PR`), toda tag final
-  (`every tag`), ou `manual` — alguém tem de lembrar.
+- **verification** names the spec, script, workflow or `make` target that
+  proves the procedure, or starts with **None** and says so. A partial proof
+  names what it covers and what it does not.
+- **schedule** says what runs it without anyone remembering: a scheduled
+  workflow (`weekly`), every pull request (`every PR`), every final tag
+  (`every tag`), or `manual` — someone has to remember.
 
-Os cabeçalhos da tabela e as palavras de classe da coluna **schedule** ficam em inglês
-de propósito: são vocabulário de máquina, que o `pnpm docs:check` lê. Ele lê esta tabela e reprova quando um arquivo em **verification**
-não está no repositório, um alvo `make` não está no `Makefile`, uma célula está
-vazia ou diz "ver abaixo", uma âncora não é cabeçalho desta página, ou um
-workflow em **schedule** não tem o gatilho que a célula afirma
-(`schedule:` para `weekly`, `pull_request` para `every PR`, `push: tags` para
-`every tag`). Como funciona está em
-[Como a documentação continua viva](explanation/documentation-workflow.md#the-runbook-procedures-table).
+`pnpm docs:check` reads this table and fails when a file in **verification**
+is not in the repository, a `make` target is not in the `Makefile`, a cell is
+empty or says "see below", an anchor is not a heading of this page, or a
+workflow in **schedule** does not have the trigger the cell claims
+(`schedule:` for `weekly`, `pull_request` for `every PR`, `push: tags` for
+`every tag`). How it works is in
+[How documentation stays alive](explanation/documentation-workflow.md#the-runbook-procedures-table).
 
 | procedure | anchor | verification | schedule |
 |---|---|---|---|
-| Subir a stack num cluster local | [Deploy local](#deploy-local) | `make deploy-local` termina com `make smoke-k8s` (`deploy/k8s/smoke.sh`); a execução agendada faz o mesmo `deploy/k8s/bootstrap.sh` e smoke | weekly `.github/workflows/propriedades.yml` |
-| Validar uma tag da esteira (`TAG=`) | [Validar uma tag da esteira](#validar-tag-do-pipeline) | **None.** Nenhum workflow passa `TAG=`; o checkout destacado da tag só roda à mão | manual |
-| Provar que o HPA do engine escala | [Deploy local](#deploy-local) | `make hpa-test` (`deploy/k8s/hpa-test.sh`) | weekly `.github/workflows/propriedades.yml` |
-| Validar os overlays sem cluster | [Deploy local](#deploy-local) | `make k8s-validate` (`deploy/k8s/validate.sh`) | every PR `.github/workflows/ci.yml` |
-| Fazer deploy das imagens de uma release | [Fazendo deploy das imagens de uma release](#imagens-de-uma-release) | `scripts/ci/aplicar-imagens.spec.ts` prova a leitura do manifesto da release, `scripts/ci/images-manifest.spec.ts` os digests entregues ao `kustomize`; rodá-lo no overlay e aplicar os digests de uma release real: nenhuma | every PR `.github/workflows/ci.yml` (o spec); manual (a corrente) |
-| Fazer rollout do engine | [Rollout do engine](#rollout-do-engine) | `make rollout-test` (`deploy/k8s/rollout-test.sh`); os coletores de evidência dele por `scripts/ci/rollout-evidencia.spec.ts` | weekly `.github/workflows/propriedades.yml`; every PR `.github/workflows/ci.yml` (os coletores) |
-| Aumentar a janela de drain | [Aumentar a janela de drain](#aumentar-a-janela-de-drain) | **None própria.** `make rollout-test` prova só o par do overlay local (drain de 20 s, grace de 90 s); rode-o de novo com os valores aumentados | manual |
-| Fallback para sealed-secrets | [Segredos: fallback para sealed-secrets](#fallback-sealed-secrets) | **None.** Nada roda `kubeseal`; o cluster agendado usa External Secrets | manual |
-| Verificar um backup no Kubernetes | [O caminho automatizado](#restore-automatizado) | `make test-restore` (`deploy/k8s/test-restore.sh`) e a quebra deliberada `make test-restore-mutacao` | weekly `.github/workflows/propriedades.yml` |
-| Verificar um backup numa instalação compose | [O caminho automatizado](#restore-automatizado) | `make test-restore-compose` (`docker/backup/test-restore-compose.sh`); o repasse do `.env` dele por `scripts/dev/prova-de-restauracao-env.spec.ts` | weekly `.github/workflows/propriedades.yml`, job `restore-compose` (a prova); every PR `.github/workflows/ci.yml` (o spec) |
-| Restaurar de verdade durante um incidente | [Restaurando de verdade](#restore-de-verdade) | passos 1–2: `make test-restore` (o mesmo `brabo-restore`, as mesmas consultas do `docker/backup/restore.sh`); passo 3, promover `DATABASE_URL`: nenhuma, nunca exercitado | weekly `.github/workflows/propriedades.yml` (passos 1–2); manual (passo 3) |
-| Verificar e recuperar os bare repos | [Recuperando os bare repos](#restore-dos-bare-repos) | `scripts/ci/backup-lib.spec.ts` (as funções); `make test-restore-compose` (o comando que verifica, na imagem); `--restaurar` na imagem: nenhuma | every PR `.github/workflows/ci.yml` (o spec); weekly `.github/workflows/propriedades.yml`, job `restore-compose` (o comando que verifica); manual (`--restaurar`) |
-| Reprojetar o grafo | [Perda do grafo](#perda-do-grafo) | `make test-reprojecao` (`apps/api/test/scripts/reprojetar-grafo.spec.ts`, pulado nos PRs, que não têm Neo4j) e `make test-reprojecao-k8s` (`deploy/k8s/test-reprojecao.sh`) | weekly `.github/workflows/propriedades.yml` |
-| Reprojetar a pasta de artefatos | [Perda da pasta de artefatos](#perda-da-pasta-de-artefatos) | `apps/api/test/scripts/reprojetar-artefatos.spec.ts` e `make test-reprojecao-artefatos-k8s` (`deploy/k8s/test-reprojecao-artefatos.sh`, o comando dentro da imagem da api) | every PR `.github/workflows/ci.yml` (o spec); weekly `.github/workflows/propriedades.yml` (o caminho da imagem) |
-| Rotacionar `AUTH_JWT_SECRET` | [`AUTH_JWT_SECRET`](#rotacao-do-auth-jwt-secret) | `apps/api/test/infrastructure/security/ed25519-access-token-issuer.spec.ts` e `apps/api/test/application/use-cases/auth/rotacao-dos-segredos.spec.ts` | every PR `.github/workflows/ci.yml` |
-| Trocar `AUTH_TOKEN_PEPPER` | [`AUTH_TOKEN_PEPPER`](#troca-do-auth-token-pepper) | `apps/api/test/application/use-cases/auth/rotacao-dos-segredos.spec.ts` | every PR `.github/workflows/ci.yml` |
-| Rotacionar `BRABO_SERVICE_TOKEN` | [`BRABO_SERVICE_TOKEN`](#rotacao-do-brabo-service-token) | `apps/api/test/infrastructure/security/service-token.spec.ts`, `apps/api/test/interfaces/engine-service.guard.spec.ts`, `apps/engine/test/engine_web/plugs/verify_service_token_test.exs`, `apps/engine/test/engine/runtime_service_token_test.exs`, `apps/broker/src/config.spec.ts` e `scripts/ci/previous-nos-composes.spec.ts` | every PR `.github/workflows/ci.yml` |
-| Pôr e aposentar um `_PREVIOUS` no Kubernetes | [Fazendo no Kubernetes](#rotacao-no-kubernetes) | `scripts/ci/previous-nos-composes.spec.ts` mantém o `ExternalSecret` em `dataFrom.extract` sem `_PREVIOUS` em `data:`; o sync por um External Secrets Operator de verdade: `make test-rotacao-chave-mestra-k8s` (`deploy/k8s/test-rotacao-chave-mestra.sh`) acrescenta e remove `CREDENTIALS_MASTER_KEY_PREVIOUS` por ele; as outras chaves `_PREVIOUS`: nenhuma automatizada | every PR `.github/workflows/ci.yml` (o spec); weekly `.github/workflows/propriedades.yml` (o `_PREVIOUS` da chave mestra); manual (as outras chaves) |
-| Destravar uma conta por SQL | [Conta travada por lockout](#conta-travada-por-lockout) | **None.** As duas consultas foram conferidas contra o schema por leitura; `apps/api/test/application/use-cases/auth/lockout.spec.ts` cobre o lockout, não elas | manual |
-| Rotacionar a chave mestra | [Rotação da chave mestra](#rotacao-da-chave-mestra) | `apps/api/test/scripts/rewrap-deks.spec.ts` e `apps/api/test/infrastructure/security/envelope-encryption.service.spec.ts`; os três passos no cluster: `make test-rotacao-chave-mestra-k8s` (`deploy/k8s/test-rotacao-chave-mestra.sh`) | every PR `.github/workflows/ci.yml` (os specs); weekly `.github/workflows/propriedades.yml` (o ensaio) |
-| Cortar o gasto num incidente de custo | [Incidente de custo](#incidente-de-custo) | `apps/api/test/runbook/sql-do-incidente-de-custo.spec.ts` roda o SQL da seção, nos dois idiomas, contra o schema migrado; passos (b) e (d), na tela: nenhuma | every PR `.github/workflows/ci.yml` |
-| Subir a observabilidade sem cluster | [Observabilidade local](#observabilidade-local) | `scripts/dev/observabilidade-pronta.mjs`, uma autoverificação no fim do `pnpm dev:obs`, sem spec | manual |
-| Conferir o registro de gates na imagem | [Registro de gates](#registro-de-gates) | `docker/smoke.sh` chama as duas rotas contra a imagem de produção; as funções de gate dele por `scripts/ci/smoke-gates.spec.ts` | every PR `.github/workflows/ci.yml` |
-| Instalar | [Instalando](#instalando) | `.github/workflows/install-e2e.yml` (máquina limpa) e `scripts/dev/install*.spec.ts`; o caminho de migração de ponta a ponta: nenhuma | every tag `.github/workflows/install-e2e.yml`; every PR `.github/workflows/ci.yml` (os specs) |
-| Ligar ou desligar o broker da instalação | [O broker de containers numa instalação](#broker-na-instalacao) | na instalação: `scripts/dev/install-broker.spec.ts` e `.github/workflows/install-e2e.yml`; ligá-lo depois à mão, e desligá-lo: nenhuma | every tag `.github/workflows/install-e2e.yml`; every PR `.github/workflows/ci.yml` (o spec); manual (depois, e desligar) |
-| Ligar os modelos locais da instalação | [Modelos locais numa instalação](#modelos-locais-na-instalacao) | na instalação: `scripts/dev/install-llm.spec.ts`; ligá-los depois à mão: nenhuma | every PR `.github/workflows/ci.yml` (o spec); manual (depois) |
-| Reinstalar do zero sobre uma instalação anterior | [Reinstalando do zero](#reinstalar-do-zero) | `scripts/dev/install-llm.spec.ts` | every PR `.github/workflows/ci.yml` |
-| Verificar um artefato publicado | [Verificando um artefato publicado](#verificar-artefato-publicado) | os workflows de publicação verificam o que assinaram, na mesma execução: `.github/workflows/release.yml` (`cosign verify`) e `.github/workflows/build-runner-binaries.yml` (`cosign verify-blob`) | every tag `.github/workflows/release.yml` `.github/workflows/build-runner-binaries.yml` |
-| Conferir a oferta escrita de fonte | [A oferta escrita de fonte](#oferta-de-fonte-na-imagem) | `scripts/ci/oferta-de-fonte-na-imagem.spec.ts` mantém cada `COPY` e o asset da Release; as cinco imagens construídas a partir do PR, lidas de volta pelo `.github/workflows/ci.yml`; os artefatos publicados levando o arquivo: nenhuma | every PR `.github/workflows/ci.yml` (o spec e as imagens construídas); manual (os artefatos publicados) |
-| Subir uma imagem de terceiro | [Subindo uma imagem de terceiro](#subindo-imagem-de-terceiro) | `scripts/ci/imagens-pinadas.ts`, `scripts/ci/imagens-pinadas.spec.ts` e `scripts/ci/imagens-do-compose.spec.ts` | every PR `.github/workflows/ci.yml` |
-| Acrescentar um provider de LLM compatível | [Acrescentando um provider compatível](#adicionando-um-provider-compativel) | passos 2–4: `apps/api/test/contract/llm-provider.contract.ts`, rodado pelo spec de contrato de cada provider; passo 6, com credencial real: nenhuma no CI — os specs de smoke pulam sem chave | every PR `.github/workflows/ci.yml` (passos 2–4); manual (passo 6) |
+| Bring the stack up in a local cluster | [Local deploy](#deploy-local) | `make deploy-local` ends with `make smoke-k8s` (`deploy/k8s/smoke.sh`); the scheduled run does the same `deploy/k8s/bootstrap.sh` and smoke | weekly `.github/workflows/propriedades.yml` |
+| Validate a pipeline tag (`TAG=`) | [Validating a pipeline tag](#validar-tag-do-pipeline) | **None.** No workflow passes `TAG=`; the detached checkout of the tag runs only by hand | manual |
+| Prove the engine's HPA scales | [Local deploy](#deploy-local) | `make hpa-test` (`deploy/k8s/hpa-test.sh`) | weekly `.github/workflows/propriedades.yml` |
+| Validate the overlays without a cluster | [Local deploy](#deploy-local) | `make k8s-validate` (`deploy/k8s/validate.sh`) | every PR `.github/workflows/ci.yml` |
+| Deploy a release's images | [Deploying a release's images](#imagens-de-uma-release) | `scripts/ci/aplicar-imagens.spec.ts` proves reading the release manifest, `scripts/ci/images-manifest.spec.ts` the digests handed to `kustomize`; running it on the overlay and applying a real release's digests: none | every PR `.github/workflows/ci.yml` (the spec); manual (the chain) |
+| Roll out the engine | [Engine rollout](#rollout-do-engine) | `make rollout-test` (`deploy/k8s/rollout-test.sh`); its evidence collectors by `scripts/ci/rollout-evidencia.spec.ts` | weekly `.github/workflows/propriedades.yml`; every PR `.github/workflows/ci.yml` (the collectors) |
+| Increase the drain window | [Increasing the drain window](#aumentar-a-janela-de-drain) | **None of its own.** `make rollout-test` proves only the local overlay's pair (20 s drain, 90 s grace); rerun it with the raised values | manual |
+| Fall back to sealed-secrets | [Secrets: fallback to sealed-secrets](#fallback-sealed-secrets) | **None.** Nothing runs `kubeseal`; the scheduled cluster uses External Secrets | manual |
+| Verify a backup on Kubernetes | [The automated path](#restore-automatizado) | `make test-restore` (`deploy/k8s/test-restore.sh`) and the deliberate break `make test-restore-mutacao` | weekly `.github/workflows/propriedades.yml` |
+| Verify a backup on a compose installation | [The automated path](#restore-automatizado) | `make test-restore-compose` (`docker/backup/test-restore-compose.sh`); its `.env` hand-off by `scripts/dev/prova-de-restauracao-env.spec.ts` | weekly `.github/workflows/propriedades.yml`, job `restore-compose` (the proof); every PR `.github/workflows/ci.yml` (the spec) |
+| Restore for real during an incident | [Restoring for real](#restore-de-verdade) | steps 1–2: `make test-restore` (the same `brabo-restore`, the same queries as `docker/backup/restore.sh`); step 3, promoting `DATABASE_URL`: none, never exercised | weekly `.github/workflows/propriedades.yml` (steps 1–2); manual (step 3) |
+| Verify and recover the bare repos | [Recovering the bare repos](#restore-dos-bare-repos) | `scripts/ci/backup-lib.spec.ts` (the functions); `make test-restore-compose` (the verifying command, in the image); `--restaurar` in the image: none | every PR `.github/workflows/ci.yml` (the spec); weekly `.github/workflows/propriedades.yml`, job `restore-compose` (the verifying command); manual (`--restaurar`) |
+| Reproject the graph | [Losing the graph](#perda-do-grafo) | `make test-reprojecao` (`apps/api/test/scripts/reprojetar-grafo.spec.ts`, skipped on PRs, which have no Neo4j) and `make test-reprojecao-k8s` (`deploy/k8s/test-reprojecao.sh`) | weekly `.github/workflows/propriedades.yml` |
+| Reproject the artifact folder | [Losing the artifact folder](#perda-da-pasta-de-artefatos) | `apps/api/test/scripts/reprojetar-artefatos.spec.ts` and `make test-reprojecao-artefatos-k8s` (`deploy/k8s/test-reprojecao-artefatos.sh`, the command inside the api image) | every PR `.github/workflows/ci.yml` (the spec); weekly `.github/workflows/propriedades.yml` (the image path) |
+| Rotate `AUTH_JWT_SECRET` | [`AUTH_JWT_SECRET`](#rotacao-do-auth-jwt-secret) | `apps/api/test/infrastructure/security/ed25519-access-token-issuer.spec.ts` and `apps/api/test/application/use-cases/auth/rotacao-dos-segredos.spec.ts` | every PR `.github/workflows/ci.yml` |
+| Change `AUTH_TOKEN_PEPPER` | [`AUTH_TOKEN_PEPPER`](#troca-do-auth-token-pepper) | `apps/api/test/application/use-cases/auth/rotacao-dos-segredos.spec.ts` | every PR `.github/workflows/ci.yml` |
+| Rotate `BRABO_SERVICE_TOKEN` | [`BRABO_SERVICE_TOKEN`](#rotacao-do-brabo-service-token) | `apps/api/test/infrastructure/security/service-token.spec.ts`, `apps/api/test/interfaces/engine-service.guard.spec.ts`, `apps/engine/test/engine_web/plugs/verify_service_token_test.exs`, `apps/engine/test/engine/runtime_service_token_test.exs`, `apps/broker/src/config.spec.ts` and `scripts/ci/previous-nos-composes.spec.ts` | every PR `.github/workflows/ci.yml` |
+| Put and retire a `_PREVIOUS` in Kubernetes | [Doing it in Kubernetes](#rotacao-no-kubernetes) | `scripts/ci/previous-nos-composes.spec.ts` keeps the `ExternalSecret` on `dataFrom.extract` with no `_PREVIOUS` in `data:`; the sync through a real External Secrets Operator: `make test-rotacao-chave-mestra-k8s` (`deploy/k8s/test-rotacao-chave-mestra.sh`) adds and removes `CREDENTIALS_MASTER_KEY_PREVIOUS` through it; the other `_PREVIOUS` keys: none automated | every PR `.github/workflows/ci.yml` (the spec); weekly `.github/workflows/propriedades.yml` (the master key's `_PREVIOUS`); manual (the other keys) |
+| Unlock an account by SQL | [Account locked by lockout](#conta-travada-por-lockout) | **None.** The two queries were checked against the schema by reading; `apps/api/test/application/use-cases/auth/lockout.spec.ts` covers the lockout, not them | manual |
+| Rotate the master key | [Master key rotation](#rotacao-da-chave-mestra) | `apps/api/test/scripts/rewrap-deks.spec.ts` and `apps/api/test/infrastructure/security/envelope-encryption.service.spec.ts`; the three steps in the cluster: `make test-rotacao-chave-mestra-k8s` (`deploy/k8s/test-rotacao-chave-mestra.sh`) | every PR `.github/workflows/ci.yml` (the specs); weekly `.github/workflows/propriedades.yml` (the rehearsal) |
+| Cut the spend in a cost incident | [Cost incident](#incidente-de-custo) | `apps/api/test/runbook/sql-do-incidente-de-custo.spec.ts` runs the section's SQL, in both languages, against the migrated schema; steps (b) and (d), on the screen: none | every PR `.github/workflows/ci.yml` |
+| Bring up observability without a cluster | [Local observability](#observabilidade-local) | `scripts/dev/observabilidade-pronta.mjs`, a self-check at the end of `pnpm dev:obs`, with no spec | manual |
+| Check the gate registry in the image | [Gate registry](#registro-de-gates) | `docker/smoke.sh` calls both routes against the production image; its gate functions by `scripts/ci/smoke-gates.spec.ts` | every PR `.github/workflows/ci.yml` |
+| Install | [Installing](#instalando) | `.github/workflows/install-e2e.yml` (clean machine) and `scripts/dev/install*.spec.ts`; the migration path end to end: none | every tag `.github/workflows/install-e2e.yml`; every PR `.github/workflows/ci.yml` (the specs) |
+| Turn the installation's broker on or off | [The container broker in an installation](#broker-na-instalacao) | at install: `scripts/dev/install-broker.spec.ts` and `.github/workflows/install-e2e.yml`; turning it on later by hand, and off: none | every tag `.github/workflows/install-e2e.yml`; every PR `.github/workflows/ci.yml` (the spec); manual (later, and off) |
+| Turn the installation's local models on | [Local models in an installation](#modelos-locais-na-instalacao) | at install: `scripts/dev/install-llm.spec.ts`; turning them on later by hand: none | every PR `.github/workflows/ci.yml` (the spec); manual (later) |
+| Reinstall from zero over a previous installation | [Reinstalling from zero](#reinstalar-do-zero) | `scripts/dev/install-llm.spec.ts` | every PR `.github/workflows/ci.yml` |
+| Verify a published artifact | [Verifying a published artifact](#verificar-artefato-publicado) | the publishing workflows verify what they signed, in the same run: `.github/workflows/release.yml` (`cosign verify`) and `.github/workflows/build-runner-binaries.yml` (`cosign verify-blob`) | every tag `.github/workflows/release.yml` `.github/workflows/build-runner-binaries.yml` |
+| Check the written offer of source | [The written offer of source](#oferta-de-fonte-na-imagem) | `scripts/ci/oferta-de-fonte-na-imagem.spec.ts` keeps each `COPY` and the Release asset; the five images built from the PR, read back by `.github/workflows/ci.yml`; the published artifacts carrying the file: none | every PR `.github/workflows/ci.yml` (the spec and the built images); manual (the published artifacts) |
+| Bump a third-party image | [Bumping a third-party image](#subindo-imagem-de-terceiro) | `scripts/ci/imagens-pinadas.ts`, `scripts/ci/imagens-pinadas.spec.ts` and `scripts/ci/imagens-do-compose.spec.ts` | every PR `.github/workflows/ci.yml` |
+| Add a compatible LLM provider | [Adding a compatible provider](#adicionando-um-provider-compativel) | steps 2–4: `apps/api/test/contract/llm-provider.contract.ts`, run by each provider's contract spec; step 6, with a real credential: none in CI — the smoke specs skip without a key | every PR `.github/workflows/ci.yml` (steps 2–4); manual (step 6) |
