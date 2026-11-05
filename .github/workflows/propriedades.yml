@@ -65,8 +65,6 @@ name: Provas de propriedade (agendado)
 # FORA daqui, de propósito: o golden-set do QA (BRB-007), que tem workflow
 # próprio e semanal, `golden-set-qa.yml` (ADR 0168).
 on:
-  push:
-    branches: [feature/restore-em-banco-vazio]
   schedule:
     # Semanal, domingo 04:00 UTC. A cadência é pelo CUSTO MEDIDO — ver
     # `deploy/docs/runbook.md`, seção "Scheduled property proofs".
