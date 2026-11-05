@@ -28,16 +28,6 @@ jobs:
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/al.tgz" | sha256sum -c -
           tar -xzf /tmp/al.tgz -C /tmp actionlint
       - run: /tmp/actionlint -color -ignore SC2016 -ignore SC2129
-  # Política de PR do Brabo (forma do PR, família, destino) — reutilizável do brabo-ci.
-  politica:
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-      pull-requests: write
-    uses: viralabs-dev/brabo-ci/.github/workflows/pr-police.yml@236dc29d9e64a95ba278bd2ec1109940ce3d6e20  # v1.0.0
-    with:
-      ci_ref: v1.0.0
-
   # Typecheck e as aferições (inclusive as CRUZADAS, que leem os clones irmãos na `dev` deles).
   afericoes:
     name: Typecheck e aferições (com os irmãos)
