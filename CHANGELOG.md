@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `trivy-do-release.spec.ts` afere a régua do Trivy nos `release.yml` de hoje (infra, `brabo` e os quatro apps), achando os passos pelo comando e não pelo nome: versão/sha256 e flags iguais, scan por digest antes de `cosign sign`, sem allowlist nova; provado por mutação. Corrige o job vermelho na `dev`.
 - `tag.yml` carimba as tags (1ª = `v1.0.0`). `release.yml` publica `ghcr.io/viralabs-dev/brabo-backup` por tag final (build, Trivy antes de assinar, cosign por digest, verifica no mesmo run) e anexa `imagem.json` à Release; `workflow_dispatch` sem tag é o ensaio (não publica). O monorepo publicava a imagem de backup (`docker-bake.hcl`, alvo `backup`).
 - CI: job `actionlint`.
 - `make dev` / `pnpm dev`: sobe o dev a partir da pasta-mãe dos irmãos (preflight + `compose up`).
