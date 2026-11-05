@@ -1,746 +1,747 @@
 ---
 id: rn-infra
-title: 'Regras de negócio — Infra'
+title: 'Business rules — Infra'
 sidebar_label: Infra
-description: 'As RNs hospedadas na raiz infra.'
-keywords: [regras de negócio, infra]
+description: 'The business rules hosted at the infra root.'
+keywords: [business rules, infra]
+idioma_original: en
 ---
 
 # Infra
 
-### RN-224 — A migração cria a extensão pgvector sozinha, de forma idempotente {#rn-224}
+### RN-224 — The migration creates the pgvector extension by itself, idempotently {#rn-224}
 
-A migration `0045` executa `CREATE EXTENSION IF NOT EXISTS vector` antes de
-criar a tabela, em vez de assumir que `docker/postgres/init.sql` já rodou —
-esse arquivo só executa na PRIMEIRA inicialização do volume Postgres, e um
-ambiente com volume antigo pode não ter a extensão. `IF NOT EXISTS` é
-idempotente: local (onde a extensão já estava instalada) e um ambiente
-novo passam pela mesma linha sem diferença de comportamento.
+The `0045` migration runs `CREATE EXTENSION IF NOT EXISTS vector` before
+creating the table, instead of assuming `docker/postgres/init.sql` has already run —
+that file only executes on the FIRST initialization of the Postgres volume, and an
+environment with an old volume may not have the extension. `IF NOT EXISTS` is
+idempotent: local (where the extension was already installed) and a new
+environment go through the same line with no difference in behavior.
 
-- **Onde:** `apps/api/src/db/migrations/0045_shallow_randall.sql`
+- **Where:** `apps/api/src/db/migrations/0045_shallow_randall.sql`
 - **ADR:** [0079](../adr/0079-tabela-de-chunks-vetor-e-tsvector-juntos.md)
 
-## O papel `dbre` vira dois scripts mecânicos (RN-400..403, ADR 0093)
+## The `dbre` role becomes two mechanical scripts (RN-400..403, ADR 0093)
 
-### RN-402 — O relatório de backup relê exatamente a lógica de `collectBackup()`, nunca uma segunda forma de calcular {#rn-402}
+### RN-402 — The backup report rereads exactly the logic of `collectBackup()`, never a second way of computing {#rn-402}
 
-`relatorio-backup.ts` não é um gauge Prometheus novo — é a MESMA leitura
-de `backup_runs` que `DomainGaugesCollector.collectBackup()` já faz
-(último SUCESSO, para idade e tamanho; a ÚLTIMA execução, para pegar o
-caso de estar falhando há dias com um backup bom mais antigo), sob
-demanda. `avaliarBackup` é pura — recebe as duas linhas e o instante
-atual, devolve `status`
-(`ok`|`atrasado`|`nunca_houve`|`falha_recente_com_sucesso_antigo`). O
-limiar de "atrasado" (26h = `BACKUP_AGE_ATRASADO_SEGUNDOS`) é o MESMO do
-alerta `brabo-backup-atrasado`
-(`deploy/k8s/observability/alerts/brabo-alerts.yaml`), duplicado (não
-importado — o YAML do Grafana não é lido pelo processo Node) e sujeito a
-divergir se um lado mudar sem o outro.
+`relatorio-backup.ts` isn't a new Prometheus gauge — it's the SAME read
+of `backup_runs` that `DomainGaugesCollector.collectBackup()` already does
+(last SUCCESS, for age and size; the LAST run, to catch the
+case of failing for days with an older good backup), on
+demand. `avaliarBackup` is pure — it receives the two rows and the current
+instant, returns `status`
+(`ok`|`atrasado`|`nunca_houve`|`falha_recente_com_sucesso_antigo`). The
+"late" threshold (26h = `BACKUP_AGE_ATRASADO_SEGUNDOS`) is the SAME as the
+`brabo-backup-atrasado` alert
+(`deploy/k8s/observability/alerts/brabo-alerts.yaml`), duplicated (not
+imported — the Grafana YAML isn't read by the Node process) and subject to
+diverging if one side changes without the other.
 
-- **Onde:** `apps/api/scripts/relatorio-backup.ts` (`avaliarBackup`, linha
-  82; `BACKUP_AGE_ATRASADO_SEGUNDOS`, linha 54)
-- **Teste:** `apps/api/test/scripts/relatorio-backup.spec.ts` — nunca
-  houve backup, backup ok, atrasado, exatamente no limiar (não conta como
-  atrasado), falha recente com sucesso antigo, atrasado tem prioridade
-  sobre falha recente, idade nunca negativa
+- **Where:** `apps/api/scripts/relatorio-backup.ts` (`avaliarBackup`, line
+  82; `BACKUP_AGE_ATRASADO_SEGUNDOS`, line 54)
+- **Test:** `apps/api/test/scripts/relatorio-backup.spec.ts` — there was never
+  a backup, backup ok, late, exactly at the threshold (doesn't count as
+  late), recent failure with an old success, late takes priority
+  over recent failure, age never negative
 - **ADR:** [0093](../adr/0093-dbre-linter-de-migracao-e-relatorio-de-backup.md)
 
-### RN-403 — O relatório de backup NÃO reexecuta o restore; ele aponta para o procedimento já testado {#rn-403}
+### RN-403 — The backup report does NOT rerun the restore; it points to the already tested procedure {#rn-403}
 
-O procedimento de restaurar de verdade (`make test-restore` /
-`deploy/k8s/test-restore.sh`) já foi executado e está documentado em
-`docs/runbook.md#restore`, com RTO real (~40s contra um banco de ~108 KB)
-registrado na seção "Última execução verificada" daquele documento.
-`relatorio-backup.ts` responde uma pergunta mais estreita e mais
-frequente — "o backup que esse restore usaria está saudável agora?" — e
-cita o runbook para quem precisa de fato restaurar, em vez de duplicar o
-procedimento ou reexecutá-lo.
+The procedure for actually restoring (`make test-restore` /
+`deploy/k8s/test-restore.sh`) has already been executed and is documented in
+`docs/runbook.md#restore`, with real RTO (~40s against a ~108 KB database)
+recorded in that document's "Last verified run" section.
+`relatorio-backup.ts` answers a narrower and more
+frequent question — "is the backup that this restore would use healthy now?" — and
+cites the runbook for whoever really needs to restore, instead of duplicating the
+procedure or rerunning it.
 
-- **Onde:** `apps/api/scripts/relatorio-backup.ts` (mensagem final de
-  `imprimir`, citando `docs/runbook.md#restore`)
-- **Teste:** não aplicável (é texto estático apontando para o runbook,
-  não lógica); a existência do procedimento testado é RN de
-  `docs/runbook.md#restore` em si
+- **Where:** `apps/api/scripts/relatorio-backup.ts` (final message of
+  `imprimir`, citing `docs/runbook.md#restore`)
+- **Test:** not applicable (it's static text pointing to the runbook,
+  not logic); the existence of the tested procedure is an RN of
+  `docs/runbook.md#restore` itself
 - **ADR:** [0093](../adr/0093-dbre-linter-de-migracao-e-relatorio-de-backup.md)
 
 ---
 
-## "N agentes online" no dashboard — status AO VIVO, nunca presença histórica (RN-409, ADR 0097)
+## "N agents online" on the dashboard — LIVE status, never historical presence (RN-409, ADR 0097)
 
-### RN-413 — Templates de prompt vivem fora do código, versionados no grafo {#rn-413}
+### RN-413 — Prompt templates live outside the code, versioned in the graph {#rn-413}
 
-Todo prompt de agente era heredoc Elixir inline até esta entrega —
-identidades (`Engine.Harness.Agents`), kickoffs de PO/Arquiteto/Dev
-Lead/UX/Infra, o prompt de sumarização do `ContextManager`. Um template
-de prompt agora pode viver como `(:PromptTemplate {name})-[:HAS_VERSION]->
-(:PromptVersion {version, body, hash, active})` no Neo4j, gravado via
-`POST /internal/graph/prompt-templates` e lido via `GET
-/internal/graph/prompt-templates/:name`. Upsert é idempotente por hash —
-gravar o MESMO conteúdo duas vezes não cria versão nova, só a versão com
-hash igual já existente é devolvida.
+Every agent prompt was an inline Elixir heredoc until this delivery —
+identities (`Engine.Harness.Agents`), the kickoffs of PO/Arquiteto/Dev
+Lead/UX/Infra, the `ContextManager` summarization prompt. A prompt
+template can now live as `(:PromptTemplate {name})-[:HAS_VERSION]->
+(:PromptVersion {version, body, hash, active})` in Neo4j, written via
+`POST /internal/graph/prompt-templates` and read via `GET
+/internal/graph/prompt-templates/:name`. Upsert is idempotent by hash —
+writing the SAME content twice doesn't create a new version, only the already
+existing version with an equal hash is returned.
 
-Primeira leva extraída para `prompts/*.md` (front-matter `name`/`version`,
-placeholders documentados numa seção "Variáveis" para trechos que no
-`.ex` original eram interpolação): `ux-designer-identity`,
+First batch extracted to `prompts/*.md` (front-matter `name`/`version`,
+placeholders documented in a "Variáveis" section for passages that in
+the original `.ex` were interpolation): `ux-designer-identity`,
 `psychologist-kickoff`, `anamnese-kickoff`, `context-manager-summarize`.
-`scripts/dev/seed-prompts.ts` lê `prompts/*.md`, calcula hash sha256 do
-corpo e envia ao endpoint acima. **Nenhum `.ex` foi editado nesta
-entrega** — os quatro GenServers continuam com o texto inline; consumir
-os templates do grafo (fonte `:graph` do `InstructionFiles`, precedência
-`db > graph > dir > root`) é a Onda seguinte, declarada fora daqui.
+`scripts/dev/seed-prompts.ts` reads `prompts/*.md`, computes the sha256 hash of the
+body, and sends it to the endpoint above. **No `.ex` was edited in this
+delivery** — the four GenServers keep the inline text; consuming
+the templates from the graph (the `:graph` source of `InstructionFiles`, precedence
+`db > graph > dir > root`) is the next Wave, declared out of scope here.
 
-- **Onde:** `apps/api/src/application/use-cases/graph/upsert-prompt-template.use-case.ts`,
+- **Where:** `apps/api/src/application/use-cases/graph/upsert-prompt-template.use-case.ts`,
   `get-prompt-template.use-case.ts`; `apps/api/src/interfaces/http/internal/internal-graph.controller.ts`;
   `prompts/*.md`, `prompts/README.md`; `scripts/dev/seed-prompts.ts`
   (`SECAO_DE_DOCUMENTACAO`, `corpoSemDocumentacao`, `parseFrontMatter`)
-- **Teste:** casos de uso com `GraphStore` mockado (upsert com mesmo hash
-  não duplica) + teste de integração contra Neo4j real, pulando
-  graciosamente quando indisponível; `scripts/dev/seed-prompts.spec.ts`
-  (parsing de front-matter, hash determinístico, template malformado
-  reprova com mensagem clara; e, desde a AT-244, a varredura de TODO
-  `prompts/*.md`: o corpo semeado não tem a seção de documentação e cada
-  placeholder aparece nele uma vez só, e o sumarizador recebe os turnos uma
-  vez só pelo mesmo render do engine)
+- **Test:** use cases with a mocked `GraphStore` (upsert with the same hash
+  doesn't duplicate) + integration test against real Neo4j, skipping
+  gracefully when unavailable; `scripts/dev/seed-prompts.spec.ts`
+  (front-matter parsing, deterministic hash, malformed template
+  fails with a clear message; and, since AT-244, the sweep of EVERY
+  `prompts/*.md`: the seeded body doesn't have the documentation section and each
+  placeholder appears in it only once, and the summarizer receives the turns only
+  once through the same engine render)
 
-> **Desde a AT-244** a seção "## Variáveis" de cada arquivo NÃO é semeada: o
-> corpo do template termina na linha `## Variáveis`, e o seeder descarta dela
-> em diante. Antes o corpo levava a seção inteira — documentação que cita os
-> mesmos `{{placeholders}}` do corpo —, e como cada consumidor troca TODAS as
-> ocorrências (`String.replace/3`), com `graph_templates_enabled?` ligada o
-> modelo recebia a documentação e o dado DUAS vezes: o sumarizador do
-> `ContextManager` os turnos em dobro, os kickoffs do Psicólogo e da Anamnese o
-> log de eventos em dobro, e a identidade do UX (atrás da
-> `graph_instruction_templates_enabled?`) a documentação em todo turno. Os
-> quatro arquivos tinham a forma; o corte mora no SEEDER, e não no render,
-> porque há um render por consumidor e a pergunta "o que é corpo" é sobre o
-> arquivo, que só o seeder lê. As versões subiram (`anamnese-kickoff` e
-> `ux-designer-identity` para `"2"`, `psychologist-kickoff` e
-> `context-manager-summarize` para `"3"`) com o MESMO texto de prompt. **Não
-> fecha sozinho numa instalação que já semeou**: a versão ATIVA no grafo segue
-> a antiga, com a documentação, até rodar `scripts/dev/seed-prompts.ts` de
-> novo — o hash do corpo mudou, então o seeder cria a versão nova e desativa a
-> anterior. Com as flags desligadas (o default) o defeito nunca existiu: vale o
-> texto inline, que nunca teve a seção.
-- **Origem:** decisão do dono do produto, inspirada no repositório
+> **Since AT-244** the "## Variáveis" section of each file is NOT seeded: the
+> template's body ends at the `## Variáveis` line, and the seeder discards from it
+> onward. Before, the body carried the whole section — documentation that cites the
+> same `{{placeholders}}` as the body —, and since each consumer replaces ALL
+> occurrences (`String.replace/3`), with `graph_templates_enabled?` on the
+> model received the documentation and the data TWICE: the `ContextManager`
+> summarizer the turns doubled, the kickoffs of the Psicólogo and the Anamnese the
+> event log doubled, and the UX identity (behind
+> `graph_instruction_templates_enabled?`) the documentation in every turn. The
+> four files had the shape; the cut lives in the SEEDER, and not in the render,
+> because there's one render per consumer and the question "what is body" is about the
+> file, which only the seeder reads. The versions went up (`anamnese-kickoff` and
+> `ux-designer-identity` to `"2"`, `psychologist-kickoff` and
+> `context-manager-summarize` to `"3"`) with the SAME prompt text. **It
+> doesn't close on its own in an installation that has already seeded**: the ACTIVE version in the graph stays
+> the old one, with the documentation, until `scripts/dev/seed-prompts.ts` runs
+> again — the body's hash changed, so the seeder creates the new version and deactivates the
+> previous one. With the flags off (the default) the defect never existed: the
+> inline text applies, which never had the section.
+- **Origin:** product owner's decision, inspired by the repository
   [ErickWendel/neo4j-ai-experiments](https://github.com/ErickWendel/neo4j-ai-experiments)
-  (ver [ADR 0099](../adr/0099-neo4j-grafo-de-conhecimento-e-templates.md))
+  (see [ADR 0099](../adr/0099-neo4j-grafo-de-conhecimento-e-templates.md))
 
 ---
 
-### RN-415 — Modelos Ollama garantidos no boot, degradação do RAG declarada {#rn-415}
+### RN-415 — Ollama models guaranteed at boot, RAG degradation declared {#rn-415}
 
-`nomic-embed-text` (`RAG_EMBEDDING_MODEL`) nunca era puxado
-automaticamente — bug real, não só desta feature: o entrypoint do
-serviço `ollama` só puxava `llama3.2:1b`, e o RAG degradava para
-léxico-only em SILÊNCIO em qualquer ambiente limpo, sem nenhum sinal de
-que isso estava acontecendo. Serviço novo `ollama-model-loader` (one-shot,
-`docker-compose.yml` dev e prod), lendo `OLLAMA_REQUIRED_MODELS`
-(default `gemma3:1b,yi-coder:1.5b,nomic-embed-text`), aditivo ao serviço
-`ollama` existente — o entrypoint dele continua intocado.
+`nomic-embed-text` (`RAG_EMBEDDING_MODEL`) was never pulled
+automatically — a real bug, not only of this feature: the `ollama` service's
+entrypoint only pulled `llama3.2:1b`, and RAG degraded to
+lexical-only SILENTLY in any clean environment, with no sign
+that this was happening. A new service `ollama-model-loader` (one-shot,
+dev and prod `docker-compose.yml`), reading `OLLAMA_REQUIRED_MODELS`
+(default `gemma3:1b,yi-coder:1.5b,nomic-embed-text`), additive to the existing
+`ollama` service — its entrypoint stays untouched.
 
-A degradação deixou de ser silenciosa: `rag_search` (RN-414) e a busca
-híbrida da api já devolviam `degraded: true` quando o embedding falhava
-— o que faltava era um CONSUMIDOR que tornasse essa flag visível. Agora
-que a tool existe, o próprio modelo vê o aviso no texto formatado, e o
-model-loader reduz a chance de a degradação acontecer em primeiro lugar.
+The degradation is no longer silent: `rag_search` (RN-414) and the api's hybrid
+search already returned `degraded: true` when embedding failed
+— what was missing was a CONSUMER that made that flag visible. Now
+that the tool exists, the model itself sees the warning in the formatted text, and the
+model-loader reduces the chance of degradation happening in the first place.
 
-- **Onde:** `docker/docker-compose.yml`, `docker/docker-compose.prod.yml`,
+- **Where:** `docker/docker-compose.yml`, `docker/docker-compose.prod.yml`,
   `docker/ollama/pull-models.sh`; `deploy/k8s/base/neo4j/`,
-  `deploy/k8s/base/ollama/job-model-loader.yaml` (template, NÃO wireado
-  em nenhuma kustomization — `deploy/k8s/` ainda não tem Service `ollama`
-  pra apontar, ligar isso hoje faria CrashLoopBackOff em todo deploy real)
-- **Teste:** `scripts/dev/verificar-modelos-ollama.sh`, executado de
-  ponta a ponta com um modelo pequeno real (`all-minilm`) para não pagar
-  o custo de vários GB da lista de produção numa máquina compartilhada
-- **Origem:** achado durante a fundação do grafo de conhecimento — ver
+  `deploy/k8s/base/ollama/job-model-loader.yaml` (template, NOT wired
+  into any kustomization — `deploy/k8s/` doesn't yet have an `ollama` Service
+  to point to, wiring it today would cause CrashLoopBackOff in every real deploy)
+- **Test:** `scripts/dev/verificar-modelos-ollama.sh`, executed end
+  to end with a real small model (`all-minilm`) so as not to pay
+  the cost of several GB of the production list on a shared machine
+- **Origin:** found during the foundation of the knowledge graph — see
   [ADR 0100](../adr/0100-rag-search-e-modelos-garantidos-no-boot.md)
 
 ---
 
-## Terminal do runner local preso em "Abrindo terminal..." para sempre (RN-433)
+## Local runner terminal stuck at "Opening terminal..." forever (RN-433)
 
-Achado testando um projeto novo no modo `runner` (ADR 0103/0104) e abrindo
-Code → Dev → Terminal: a tela nunca saía do skeleton de carregamento, e o
-console mostrava `socket do terminal com erro`/`socket do terminal fechado`
-em loop, com backoff crescente até estabilizar em ~5-6s — o padrão do
-backoff PADRÃO do `phoenix.js`.
+Found testing a new project in `runner` mode (ADR 0103/0104) and opening
+Code → Dev → Terminal: the screen never left the loading skeleton, and the
+console showed `socket do terminal com erro`/`socket do terminal fechado`
+in a loop, with growing backoff until stabilizing at ~5-6s — the pattern of the
+`phoenix.js` DEFAULT backoff.
 
-### RN-433 — O socket do terminal desiste depois de um timeout, o default de `ENGINE_PUBLIC_URL` é alcançável PELO BROWSER, e o endpoint não duplica path {#rn-433}
+### RN-433 — The terminal socket gives up after a timeout, the `ENGINE_PUBLIC_URL` default is reachable BY THE BROWSER, and the endpoint doesn't duplicate the path {#rn-433}
 
-Três defeitos empilhados. Os dois primeiros foram achados investigando o
-sintoma; o TERCEIRO só apareceu depois de corrigir os dois primeiros — sem
-eles, o browser nunca alcançava o engine pra revelar o bug de path por
-baixo. Corrigir só um deixa os outros de pé:
+Three stacked defects. The first two were found investigating the
+symptom; the THIRD only showed up after fixing the first two — without
+them, the browser never reached the engine to reveal the path bug
+underneath. Fixing only one leaves the others standing:
 
-1. `ENGINE_PUBLIC_URL` (RN-419) nunca tinha default nenhum no
-   `docker/docker-compose.yml` — só `ENGINE_URL` (`http://engine:4000`,
-   hostname que SÓ resolve dentro da rede do Compose). O fallback do
-   código (`process.env.ENGINE_PUBLIC_URL ?? process.env.ENGINE_URL ?? …`,
-   `request-runner-ticket.use-case.ts`) caía silenciosamente no valor
-   errado, e o browser tentava abrir um WebSocket contra um hostname que
-   ele nunca resolve. `docker/docker-compose.yml` ganhou
-   `ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://localhost:4000}` no
-   serviço `api` — o MESMO default que `VITE_ENGINE_URL` já usa no
-   serviço `web`, pelo mesmo motivo.
-2. Mesmo com a URL certa, um transporte que NUNCA abre (engine fora do ar,
-   firewall, reconfiguração futura errada) não tinha teto nenhum:
-   `apps/web/src/lib/terminal-channel.ts` nunca passava `reconnectAfterMs`
-   pro `Socket`, então o `phoenix.js` caía no backoff PADRÃO dele e ficava
-   tentando reconectar sozinho pra sempre — o próprio docblock do módulo
-   já declarava a intenção de "sem reconexão automática" (mesma régua de
-   `session-channel.ts`/RN-108), mas nunca era cumprida na prática. Sem
-   `onError`/`onClose` chamando `handlers.onErro`, `TerminalPanel` ficava
-   preso em `'carregando'` (RN-088 — toda tela distingue carregando/erro/
-   vazio — violada em silêncio). Corrigido com `reconnectAfterMs` devolvendo
-   um valor que praticamente nunca dispara (24h, mesmo padrão de
-   `session-channel.ts`) e um timeout PRÓPRIO de 8s
-   (`TIMEOUT_CONEXAO_MS`): se `onOpen` não disparar antes disso, o módulo
-   chama `handlers.onErro` com mensagem acionável e desconecta.
-3. **O defeito que de fato impedia a conexão, mascarado pelos dois
-   acima**: `terminal-channel.ts` concatenava `'/runner/websocket'` a um
-   `engineWsUrl` que a api já devolve PRONTO — `ws://host:porta/runner`
-   (`engineWsUrlPublico()`) —, e o PRÓPRIO `Socket` do `phoenix.js` ainda
-   acrescenta `/websocket` sozinho no construtor
-   (`this.endPoint = ${endPoint}/websocket`). O resultado batia no engine
-   como `GET /runner/runner/websocket/websocket`, que
-   `Phoenix.Router.NoRouteError` recusa — confirmado no log do engine
-   (`docker logs brabo-engine-1`) durante a verificação end-to-end desta
-   correção. `apps/runner/src/channel.ts` (o lado do CLI) já fazia
-   certo — passa `engineWsUrl` direto pro `Socket`, sem tocar — e o teste
-   de `terminal-channel.ts` nunca pegou porque o mock de
-   `getTerminalTicket` usava um `engineWsUrl` (`http://engine.local`, sem
-   `/runner`) que não reflete o contrato real da api; corrigido junto.
-   Fix: `terminal-channel.ts` passa a usar `engineWsUrl` (só com o
-   `.replace(/^http/, 'ws')` defensivo) direto, sem concatenar path
-   nenhum.
+1. `ENGINE_PUBLIC_URL` (RN-419) never had any default in
+   `docker/docker-compose.yml` — only `ENGINE_URL` (`http://engine:4000`,
+   a hostname that ONLY resolves inside the Compose network). The code's fallback
+   (`process.env.ENGINE_PUBLIC_URL ?? process.env.ENGINE_URL ?? …`,
+   `request-runner-ticket.use-case.ts`) silently fell to the wrong
+   value, and the browser tried to open a WebSocket against a hostname
+   it never resolves. `docker/docker-compose.yml` gained
+   `ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://localhost:4000}` in the
+   `api` service — the SAME default `VITE_ENGINE_URL` already uses in the
+   `web` service, for the same reason.
+2. Even with the right URL, a transport that NEVER opens (engine down,
+   firewall, a wrong future reconfiguration) had no ceiling at all:
+   `apps/web/src/lib/terminal-channel.ts` never passed `reconnectAfterMs`
+   to the `Socket`, so `phoenix.js` fell into its DEFAULT backoff and kept
+   trying to reconnect on its own forever — the module's own docblock
+   already declared the intent of "no automatic reconnection" (same ruler as
+   `session-channel.ts`/RN-108), but it was never fulfilled in practice. Without
+   `onError`/`onClose` calling `handlers.onErro`, `TerminalPanel` stayed
+   stuck in `'carregando'` (RN-088 — every screen distinguishes loading/error/
+   empty — silently violated). Fixed with `reconnectAfterMs` returning
+   a value that practically never fires (24h, same pattern as
+   `session-channel.ts`) and an OWN 8s timeout
+   (`TIMEOUT_CONEXAO_MS`): if `onOpen` doesn't fire before that, the module
+   calls `handlers.onErro` with an actionable message and disconnects.
+3. **The defect that actually prevented the connection, masked by the two
+   above**: `terminal-channel.ts` concatenated `'/runner/websocket'` to an
+   `engineWsUrl` the api already returns READY — `ws://host:porta/runner`
+   (`engineWsUrlPublico()`) —, and `phoenix.js`'s OWN `Socket` also
+   appends `/websocket` by itself in the constructor
+   (`this.endPoint = ${endPoint}/websocket`). The result hit the engine
+   as `GET /runner/runner/websocket/websocket`, which
+   `Phoenix.Router.NoRouteError` refuses — confirmed in the engine's log
+   (`docker logs brabo-engine-1`) during the end-to-end verification of this
+   fix. `apps/runner/src/channel.ts` (the CLI side) already did it
+   right — it passes `engineWsUrl` straight to the `Socket`, without touching it — and the
+   `terminal-channel.ts` test never caught it because the mock of
+   `getTerminalTicket` used an `engineWsUrl` (`http://engine.local`, without
+   `/runner`) that doesn't reflect the api's real contract; fixed along with it.
+   Fix: `terminal-channel.ts` now uses `engineWsUrl` (only with the
+   defensive `.replace(/^http/, 'ws')`) directly, without concatenating any
+   path.
 
-Verificado END TO END contra `exp001` (modo `runner`, sem `brabo-runner`
-real conectado): antes da correção, a aba girava pra sempre; depois, o
-log do engine mostra `CONNECTED TO EngineWeb.RunnerSocket` →
+Verified END TO END against `exp001` (`runner` mode, without a real
+`brabo-runner` connected): before the fix, the tab spun forever; after, the
+engine's log shows `CONNECTED TO EngineWeb.RunnerSocket` →
 `JOINED terminal:<projectId>` → `pty_resize descartado — sem runner
-conectado`, e a tela mostra `RunnerOnboardingPanel` com o comando
-`brabo-runner` em menos de 1s — nunca o timeout de 8s do item 2, que
-segue como rede de segurança pro caso do engine estar genuinamente fora
-do ar.
+conectado`, and the screen shows `RunnerOnboardingPanel` with the
+`brabo-runner` command in under 1s — never item 2's 8s timeout, which
+remains as a safety net for the case of the engine being genuinely
+down.
 
-- **Onde:** `docker/docker-compose.yml`, `.env.example`,
+- **Where:** `docker/docker-compose.yml`, `.env.example`,
   `apps/web/src/lib/terminal-channel.ts`
-- **Teste:** `apps/web/src/lib/terminal-channel.test.ts` (socket que nunca
-  abre chama `onErro` dentro do timeout, sem reconexão automática do
-  phoenix; `engineWsUrl` do mock corrigido pra refletir o contrato real —
-  já com `/runner`, sem `/websocket` — e a asserção do caminho feliz
-  passa a exigir a URL usada no `Socket` IGUAL ao `engineWsUrl` do
-  ticket, sem concatenação)
-- **ADR:** nenhum — correção de bug restaurando o comportamento que o ADR
-  0103/0104 e o próprio docblock do módulo já declaravam como intenção
-- **Origem:** achado testando manualmente um projeto novo no modo
-  `runner`; o item 3 só apareceu ao verificar a correção dos itens 1/2
-  ponta a ponta no browser contra o engine real
+- **Test:** `apps/web/src/lib/terminal-channel.test.ts` (a socket that never
+  opens calls `onErro` within the timeout, without phoenix's automatic
+  reconnection; the mock's `engineWsUrl` fixed to reflect the real contract —
+  already with `/runner`, without `/websocket` — and the happy path assertion
+  now requires the URL used in the `Socket` EQUAL to the ticket's
+  `engineWsUrl`, with no concatenation)
+- **ADR:** none — a bug fix restoring the behavior that ADR
+  0103/0104 and the module's own docblock already declared as intent
+- **Origin:** found manually testing a new project in
+  `runner` mode; item 3 only showed up when verifying the fix of items 1/2
+  end to end in the browser against the real engine
 
 ---
 
-## Ollama nativo no bootstrap dev e pull de modelo Hugging Face (RN-461..463, ADR 0114/0115)
+## Native Ollama in the dev bootstrap and Hugging Face model pull (RN-461..463, ADR 0114/0115)
 
-### RN-461 — Ollama nativo: pergunta uma vez, a resposta persiste em `.env`, nunca pergunta de novo {#rn-461}
+### RN-461 — Native Ollama: asks once, the answer persists in `.env`, never asks again {#rn-461}
 
-`scripts/dev/preflight.mjs` detecta um Ollama nativo já escutando em
-`OLLAMA_PORT` (mesmo default, 11434, de uma instalação nativa) confirmando
-por HTTP (`GET /api/tags`) que é mesmo um Ollama, não qualquer processo na
-porta. Confirmado, PERGUNTA uma única vez se é para usar essa instância —
-default "Sim" quando não há TTY (o `bootstrap.sh` roda o comando com stdin
-de `/dev/null` de propósito, para não roubar as setas do usuário) — e
-grava a resposta em `.env` (`OLLAMA_MODE=host|container`). A partir daí a
-detecção nem roda de novo: com `OLLAMA_MODE` já presente, a função
-retorna cedo. `ollama`/`ollama-model-loader` entram em `profiles:
-["local-llm"]` no compose para não subirem quando o modo é `host`. A
-ÚNICA forma de reabrir a pergunta é o item de menu dedicado "Docker ›
-Reconfigurar Ollama", que apaga as chaves gravadas — nunca uma pergunta
-espontânea de novo enquanto elas existirem.
+`scripts/dev/preflight.mjs` detects a native Ollama already listening on
+`OLLAMA_PORT` (the same default, 11434, as a native installation) confirming
+by HTTP (`GET /api/tags`) that it really is an Ollama, not any process on the
+port. Confirmed, it ASKS only once whether to use that instance —
+default "Yes" when there's no TTY (`bootstrap.sh` runs the command with stdin
+from `/dev/null` on purpose, so as not to steal the user's arrow keys) — and
+writes the answer to `.env` (`OLLAMA_MODE=host|container`). From then on the
+detection doesn't even run again: with `OLLAMA_MODE` already present, the function
+returns early. `ollama`/`ollama-model-loader` enter `profiles:
+["local-llm"]` in the compose so they don't come up when the mode is `host`. The
+ONLY way to reopen the question is the dedicated menu item "Docker ›
+Reconfigure Ollama", which deletes the written keys — never a spontaneous
+question again while they exist.
 
-- **Onde:** `scripts/dev/env-file.mjs:41` (`escreverEnv`),
+- **Where:** `scripts/dev/env-file.mjs:41` (`escreverEnv`),
   `scripts/dev/preflight.mjs:157` (`ehOllama`),
   `scripts/dev/preflight.mjs:202` (`perguntarUsoDoOllama`),
   `scripts/dev/preflight.mjs:238` (`detectarOllamaNativo`),
   `scripts/dev/reconfigurar-ollama.sh`, `scripts/dev/perfil-ollama.sh`,
   `docker/docker-compose.yml:82,119` (`profiles: ["local-llm"]`)
-- **Teste:** `scripts/dev/bootstrap.spec.ts` (cobre a fiação do menu — o
-  perfil condicional em Deploy › All/Create e o item dedicado
-  "Reconfigurar Ollama"). A lógica de detecção/persistência em si
-  (`detectarOllamaNativo`/`escreverEnv`) foi validada ponta a ponta
-  manualmente contra um servidor HTTP fake e contra o Ollama real desta
-  máquina (ver ADR 0114) — **lacuna declarada**: não existe suíte
-  automatizada própria para `preflight.mjs` hoje.
+- **Test:** `scripts/dev/bootstrap.spec.ts` (covers the menu wiring — the
+  conditional profile in Deploy › All/Create and the dedicated item
+  "Reconfigurar Ollama"). The detection/persistence logic itself
+  (`detectarOllamaNativo`/`escreverEnv`) was validated end to end
+  manually against a fake HTTP server and against this machine's real Ollama
+  (see ADR 0114) — **declared gap**: there's no dedicated automated suite
+  for `preflight.mjs` today.
 - **ADR:** [0114](../adr/0114-deteccao-de-ollama-nativo-no-bootstrap-dev.md)
-- **Origem:** pedido do dono do produto, achado real durante a execução
-  (colisão de porta com Ollama nativo)
+- **Origin:** product owner's request, a real finding during execution
+  (port collision with a native Ollama)
 
-## O consentimento da base, no host (RN-511)
+## The base's consent, on the host (RN-511)
 
-### RN-511 — A base é CONSENTIDA uma vez no host, o compartilhamento é provado MONTANDO, e sem terminal o passo relata em vez de consentir {#rn-511}
+### RN-511 — The base is CONSENTED once on the host, sharing is proven by MOUNTING, and without a terminal the step reports instead of consenting {#rn-511}
 
-A [RN-500](api.md#rn-500) construiu a base e disse o que fazer quando ela falta —
-`projectsBase: null`, e o modo "Pasta montada" não é oferecido. O que faltava
-era alguém **pedir** que ela fosse configurada: nada no produto o fazia, e o
-resultado é que um modo pronto ficou inalcançável para quem instala.
+[RN-500](api.md#rn-500) built the base and said what to do when it's missing —
+`projectsBase: null`, and the "Mounted folder" mode isn't offered. What was missing
+was someone **asking** for it to be configured: nothing in the product did, and the
+result is that a ready mode became unreachable for whoever installs.
 
-O passo de consentimento vive em `pnpm bootstrap` (`Docker › Base de
-projetos`), propõe **`$HOME/projetos-brabo`** e aceita outro caminho digitado.
-O nome não é preferência: `.env.example` já usa `~/brabo-projetos` como exemplo
-de `PROJECT_WORKSPACES_HOST_DIR`, a raiz que o PRODUTO gerencia, e propor o
-mesmo nome para as duas variáveis seria andar para dentro da colisão que o
-ADR 0141 recusou — `<base>/loja` cairia na mesma pasta física de um projeto
-`container` cujo `workspace_dir_name` também fosse `loja`, e o bootstrap daria
-`git init` dentro do projeto do outro.
+The consent step lives in `pnpm bootstrap` (`Docker › Projects
+base`), proposes **`$HOME/projetos-brabo`**, and accepts another typed path.
+The name isn't a preference: `.env.example` already uses `~/brabo-projetos` as an example
+of `PROJECT_WORKSPACES_HOST_DIR`, the root the PRODUCT manages, and proposing the
+same name for both variables would be walking into the collision that
+ADR 0141 refused — `<base>/loja` would land in the same physical folder as a
+`container` project whose `workspace_dir_name` was also `loja`, and the bootstrap would do
+`git init` inside the other's project.
 
-**O nome é só a esquiva; a proteção é mecanismo.** `validarBase` recusa
-qualquer candidata que se sobreponha — nos DOIS sentidos — ao checkout do Brabo
-(a guarda que a RN-500 já tinha) **ou** a `PROJECT_WORKSPACES_HOST_DIR` (a
-regra nova), além de recusar `~`, caminho relativo e a raiz. A recusa vale para
-o caminho DIGITADO, não só para o default; um default bem escolhido só evita
-que a recusa seja a primeira coisa que o usuário veja.
+**The name is only the dodge; the protection is a mechanism.** `validarBase` refuses
+any candidate that overlaps — in BOTH directions — Brabo's checkout
+(the guard RN-500 already had) **or** `PROJECT_WORKSPACES_HOST_DIR` (the
+new rule), besides refusing `~`, a relative path, and the root. The refusal applies to
+the TYPED path, not only to the default; a well-chosen default only avoids
+the refusal being the first thing the user sees.
 
-**O compartilhamento do Docker Desktop é provado MONTANDO, nunca lido de
-`settings.json`.** Aquele arquivo não é documentado, muda entre versões e entre
-macOS e Windows, e descreve o que o usuário CONFIGUROU — não o que o daemon
-fará. É a mesma régua de "capability só é declarada quando provada por
-execução" dos ADRs 0041/0042, aplicada ao host. A prova é uma **sentinela**, e
-não um `ls` seco: pasta vazia e pasta não compartilhada produzem a mesma
-listagem vazia, então o script escreve um arquivo e pergunta se o container o
-enxerga. Só em macOS e Windows (`process.platform`); no Linux não há lista de
-compartilhamento, e a checagem é existência e escrita. É a SEGUNDA guarda de
-plataforma do produto, simétrica à primeira (`validarDirDentroDoHomeNoLinux`,
-no runner): cada uma restringe apenas onde a restrição significa alguma coisa.
+**Docker Desktop sharing is proven by MOUNTING, never read from
+`settings.json`.** That file isn't documented, changes between versions and between
+macOS and Windows, and describes what the user CONFIGURED — not what the
+daemon will do. It's the same ruler of "a capability is only declared when proven by
+execution" of ADRs 0041/0042, applied to the host. The proof is a **sentinel**, and
+not a bare `ls`: an empty folder and a non-shared folder produce the same
+empty listing, so the script writes a file and asks whether the container
+sees it. Only on macOS and Windows (`process.platform`); on Linux there's no sharing
+list, and the check is existence and write. It's the product's SECOND
+platform guard, symmetric to the first (`validarDirDentroDoHomeNoLinux`,
+in the runner): each one restricts only where the restriction means something.
 
-A prova tem **três desfechos, e eles não colapsam**: provado; reprovado (a
-variável **não** é gravada, e a recusa nomeia o caminho e onde adicioná-lo); e
-*não consegui provar* — sem imagem Docker local para montar —, que grava a
-variável e **diz em voz alta que a prova não rodou**, com o comando para
-rodá-la depois. "Não consegui olhar" virar "está tudo bem" é exatamente como
-uma base não compartilhada chegaria ao usuário na forma de um container que
-sobe com a pasta vazia, longe da tela onde a escolha foi feita.
+The proof has **three outcomes, and they don't collapse**: proven; failed (the
+variable is **not** written, and the refusal names the path and where to add it); and
+*couldn't prove* — no local Docker image to mount —, which writes the
+variable and **says out loud that the proof didn't run**, with the command to
+run it later. "Couldn't look" becoming "everything's fine" is exactly how
+a non-shared base would reach the user in the form of a container that
+comes up with an empty folder, far from the screen where the choice was made.
 
-**Sem TTY, o passo RELATA e não faz nada.** O item de menu do `bootstrap.sh`
-roda com stdin vindo de `/dev/null` — de propósito, senão qualquer coisa que
-leia stdin rouba as setas do usuário — então de lá o script só pode relatar, e
-a saída diz o comando que pergunta. É o mesmo desenho de
-`perguntarUsoDoOllama`, que sem terminal aplica o default e avisa em vez de
-travar. Um script de consentimento que "consente" sozinho num pipe de CI é a
-negação da palavra. Pelo mesmo motivo `preflight.mjs` **relata** o estado da
-base e nunca pergunta: a resposta é um caminho no disco de alguém, e não existe
-default que se possa aplicar em silêncio.
+**Without a TTY, the step REPORTS and does nothing.** The `bootstrap.sh` menu item
+runs with stdin coming from `/dev/null` — on purpose, otherwise anything that
+reads stdin steals the user's arrow keys — so from there the script can only report,
+and the output says the command that asks. It's the same design as
+`perguntarUsoDoOllama`, which without a terminal applies the default and warns instead of
+hanging. A consent script that "consents" on its own in a CI pipe is the
+negation of the word. For the same reason `preflight.mjs` **reports** the base's
+state and never asks: the answer is a path on someone's disk, and there's no
+default that can be applied silently.
 
-`mkdir -p` só acontece **depois** do aceite e da validação — criar pasta a
-partir de um caminho que ainda não passou pelas recusas é criar pasta em
-qualquer lugar que o processo alcance. E valor já presente nunca é sobrescrito
-sem confirmação.
+`mkdir -p` only happens **after** acceptance and validation — creating a folder
+from a path that hasn't yet gone through the refusals is creating a folder in
+any place the process reaches. And an already present value is never overwritten
+without confirmation.
 
-- **Onde:** `scripts/dev/consentir-base.mjs` (o I/O: perguntar, provar, criar,
-  gravar); `scripts/dev/base-de-projetos.mjs:143` (`basePadrao`), `:177`
-  (`validarBase`) e `:208` (`exigeProvaDeCompartilhamento`) — a decisão pura;
-  `scripts/dev/env-file.mjs` (`lerEnv`/`escreverEnv`, extraídas de
-  `preflight.mjs`, que roda `await main()` no topo e por isso não pode ser
-  importado); `scripts/dev/bootstrap.sh` (item `1.6`);
+- **Where:** `scripts/dev/consentir-base.mjs` (the I/O: ask, prove, create,
+  write); `scripts/dev/base-de-projetos.mjs:143` (`basePadrao`), `:177`
+  (`validarBase`), and `:208` (`exigeProvaDeCompartilhamento`) — the pure decision;
+  `scripts/dev/env-file.mjs` (`lerEnv`/`escreverEnv`, extracted from
+  `preflight.mjs`, which runs `await main()` at the top and therefore can't be
+  imported); `scripts/dev/bootstrap.sh` (item `1.6`);
   `scripts/dev/preflight.mjs` (`relatarBaseDeProjetos`)
-- **Teste:** `scripts/dev/base-de-projetos.spec.ts` (`describe('basePadrao')`,
-  `describe('validarBase')` — caminho feliz e as seis recusas — e
+- **Test:** `scripts/dev/base-de-projetos.spec.ts` (`describe('basePadrao')`,
+  `describe('validarBase')` — happy path and the six refusals — and
   `describe('exigeProvaDeCompartilhamento')`); `scripts/dev/bootstrap.spec.ts`
-  (a árvore do menu, 25 folhas)
+  (the menu tree, 25 leaves)
 - **ADR:** [0146](../adr/0146-base-consentida-no-bootstrap.md)
-- **Origem:** FASE 28, sessão 2
+- **Origin:** PHASE 28, session 2
 
 ---
 
-## O broker sobe por padrão no compose local (RN-512)
+## The broker comes up by default in the local compose (RN-512)
 
-### RN-512 — O broker sai do `profiles` no compose LOCAL e só nele, e o `DOCKER_GID` passa a ser relatado no preflight {#rn-512}
+### RN-512 — The broker leaves `profiles` in the LOCAL compose and only there, and `DOCKER_GID` now gets reported in the preflight {#rn-512}
 
-O broker nasceu sob `profiles: ["container-broker"]` com uma justificativa que
-o próprio ADR 0130 escreveu: *"dar acesso ao Docker do host a um processo que
-nada chama ainda seria uma mudança de postura para toda máquina de
-desenvolvimento, em troca de nada"*. As duas metades morreram. **"Nada o
-chama" é falso** desde os ADRs 0133/0134/0136 — o broker tem quatro chamadores
-reais. E **"em troca de nada" deixou de descrever a troca** quando o ADR 0144
-fez `mounted` subir container PELO BROKER e o ADR 0146 tornou `mounted` o
-padrão local: com o profile desligado, o modo padrão termina em
+The broker was born under `profiles: ["container-broker"]` with a justification that
+ADR 0130 itself wrote: *"giving access to the host's Docker to a process that
+nothing calls yet would be a posture change for every development
+machine, in exchange for nothing"*. Both halves died. **"Nothing
+calls it" is false** since ADRs 0133/0134/0136 — the broker has four real
+callers. And **"in exchange for nothing" stopped describing the trade** when ADR 0144
+made `mounted` bring up a container THROUGH THE BROKER and ADR 0146 made `mounted` the
+local default: with the profile off, the default mode ends in
 `BrokerIndisponivelError`.
 
-Então ele sai do `profiles` em `docker/docker-compose.yml` — e **só ali**. Em
-`docker/docker-compose.prod.yml` o profile FICA, e os dois arquivos passam a
-divergir de propósito.
+So it leaves `profiles` in `docker/docker-compose.yml` — and **only there**. In
+`docker/docker-compose.prod.yml` the profile STAYS, and the two files start
+diverging on purpose.
 
-**A assimetria é o que o socket significa de cada lado.** Quem roda `pnpm dev`
-**já tem o socket do Docker** — está rodando `docker compose`, contra o daemon
-do próprio host —, então o broker recebê-lo não concede nada que o operador já
-não possua. A superfície marginal é o HTTP do próprio broker, que não publica
-porta, vive numa rede `internal: true` que só a api alcança, e compara
-`BRABO_SERVICE_TOKEN` em tempo constante. Em produção o cálculo é o oposto: o
-socket é fronteira de privilégio de verdade, o operador não é o desenvolvedor,
-e nada nesta fase muda o modo padrão de uma instalação de produção.
+**The asymmetry is what the socket means on each side.** Whoever runs `pnpm dev`
+**already has the Docker socket** — they're running `docker compose`, against the
+host's own daemon —, so the broker receiving it grants nothing the operator
+doesn't already have. The marginal surface is the broker's own HTTP, which publishes no
+port, lives on an `internal: true` network only the api reaches, and compares
+`BRABO_SERVICE_TOKEN` in constant time. In production the calculation is the opposite: the
+socket is a real privilege boundary, the operator isn't the developer,
+and nothing in this phase changes the default mode of a production installation.
 
-**As cinco camadas de contenção não são tocadas.** Isto muda **quando** o
-broker roda, nunca **o que** ele aceita: ele continua recebendo `projectId` e
-uma das cinco operações, continua indo à api ler a decisão do Arquiteto, e
-continua sem parâmetro nenhum onde se escreva `privileged`, `cap_add`,
-`network: host` ou um `-v` livre. A contenção nunca foi o profile.
+**The five containment layers aren't touched.** This changes **when** the
+broker runs, never **what** it accepts: it still receives `projectId` and
+one of the five operations, still goes to the api to read the Arquiteto's decision, and
+still has no parameter where one could write `privileged`, `cap_add`,
+`network: host`, or a free `-v`. The containment was never the profile.
 
-**A consequência ambiental, e por que ela ganhou relato.** `DOCKER_GID` deixa
-de importar só para quem ligava o profile de propósito — alguém que estava, por
-definição, prestando atenção nele — e passa a valer para qualquer pessoa que
-rode `pnpm dev`. O socket é `root:docker` no host e o processo do broker roda
-non-root; o `group_add` do compose é o que lhe dá o grupo, e o default `999` é
-o mais comum e está errado em várias distribuições. Errar **não quebra o
-boot** — o broker sobe normalmente —, quebra o USO: toda operação morre com
-`permission denied` no socket, e o sintoma aparece muito depois, quando alguém
-propõe `container_start`. Por isso `preflight.mjs` passa a **relatar** o
-estado a cada `pnpm dev`.
+**The environmental consequence, and why it got reported.** `DOCKER_GID` stops
+mattering only to whoever turned the profile on on purpose — someone who was, by
+definition, paying attention to it — and starts applying to anyone who
+runs `pnpm dev`. The socket is `root:docker` on the host and the broker's process runs
+non-root; the compose's `group_add` is what gives it the group, and the default `999` is
+the most common and is wrong in several distributions. Getting it wrong **doesn't break
+boot** — the broker comes up normally —, it breaks USE: every operation dies with
+`permission denied` on the socket, and the symptom appears much later, when someone
+proposes `container_start`. That's why `preflight.mjs` now **reports** the
+state on every `pnpm dev`.
 
-O relato tem **três desfechos, e eles não colapsam**: bate; diverge (com a
-origem do valor efetivo — `configurado` × `default` — porque as duas pedem
-instruções diferentes); e **não se aplica**, quando a máquina não tem grupo
-`docker`. O terceiro não é erro nem "não consegui": em macOS e Windows o
-Docker Desktop não usa grupo unix, e num Docker rootless o socket é do próprio
-usuário. Tratar a ausência como divergência acusaria metade das máquinas de um
-defeito que elas não têm — o mesmo cuidado de `baseSobrepoeOCheckout`, que
-devolve `false` para checkout desconhecido. E ele **relata, nunca bloqueia**:
-`pnpm dev` sobe igual.
+The report has **three outcomes, and they don't collapse**: matches; diverges (with the
+origin of the effective value — `configurado` × `default` — because the two ask for
+different instructions); and **doesn't apply**, when the machine has no `docker`
+group. The third isn't an error nor "couldn't": on macOS and Windows
+Docker Desktop doesn't use a unix group, and in a rootless Docker the socket belongs to the
+user themselves. Treating the absence as a divergence would accuse half the machines of a
+defect they don't have — the same care as `baseSobrepoeOCheckout`, which
+returns `false` for an unknown checkout. And it **reports, never blocks**:
+`pnpm dev` comes up the same.
 
-**Sair do `profiles` não bastava, e o defeito só apareceu na primeira subida
-por padrão.** A imagem de desenvolvimento preparava o pnpm com `corepack` como
-**root** no build e rodava como uid 1000, que não lê aquele cache; sem cache o
-corepack tenta **baixar** o pnpm no start, e a única rede do broker é
-`internal: true` — a tentativa morria com `getaddrinfo EAI_AGAIN
-registry.npmjs.org` e o container saía com 1, cinco segundos depois de subir. O
-serviço também não tinha healthcheck, então `up --wait` imprimia `Healthy` e o
-reset total anunciava "reset completo" com o processo morto. Enquanto o serviço
-esteve sob profile isso nunca apareceu: quem o ligava de propósito era quem já
-estava olhando. A correção **tira o registry do caminho de runtime** — o
-`pnpm install` migra para um passo de BUILD e `COREPACK_HOME` passa a um
-diretório com o dono do uid de runtime — e **não abre a rede**, que é a
-primeira das cinco camadas acima. Como os três `node_modules` são volumes
-nomeados montados por cima do que a imagem instalou, e o Docker só semeia
-volume **vazio**, `docker/broker/entrypoint.sh` reconcilia os três contra uma
-cópia guardada fora de `/workspace`, carimbada com o sha256 do `pnpm-lock.yaml`
-do build — o mesmo carimbo que, comparado com o lockfile da árvore, avisa que a
-imagem está velha sem recusar subir. O compose de PRODUÇÃO não sofria disto:
-`Dockerfile.prod` já instalava em estágio de build, removia `corepack` da
-imagem final e já tinha `HEALTHCHECK`. Desde a AT-360 nenhuma imagem usa
-`corepack` (o Node 25+ não o traz): o pnpm é instalado do tarball do registry,
-conferido contra um sha512 gravado no Dockerfile, em `/usr/local/bin`, e
-`COREPACK_HOME` saiu do broker de dev — com a versão igual à do `packageManager`
-não há cache a ler nem download a tentar no start (medido sob `--network none`).
+**Leaving `profiles` wasn't enough, and the defect only appeared on the first default
+startup.** The development image prepared pnpm with `corepack` as
+**root** at build time and ran as uid 1000, which doesn't read that cache; without the cache
+corepack tries to **download** pnpm at start, and the broker's only network is
+`internal: true` — the attempt died with `getaddrinfo EAI_AGAIN
+registry.npmjs.org` and the container exited with 1, five seconds after coming up. The
+service also had no healthcheck, so `up --wait` printed `Healthy` and the
+total reset announced "reset completo" with the process dead. While the service
+was under a profile this never showed up: whoever turned it on on purpose was already
+watching. The fix **takes the registry out of the runtime path** — the
+`pnpm install` moves to a BUILD step and `COREPACK_HOME` goes to a
+directory owned by the runtime uid — and **doesn't open the network**, which is the
+first of the five layers above. Since the three `node_modules` are named volumes
+mounted over what the image installed, and Docker only seeds an **empty**
+volume, `docker/broker/entrypoint.sh` reconciles the three against a
+copy kept outside `/workspace`, stamped with the sha256 of the build's `pnpm-lock.yaml`
+— the same stamp that, compared to the tree's lockfile, warns that the
+image is stale without refusing to come up. The PRODUCTION compose didn't suffer from this:
+`Dockerfile.prod` already installed in a build stage, removed `corepack` from the
+final image, and already had a `HEALTHCHECK`. Since AT-360 no image uses
+`corepack` (Node 25+ doesn't ship it): pnpm is installed from the registry tarball,
+checked against a sha512 recorded in the Dockerfile, in `/usr/local/bin`, and
+`COREPACK_HOME` left the dev broker — with the version equal to `packageManager`'s
+there's no cache to read nor download to attempt at start (measured under `--network none`).
 
-- **Onde:** `docker/docker-compose.yml` (serviço `broker`, sem `profiles`, com
-  `healthcheck`) e `docker/docker-compose.prod.yml` (com `profiles`, e a nota
-  que impede uniformizar os dois); `docker/broker/Dockerfile` (o pnpm pinado por sha512,
-  o `pnpm install` de build e a cópia em `/opt/broker-deps`);
-  `docker/broker/entrypoint.sh` (a reconciliação dos três volumes e o aviso de
-  lockfile); `scripts/dev/docker-gid.mjs` (`avaliarDockerGid`,
-  `mensagemDoDockerGid`, `GID_PADRAO_DO_COMPOSE` — a decisão pura);
+- **Where:** `docker/docker-compose.yml` (`broker` service, without `profiles`, with
+  `healthcheck`) and `docker/docker-compose.prod.yml` (with `profiles`, and the note
+  that prevents uniformizing the two); `docker/broker/Dockerfile` (pnpm pinned by sha512,
+  the build-time `pnpm install`, and the copy in `/opt/broker-deps`);
+  `docker/broker/entrypoint.sh` (the reconciliation of the three volumes and the
+  lockfile warning); `scripts/dev/docker-gid.mjs` (`avaliarDockerGid`,
+  `mensagemDoDockerGid`, `GID_PADRAO_DO_COMPOSE` — the pure decision);
   `scripts/dev/preflight.mjs` (`relatarDockerGid`, `gidDoGrupoDocker`)
-- **Teste:** `scripts/dev/docker-gid.spec.ts` — o caminho feliz, as duas
-  divergências (default ausente e valor errado), o "não se aplica" sem grupo
-  docker, e o default que por acaso ACERTA
-- **ADR:** [0146](../adr/0146-base-consentida-no-bootstrap.md), ponto 3
-- **Origem:** FASE 28, sessão 4
+- **Test:** `scripts/dev/docker-gid.spec.ts` — the happy path, the two
+  divergences (absent default and wrong value), the "doesn't apply" without a docker
+  group, and the default that happens to be RIGHT
+- **ADR:** [0146](../adr/0146-base-consentida-no-bootstrap.md), point 3
+- **Origin:** PHASE 28, session 4
 
 ---
 
-## FASE 29 — a instalação de uma linha: assinar o que se publica
+## PHASE 29 — the one-line installation: signing what is published
 
-### RN-527 — A instalação sobe de um compose PRÓPRIO, por imagem escolhida, e confere a saúde antes de dizer que instalou {#rn-527}
+### RN-527 — The installation comes up from its OWN compose, by chosen image, and checks health before saying it installed {#rn-527}
 
-> **Revisada pela [RN-575](produto.md#rn-575) (ADR 0162):** o serviço `broker` passou a
-> existir neste compose, desligado sob o profile `container-broker` e ligado
-> pelo instalador só com consentimento; as imagens obrigatórias são CINCO. O
-> resto desta regra vale como está.
+> **Revised by [RN-575](produto.md#rn-575) (ADR 0162):** the `broker` service came to
+> exist in this compose, off under the `container-broker` profile and turned on
+> by the installer only with consent; the mandatory images are FIVE. The
+> rest of this rule holds as is.
 
-`docker/docker-compose.install.yml` é o que roda na máquina de quem instalou, e
-ele **não é** o `docker-compose.prod.yml`. Três diferenças, cada uma com um
-motivo:
+`docker/docker-compose.install.yml` is what runs on the machine of whoever installed, and
+it **is not** `docker-compose.prod.yml`. Three differences, each with a
+reason:
 
-- as cinco imagens vêm de **variável obrigatória** (`${BRABO_API_IMAGE:?…}`),
-  sem default. Com default, uma variável ausente subiria metade da stack com
-  uma imagem que ninguém escolheu, e o erro apareceria como comportamento
-  estranho em vez de recusa;
-- **não há bloco `build:`** em lugar nenhum: este arquivo não constrói, e é o
-  ponto dele;
-- o serviço **`broker` não existe** aqui, porque a imagem dele não é publicada
-  (`docker-bake.hcl` tem quatro alvos). Consequência declarada: com
-  `--source=ghcr`, projeto `mounted` não sobe container (ADR 0150, decisão 7).
+- the five images come from a **required variable** (`${BRABO_API_IMAGE:?…}`),
+  with no default. With a default, an absent variable would bring up half the stack with
+  an image nobody chose, and the error would show up as strange behavior instead of
+  refusal;
+- **there is no `build:` block** anywhere: this file does not build, and that is its
+  point;
+- the **`broker` service does not exist** here, because its image is not published
+  (`docker-bake.hcl` has four targets). Declared consequence: with
+  `--source=ghcr`, a `mounted` project does not start a container (ADR 0150, decision 7).
 
-O `docker-compose.prod.yml` fica **intacto** — ele se declara compose de
-**validação**, é o que `docker/smoke.sh` usa construindo local de propósito, e
-promovê-lo quebraria esse uso. O custo dos dois arquivos é declarado, e o teto
-contra a divergência é **mecânico**:
-`scripts/dev/composes-em-conformidade.spec.ts` reprova se o de instalação
-ganhar serviço, volume ou porta que o de validação não tenha, se algum `build:`
-sobreviver, ou se uma imagem de terceiro afrouxar para uma tag diferente.
+`docker-compose.prod.yml` stays **intact** — it declares itself a
+**validation** compose, it is what `docker/smoke.sh` uses building locally on purpose, and
+promoting it would break that use. The cost of the two files is declared, and the ceiling
+against divergence is **mechanical**:
+`scripts/dev/composes-em-conformidade.spec.ts` fails if the installation one
+gains a service, volume or port the validation one does not have, if any `build:`
+survives, or if a third-party image loosens to a different tag.
 
-**A fonte da imagem é escolha, e "oficial" é resultado de verificação.**
-`--source=ghcr` (default) resolve por **digest** a partir do `images.json` da
-Release; `--source=local` roda `docker buildx bake` e **exige árvore limpa e em
-tag** — imagem construída de árvore suja não é a versão que ela diz ser, e o
-marcador registraria uma mentira.
+**The image source is a choice, and "official" is the result of verification.**
+`--source=ghcr` (default) resolves by **digest** from the Release's `images.json`;
+`--source=local` runs `docker buildx bake` and **requires a clean tree on a
+tag** — an image built from a dirty tree is not the version it says it is, and the
+marker would record a lie.
 
-**Os segredos nascem uma vez e persistem.** Os cinco de
-[RN-114](api.md#rn-114) mais o `NEO4J_PASSWORD`, gerados com
-`openssl rand` no mesmo molde de `docker/smoke.sh:31-57` — inclusive o detalhe
-de o `NEO4J_PASSWORD` ser `-hex` e não `-base64`, porque uma `/` quebra o parse
-de `NEO4J_AUTH`. O `.env` é criado **vazio e com modo 600 ANTES** de receber
-conteúdo: criar com o umask do usuário e apertar depois deixaria os segredos
-legíveis por uma janela, e é justamente o arquivo que não pode ter essa janela.
+**The secrets are born once and persist.** The five of
+[RN-114](api.md#rn-114) plus `NEO4J_PASSWORD`, generated with
+`openssl rand` in the same mold as `docker/smoke.sh:31-57` — including the detail
+of `NEO4J_PASSWORD` being `-hex` and not `-base64`, because a `/` breaks the parse
+of `NEO4J_AUTH`. The `.env` is created **empty and with mode 600 BEFORE** receiving
+content: creating with the user's umask and tightening afterwards would leave the secrets
+readable for a window, and it is precisely the file that cannot have that window.
 
-**E o `.env` é um arquivo que o COMPOSE parseia, e se prova contra ele**
-(AT-083). O `SECRET_KEY_BASE` saía de `openssl rand -base64 64`, que QUEBRA a
-linha aos 64 caracteres: os 88 do segredo iam em duas linhas, e a segunda ficava
-solta no `.env`. Medido em 100 gerações, o Compose recusou 49 (*"unexpected
-character in variable name"*) e ACEITOU 51 — com o segredo cortado em 64
-caracteres, que ainda é o mínimo do Phoenix e por isso subia sem aviso. Todo
-base64 passa agora por `segredo_base64` (`| tr -d '\n'`), e o arquivo é escrito
-por `escrever_env` — função, e não corpo de `main`, para que o spec grave o
-MESMO arquivo que a instalação grava.
+**And the `.env` is a file COMPOSE parses, and it is proven against it**
+(AT-083). The `SECRET_KEY_BASE` came from `openssl rand -base64 64`, which BREAKS the
+line at 64 characters: the secret's 88 went on two lines, and the second was left
+loose in the `.env`. Measured over 100 generations, Compose refused 49 (*"unexpected
+character in variable name"*) and ACCEPTED 51 — with the secret cut at 64
+characters, which is still Phoenix's minimum and that is why it came up without a warning. Every
+base64 now goes through `segredo_base64` (`| tr -d '\n'`), and the file is written
+by `escrever_env` — a function, and not the body of `main`, so that the spec writes the
+SAME file the installation writes.
 
-**Não há passo de migrate, e não deve haver:** o compose encadeia `api` →
-`migrate-api` com `service_completed_successfully`, e `up --wait` espera. Um
-segundo lugar mandando migrar seria a segunda fonte da mesma verdade.
+**There is no migrate step, and there must not be:** the compose chains `api` →
+`migrate-api` with `service_completed_successfully`, and `up --wait` waits. A
+second place ordering a migration would be the second source of the same truth.
 
-**E o instalador pergunta antes de afirmar.** Depois do `up --wait` — que já
-espera o healthcheck — ele bate no `/health` da api e do engine, e só então diz
-que instalou. É a régua que o `reset-total.sh` custou a aprender: ele anunciava
-"reset completo" com a api em `Exited (1)`.
+**And the installer asks before asserting.** After `up --wait` — which already
+waits for the healthcheck — it hits the `/health` of the api and of the engine, and only then says
+it installed. It is the rule `reset-total.sh` learned the hard way: it announced
+"reset complete" with the api in `Exited (1)`.
 
-**Onde:** `install.sh` (raiz), `docker/docker-compose.install.yml`.
-**Teste:** `scripts/dev/install.spec.ts` (o plano, sem TTY nem efeito) e
-`scripts/dev/composes-em-conformidade.spec.ts` (a divergência entre os dois
-composes); `scripts/dev/install-env.spec.ts` gera os segredos e o `.env` pelas
-funções de verdade, passa o arquivo por `docker compose config` contra o compose
-de instalação e cobra que CADA segredo chegue INTEIRO aos serviços (pula
-nomeando o motivo sem `docker compose`), com a geração antiga fixada como
-reprovada.
-**Origem:** FASE 29, sessão 4 ([ADR 0150](../adr/0150-instalador-de-uma-linha.md)).
-Instalar o runner (sessão 7) e migrar uma instalação anterior (sessão 6)
-seguem fora, e o `--print-plan` os declara `nao-nesta-versao`.
+**Where:** `install.sh` (root), `docker/docker-compose.install.yml`.
+**Test:** `scripts/dev/install.spec.ts` (the plan, without a TTY or effect) and
+`scripts/dev/composes-em-conformidade.spec.ts` (the divergence between the two
+composes); `scripts/dev/install-env.spec.ts` generates the secrets and the `.env` through the
+real functions, runs the file through `docker compose config` against the
+installation compose and demands that EACH secret reach the services WHOLE (skips
+naming the reason without `docker compose`), with the old generation pinned as
+rejected.
+**Origin:** PHASE 29, session 4 ([ADR 0150](../adr/0150-instalador-de-uma-linha.md)).
+Installing the runner (session 7) and migrating a previous installation (session 6)
+remain out, and `--print-plan` declares them `nao-nesta-versao`.
 
-## O backup cobre os DOIS volumes que são fonte de verdade, e roda sem cluster (RN-528)
+## The backup covers the TWO volumes that are a source of truth, and runs without a cluster (RN-528)
 
-### RN-528 — `git_local_repos` entra no backup, o destino pode ser disco, e o restore de compose reusa as MESMAS três validações {#rn-528}
+### RN-528 — `git_local_repos` enters the backup, the destination can be disk, and the compose restore reuses the SAME three validations {#rn-528}
 
-O backup cobria **um** banco e rodava **num** lugar. Três consequências, e a
-terceira é a que custa código: `make test-restore` exige `kubectl`, um cluster e
-o CronJob `brabo-backup` no namespace, e `docker-compose.prod.yml` não tinha
-serviço `backup` nenhum — a imagem era construída pelo bake e usada só no k8s.
-Migrar uma instalação por compose não tinha caminho **provado**.
+The backup covered **one** database and ran in **one** place. Three consequences, and the
+third is the one that costs code: `make test-restore` requires `kubectl`, a cluster and
+the `brabo-backup` CronJob in the namespace, and `docker-compose.prod.yml` had no
+`backup` service at all — the image was built by the bake and used only in k8s.
+Migrating a compose installation had no **proven** path.
 
-**Classificar antes de copiar.** O movimento fácil seria "fazer backup de todos
-os volumes", e ele é errado: dos sete, `neo4j_data` e `project_workspaces` são
-DERIVADOS, `ollama_data` é re-obtenível e `brabo_projects_base` é do usuário.
-Copiá-los dá impressão de cobertura sem acrescentar recuperação. Fonte de
-verdade são DOIS: `pgdata` — que já vinha, como dump lógico e nunca como cópia
-do diretório de dados de um Postgres em execução — e **`git_local_repos`**, que
-**nenhum backup cobria**. Um projeto com provider `local` guarda o repositório
-*bare* ali dentro, e ele NÃO é reconstruível do Postgres: o event log guarda a
-narrativa, não os objetos do git. A prosa do runbook dizia o contrário ("the
-real repositories live in GitHub/GitLab") e é essa frase que explica como o
-volume passou anos sem cobertura — ela vale para `github`/`gitlab`, e para
-`local` não há upstream nenhum.
+**Classify before copying.** The easy move would be "back up all
+the volumes", and it is wrong: of the seven, `neo4j_data` and `project_workspaces` are
+DERIVED, `ollama_data` is re-obtainable and `brabo_projects_base` belongs to the user.
+Copying them gives an impression of coverage without adding recovery. Sources of
+truth are TWO: `pgdata` — which was already covered, as a logical dump and never as a copy
+of the data directory of a running Postgres — and **`git_local_repos`**, which
+**no backup covered**. A project with the `local` provider keeps the *bare*
+repository in there, and it is NOT rebuildable from Postgres: the event log keeps the
+narrative, not the git objects. The runbook prose said the opposite ("the
+real repositories live in GitHub/GitLab") and it is that sentence that explains how the
+volume went years without coverage — it holds for `github`/`gitlab`, and for
+`local` there is no upstream at all.
 
-**A garantia do arquivo dos repos é declarada, e é menor do que "snapshot".**
-Nada é quiesced. O que se garante é consistência POR REFERÊNCIA — o git escreve
-os objetos antes de mover a ref, e troca a ref por rename atômico, então um
-`tar` que cruza um `git push` pega o valor velho ou o novo, nunca metade de um.
-O que NÃO se garante é instante global (o `tar` percorre a árvore ao longo de um
-período) nem conectividade dos objetos (a imagem não tem git, de propósito). E
-um `gc` concorrente apagando packfile vira FALHA e não arquivo parcial: o status
-do `tar` é capturado num arquivo, porque em POSIX `sh` o status de um cano é o
-do último comando — sem isso o arquivo incompleto se anunciaria como bom, e
-backup que mente é pior do que backup que falha, porque só o segundo vira
-alerta. `*.lock` fica de fora: restaurar um lock órfão produz repositório em que
-todo `git` recusa operar.
+**The guarantee of the repos archive is declared, and it is smaller than "snapshot".**
+Nothing is quiesced. What is guaranteed is consistency PER REFERENCE — git writes
+the objects before moving the ref, and swaps the ref by atomic rename, so a
+`tar` that crosses a `git push` gets the old value or the new one, never half of one.
+What is NOT guaranteed is a global instant (the `tar` walks the tree over a
+period) nor object connectivity (the image has no git, on purpose). And
+a concurrent `gc` deleting a packfile becomes a FAILURE and not a partial archive: the status
+of `tar` is captured in a file, because in POSIX `sh` the status of a pipe is that
+of the last command — without it the incomplete archive would announce itself as good, and
+a backup that lies is worse than a backup that fails, because only the second becomes an
+alert. `*.lock` is left out: restoring an orphan lock produces a repository in which
+every `git` refuses to operate.
 
-**Destino em disco, S3 opcional.** As cinco variáveis de S3 deixam de ser
-obrigatórias e passam a ser o que já eram na prática — a configuração de UM dos
-destinos. `BACKUP_DIR` definida escolhe disco; ausente, S3, que é como o CronJob
-do k8s continua rodando sem uma linha de mudança. A inferência (em vez de uma
-variável de destino obrigatória) é o que mantém aquele caminho intacto: um
-destino explícito quebraria o CronJob no dia do deploy, não no do commit. Quatro
-prefixos e não dois (`daily/`, `weekly/`, `git-daily/`, `git-weekly/`) porque a
-retenção é por CONTAGEM: dois tipos de arquivo sob um prefixo fariam "manter 7"
-significar três backups e meio.
+**Disk destination, S3 optional.** The five S3 variables stop being
+mandatory and become what they already were in practice — the configuration of ONE of the
+destinations. `BACKUP_DIR` set chooses disk; absent, S3, which is how the k8s
+CronJob keeps running without a single line of change. The inference (instead of a
+mandatory destination variable) is what keeps that path intact: an
+explicit destination would break the CronJob on deploy day, not on commit day. Four
+prefixes and not two (`daily/`, `weekly/`, `git-daily/`, `git-weekly/`) because
+retention is by COUNT: two kinds of archive under one prefix would make "keep 7"
+mean three and a half backups.
 
-**O restore de compose muda o invólucro, nunca o julgamento.**
-`test-restore-compose.sh` dispara um backup REAL pela mesma imagem e o mesmo
-comando de produção, e chama o MESMO `brabo-restore`, com as MESMAS três
-validações (lista de tabelas contra a origem, contagem das críticas na janela do
-backup, continuidade densa da `seq` de `session_events`).
-`deploy/k8s/test-restore.sh` fica **intacto** — unificá-los faria o caminho de
-compose depender de `kubectl`, que é a dependência que ele existe para não ter.
-E `restore.sh` continua sem tocar a database de ORIGEM, propriedade que não se
-negocia por conveniência de migração. O passo que só o compose pode cobrar é o
-terceiro: verificar o arquivo dos repos, porque no k8s aquele volume nem é
-montado no pod (pular é correto) e sob compose ele é (pular seria falso verde).
+**The compose restore changes the wrapper, never the judgment.**
+`test-restore-compose.sh` triggers a REAL backup through the same image and the same
+production command, and calls the SAME `brabo-restore`, with the SAME three
+validations (table list against the source, count of the critical ones in the backup
+window, dense continuity of the `seq` of `session_events`).
+`deploy/k8s/test-restore.sh` stays **intact** — unifying them would make the
+compose path depend on `kubectl`, which is the dependency it exists not to have.
+And `restore.sh` still does not touch the SOURCE database, a property that is not
+negotiated for migration convenience. The step only compose can demand is the
+third: verifying the repos archive, because in k8s that volume is not even
+mounted in the pod (skipping is correct) and under compose it is (skipping would be a false green).
 
-**Restaurar os repos é comando IRMÃO, não fase do outro** — são dois artefatos
-com dois julgamentos, e juntá-los faria falha de git reprovar a validação do
-event log. Ele verifica por default e só escreve com `--restaurar`; recusa
-extrair por cima de repos existentes (a mistura de dois estados não levanta erro
-nenhum e só aparece num `fetch` com história errada); e — achado da execução
-real — recusa ANTES do `tar` quando o volume não aceita escrita, nomeando
-`--user <dono do volume>` (lido por `stat`; root não serve com `cap_drop: ALL`). `git_local_repos` é compartilhado por três imagens com uids
-diferentes e carrega o dono de quem o montou primeiro (medido: `1000:1000`,
-modo 0755) enquanto esta imagem roda como uid 70. Quando a extração roda como
-root, o que sai é devolvido ao dono do DIRETÓRIO e nunca deixado como root:
-senão o volume voltaria íntegro e inútil, com api e engine sem conseguir
-escrever no que acabou de ser restaurado.
+**Restoring the repos is a SIBLING command, not a phase of the other** — they are two artifacts
+with two judgments, and joining them would make a git failure fail the validation of the
+event log. It verifies by default and only writes with `--restaurar`; it refuses to
+extract over existing repos (the mix of two states raises no
+error and only shows up in a `fetch` with the wrong history); and — a finding of the real
+execution — it refuses BEFORE the `tar` when the volume does not accept writes, naming
+`--user <volume owner>` (read by `stat`; root will not do with `cap_drop: ALL`). `git_local_repos` is shared by three images with different uids
+and carries the owner of whoever mounted it first (measured: `1000:1000`,
+mode 0755) while this image runs as uid 70. When the extraction runs as
+root, what comes out is handed back to the DIRECTORY's owner and never left as root:
+otherwise the volume would come back intact and useless, with api and engine unable to
+write to what was just restored.
 
-**Neo4j recebe reprojeção, não backup.** Restaurar uma projeção possivelmente
-velha ao lado de um Postgres restaurado noutro instante dá dois estados
-derivados de momentos diferentes, sem nada que os concilie. A reprojeção **não
-foi construída aqui** (é o BRB-018): até existir, instalação migrada nasce com
-o grafo VAZIO — degradação conhecida e nomeada, não perda de dado, porque o RAG
-vive no pgvector e vem no dump. Desde a [RN-569](api.md#rn-569) ela existe
-(`grafo:reprojetar`), e o grafo vazio passa a durar até alguém rodá-la.
+**Neo4j gets reprojection, not backup.** Restoring a possibly
+old projection next to a Postgres restored at another instant gives two derived states
+from different moments, with nothing reconciling them. The reprojection **was not
+built here** (it is BRB-018): until it exists, a migrated installation is born with
+an EMPTY graph — known and named degradation, not data loss, because the RAG
+lives in pgvector and comes in the dump. Since [RN-569](api.md#rn-569) it exists
+(`grafo:reprojetar`), and the empty graph now lasts until someone runs it.
 
-- **Onde:** `docker/backup/lib.sh:28` (`destino_tipo`, a inferência que mantém o
-  CronJob intacto), `:65` (`destino_esperar` perguntando por ESCRITA e não por
-  existência), `:116` (`destino_enviar`, escrita em `.parcial` e rename),
-  `:181` (a garantia dos bare repos, escrita junto do código que a produz),
-  `:232` (`git_arquivar`, o status do `tar` num arquivo), `:272`
-  (`git_restaurar`, a devolução do dono) e `:286` (`git_raiz_gravavel`);
-  `docker/backup/backup.sh:31` (`destino_preparar` — as cinco variáveis de S3
-  deixando de ser obrigatórias), `:149` (os três desfechos do volume de repos,
-  sem colapsar "não montado" com "vazio"), `:170` (a conferência do status do
-  `tar`) e `:220` (a poda dos quatro prefixos);
-  `docker/backup/restore.sh:28` (o mesmo destino do backup) e `:120`, `:184`,
-  `:215` (as três validações e o veredito, sem uma linha de mudança);
-  `docker/backup/restore-git.sh:43` (verificar como default), `:109` (a recusa
-  de extrair por cima) e `:123` (a recusa por escrita, com o conserto nomeado);
-  `docker/backup/test-restore-compose.sh:60` (o `--profile` no `config` e não
-  no `run`);
-  `docker/docker-compose.prod.yml:392` (o serviço `backup`, sob `profiles` e
-  `restart: "no"`) e `:550` (o volume que NÃO entra na classificação dos sete);
-  `docker/backup/Dockerfile.prod:80` (o `/backups` criado e `chown`-ado ANTES
-  do `USER`);
+- **Where:** `docker/backup/lib.sh:28` (`destino_tipo`, the inference that keeps the
+  CronJob intact), `:65` (`destino_esperar` asking about WRITE and not about
+  existence), `:116` (`destino_enviar`, write to `.parcial` and rename),
+  `:181` (the bare-repo guarantee, written next to the code that produces it),
+  `:232` (`git_arquivar`, the `tar` status in a file), `:272`
+  (`git_restaurar`, handing ownership back) and `:286` (`git_raiz_gravavel`);
+  `docker/backup/backup.sh:31` (`destino_preparar` — the five S3 variables
+  no longer being mandatory), `:149` (the three outcomes of the repos volume,
+  without collapsing "not mounted" with "empty"), `:170` (checking the `tar`
+  status) and `:220` (pruning the four prefixes);
+  `docker/backup/restore.sh:28` (the same backup destination) and `:120`, `:184`,
+  `:215` (the three validations and the verdict, without a line of change);
+  `docker/backup/restore-git.sh:43` (verify as the default), `:109` (the refusal
+  to extract over existing repos) and `:123` (the refusal on write, with the fix named);
+  `docker/backup/test-restore-compose.sh:60` (the `--profile` on `config` and not
+  on `run`);
+  `docker/docker-compose.prod.yml:392` (the `backup` service, under `profiles` and
+  `restart: "no"`) and `:550` (the volume that does NOT enter the classification of the seven);
+  `docker/backup/Dockerfile.prod:80` (the `/backups` created and `chown`ed BEFORE
+  `USER`);
   `Makefile:54` (`test-restore-compose`)
-- **Teste:** `scripts/ci/backup-lib.spec.ts` — as funções num `sh` de verdade,
-  contra um diretório de verdade: as cinco operações do destino em disco; o
-  objeto ausente medindo 0; a escrita atômica e o `.parcial` que a listagem
-  ignora; os prefixos irmãos que não se misturam; o destino que existe e NÃO
-  aceita escrita (caso de falha); "não montado" × "montado e vazio"; o arquivo
-  dos repos com status 0 e conteúdo relido; `*.lock` e `objects/tmp_*` fora; o
-  ciclo arquivar→restaurar devolvendo byte a byte; a recusa de restaurar onde
-  não se pode escrever; e o tar truncado que reprova ao ser LIDO, nunca pelo
-  tamanho
+- **Test:** `scripts/ci/backup-lib.spec.ts` — the functions in a real `sh`,
+  against a real directory: the five operations of the disk destination; the
+  absent object measuring 0; the atomic write and the `.parcial` that the listing
+  ignores; the sibling prefixes that do not mix; the destination that exists and does NOT
+  accept writes (failure case); "not mounted" × "mounted and empty"; the repos
+  archive with status 0 and content re-read; `*.lock` and `objects/tmp_*` out; the
+  archive→restore cycle returning byte for byte; the refusal to restore where
+  one cannot write; and the truncated tar that fails when READ, never by
+  size
 - **ADR:** [0152](../adr/0152-backup-de-volumes-contra-compose.md)
-- **Origem:** FASE 29, sessão 5. Exercitado de verdade contra o compose de
-  desenvolvimento com dados reais (55 tabelas, 422 eventos, os bare repos de
-  `exp001` e `exp004`), incluindo a restauração num volume novo conferida com
-  `git fsck` — o registro está no `docs/runbook.md`, seção "Last verified run —
-  compose, disk destination". Fica declarado e NÃO feito: o caminho **S3** do
-  adaptador não tem cobertura automatizada (exigiria um endpoint), e continua
-  sendo o mesmo comando `aws` de antes; a reprojeção do Neo4j é o BRB-018; e
-  nada aqui agenda o backup num compose — quem o dispara é um humano ou o
-  instalador (sessão 6)
+- **Origin:** PHASE 29, session 5. Exercised for real against the
+  development compose with real data (55 tables, 422 events, the bare repos of
+  `exp001` and `exp004`), including the restore into a new volume checked with
+  `git fsck` — the record is in `docs/runbook.md`, section "Last verified run —
+  compose, disk destination". Declared and NOT done: the adapter's **S3** path
+  has no automated coverage (it would require an endpoint), and it is still
+  the same `aws` command as before; the Neo4j reprojection is BRB-018; and
+  nothing here schedules the backup in a compose — what triggers it is a human or the
+  installer (session 6)
 
 ---
 
-## FASE 29 — a instalação de uma linha: assinar o que se publica
+## PHASE 29 — the one-line installation: signing what is published
 
-### RN-530 — Migrar exige backup PROVADO: o instalador só ganha o direito de apagar depois de restaurar {#rn-530}
+### RN-530 — Migrating requires a PROVEN backup: the installer only earns the right to delete after restoring {#rn-530}
 
-Instalar por cima de uma instalação existente **não é oferecido**: ou se migra,
-ou se para. Um `up` sobre volumes de outra versão é o tipo de estrago que não
-avisa.
+Installing over an existing installation **is not offered**: either one migrates,
+or one stops. An `up` over volumes of another version is the kind of damage that gives no
+warning.
 
-A migração tem uma ordem, e o passo do meio é o que dá sentido a ela:
-**backup → PROVAR que restaura → perguntar → apagar → instalar → restaurar.**
+The migration has an order, and the middle step is what gives it meaning:
+**backup → PROVE it restores → ask → delete → install → restore.**
 
-A prova não é zelo. Um backup que ninguém tentou restaurar é um arquivo, e a
-hora de descobrir isso não é depois do `down -v` — por isso o instalador roda
-`docker/backup/test-restore-compose.sh` (as MESMAS três validações de
-`restore.sh`, ADR 0152) antes de qualquer deleção. Backup que falha, ou prova
-que falha, **interrompem a migração sem apagar nada**, e a mensagem diz onde o
-backup ficou.
+The proof is not overzealousness. A backup nobody tried to restore is a file, and the
+time to find that out is not after the `down -v` — that is why the installer runs
+`docker/backup/test-restore-compose.sh` (the SAME three validations as
+`restore.sh`, ADR 0152) before any deletion. A backup that fails, or a proof
+that fails, **interrupt the migration without deleting anything**, and the message says where the
+backup was left.
 
-**O destino do backup é uma pasta do HOST**, e isso é o detalhe que faz a
-diferença entre migrar e perder: o default do compose é o volume nomeado
-`backup_local`, que o `down -v` apagaria **junto** com o que se quer preservar.
+**The backup destination is a HOST folder**, and that is the detail that makes the
+difference between migrating and losing: the compose default is the named volume
+`backup_local`, which `down -v` would delete **together** with what one wants to preserve.
 
-**O que a migração apaga**: os volumes nomeados da instalação (`pgdata`
-inclusive), os containers e a rede. **O que ela nunca apaga**: a base de
-projetos — quando `BRABO_PROJECTS_BASE` aponta para uma pasta do host, a linha
-do compose é **bind-mount**, e `down -v` não toca bind —, a pasta de espelho
-(RN-516) e o backup recém-provado.
+**What the migration deletes**: the installation's named volumes (`pgdata`
+included), the containers and the network. **What it never deletes**: the projects
+base — when `BRABO_PROJECTS_BASE` points to a host folder, the compose
+line is a **bind-mount**, and `down -v` does not touch binds —, the mirror folder
+(RN-516) and the freshly proven backup.
 
-O dump do Postgres **não** é restaurado automaticamente sobre o banco novo:
-`brabo-restore` valida contra uma database de teste e nunca sobrescreve a
-origem (ADR 0152), e restaurar sobre um banco já populado é operação
-destrutiva que o instalador não toma sozinho. Os repositórios git locais, sim —
-eles são fonte de verdade que nasceria vazia.
+The Postgres dump is **not** restored automatically over the new database:
+`brabo-restore` validates against a test database and never overwrites the
+source (ADR 0152), and restoring over an already populated database is a
+destructive operation the installer does not take on its own. The local git repositories, yes —
+they are a source of truth that would be born empty.
 
-> **Revisado pelo ADR 0256 e pela RN-998 (repositório `brabo`, AT-738).** Desde o
-> instalador da linha multi-repo, a migração RESTAURA o dump sozinha, mas só
-> num banco recém-criado e VAZIO (`brabo-restore --banco-vazio`, que recusa se
-> houver qualquer tabela de aplicação), antes de subir a api e o engine. O que
-> este parágrafo dizia segue valendo para banco populado: o `brabo-restore` sem
-> argumento continua só validando numa database de teste.
+> **Revised by ADR 0256 and RN-998 (`brabo` repository, AT-738).** Since the
+> multi-repo line's installer, the migration RESTORES the dump by itself, but only
+> into a freshly created, EMPTY database (`brabo-restore --banco-vazio`, which
+> refuses if there is any application table), before bringing up the api and the
+> engine. What this paragraph said still holds for a populated database: plain
+> `brabo-restore` still only validates against a test database.
 
-**Onde:** `install.sh`, `migrar_instalacao_anterior` e `restaurar_apos_migrar`.
-**Teste:** `scripts/dev/prova-de-restauracao-env.spec.ts` (neste repositório: o
-`.env` do instalador passa pelo Compose da prova) e, no repositório `brabo`,
-`scripts/dev/install-arquivos-da-instalacao.spec.ts` (a prova viaja na Release e
-é conferida). A ordem "prova antes da deleção" não tem spec próprio hoje: o
-`scripts/dev/install.spec.ts` que esta regra citava não existe (AT-738, achado 10).
-**Origem:** FASE 29, sessão 6 ([ADR 0150](../adr/0150-instalador-de-uma-linha.md),
+**Where:** `install.sh`, `migrar_instalacao_anterior` and `restaurar_apos_migrar`.
+**Test:** `scripts/dev/prova-de-restauracao-env.spec.ts` (in this repository: the
+installer's `.env` goes through the proof's Compose) and, in the `brabo` repository,
+`scripts/dev/install-arquivos-da-instalacao.spec.ts` (the proof travels in the Release
+and is checked). The "proof before deletion" order has no spec of its own today: the
+`scripts/dev/install.spec.ts` this rule used to cite does not exist (AT-738, finding 10).
+**Origin:** PHASE 29, session 6 ([ADR 0150](../adr/0150-instalador-de-uma-linha.md),
 [ADR 0152](../adr/0152-backup-de-volumes-contra-compose.md)).
 
-## O repositório nasce no aceite do handoff ao Arquiteto, e a execução não começa sem ele (RN-582)
+## The repository is born on accepting the handoff to the Arquiteto, and execution does not start without it (RN-582)
 
-### RN-599 — No compose de dev a api encontra o broker sozinha, e a falta da pasta gerenciada é dita a cada subida {#rn-599}
+### RN-599 — In the dev compose the api finds the broker on its own, and the absence of the managed folder is stated at each startup {#rn-599}
 
-O broker sobe por padrão no compose de DEV desde a [RN-512](#rn-512), mas a api
-recebia `BROKER_URL` vazia (`${BROKER_URL:-}`, e a linha vinha comentada no
-`.env.example`). O resultado, medido no teste do dono em 26/09: com o broker de
-pé ao lado, `brokerConfigurado` vinha `false` e a criação de projeto só liberava
-`runner` ([RN-573](api.md#rn-573)). Duas regras fecham isso:
+The broker comes up by default in the DEV compose since [RN-512](#rn-512), but the api
+received an empty `BROKER_URL` (`${BROKER_URL:-}`, and the line came commented out in
+`.env.example`). The result, measured in the owner's test on 09/26: with the broker
+up alongside, `brokerConfigurado` came `false` and project creation only allowed
+`runner` ([RN-573](api.md#rn-573)). Two rules close this:
 
-1. **`BROKER_URL` tem default no compose de dev, e só nele.** O default é
-   `http://broker:8090` — o serviço e a porta (`BROKER_PORT`) que o MESMO
-   arquivo declara, e o teste trava os dois juntos: um default que apontasse
-   para outro lugar trocaria "sem broker" por "broker inalcançável". O valor do
-   `.env` continua vencendo. Os composes de PRODUÇÃO e de INSTALAÇÃO seguem
-   `${BROKER_URL:-}`, de propósito: lá o broker está sob
-   `profiles: ["container-broker"]`, e quem o liga grava a URL (o `install.sh`,
-   perguntando — [RN-575](produto.md#rn-575)). Um default ali faria a api de uma
-   instalação sem broker afirmar que tem um.
-2. **O `preflight.mjs` RELATA a pasta gerenciada, no molde do `DOCKER_GID`.**
-   Sem `PROJECT_WORKSPACES_HOST_DIR`, api e engine usam o volume gerenciado
-   `project_workspaces` (sem caminho de host), o broker fica sem
-   `PROJECT_WORKSPACES_HOST_ROOT` — o compose de dev a DERIVA daquela —, o stack
-   sobe saudável e o `container_start` do modo `container`, o default, termina
-   recusado. O relato tem quatro desfechos que não colapsam: `ausente`, `ok`,
-   `nao-absoluta` (o `~`: o Compose o expande na origem do bind-mount de
-   api/engine, mas NÃO na variável que o broker recebe — medido com
-   `docker compose config`) e `divergente` (`PROJECT_WORKSPACES_HOST_ROOT`
-   explícita diferente da pasta que api e engine montam, inclusive quando elas
-   montam o volume). Cada mensagem diz o sintoma e o conserto. Ele NUNCA recusa
-   a subida e NUNCA grava o `.env`: a resposta é um caminho no disco de alguém,
-   e trocar o volume pela pasta esconde o que já está no volume (os dados ficam
-   lá, só deixam de ser vistos) — a mensagem diz isso também.
+1. **`BROKER_URL` has a default in the dev compose, and only there.** The default is
+   `http://broker:8090` — the service and the port (`BROKER_PORT`) that the SAME
+   file declares, and the test locks the two together: a default pointing
+   elsewhere would swap "no broker" for "unreachable broker". The `.env`'s
+   value keeps winning. The PRODUCTION and INSTALLATION composes stay
+   `${BROKER_URL:-}`, on purpose: there the broker is under
+   `profiles: ["container-broker"]`, and whoever turns it on writes the URL (`install.sh`,
+   asking — [RN-575](produto.md#rn-575)). A default there would make the api of an
+   installation without a broker assert it has one.
+2. **`preflight.mjs` REPORTS the managed folder, in the mold of `DOCKER_GID`.**
+   Without `PROJECT_WORKSPACES_HOST_DIR`, api and engine use the managed volume
+   `project_workspaces` (without a host path), the broker is left without
+   `PROJECT_WORKSPACES_HOST_ROOT` — the dev compose DERIVES it from that one —, the stack
+   comes up healthy and the `container_start` of the `container` mode, the default, ends
+   refused. The report has four outcomes that do not collapse: `ausente`, `ok`,
+   `nao-absoluta` (the `~`: Compose expands it at the source of api/engine's bind-mount,
+   but NOT in the variable the broker receives — measured with
+   `docker compose config`) and `divergente` (an explicit `PROJECT_WORKSPACES_HOST_ROOT`
+   different from the folder api and engine mount, including when they
+   mount the volume). Each message states the symptom and the fix. It NEVER refuses
+   the startup and NEVER writes the `.env`: the answer is a path on someone's disk,
+   and swapping the volume for the folder hides what is already in the volume (the data stay
+   there, they just stop being seen) — the message says that too.
 
-**O que fica aberto:** o `pnpm bootstrap` NÃO oferece a pasta. Fazê-lo seria um
-segundo `consentir-base.mjs` (perguntar num TTY, criar a pasta com o dono
-certo, gravar as DUAS variáveis juntas, decidir o que fazer com um volume
-`project_workspaces` que já tem dados), e isso é frente própria.
+**What stays open:** `pnpm bootstrap` does NOT offer the folder. Doing so would be a
+second `consentir-base.mjs` (asking in a TTY, creating the folder with the right
+owner, writing BOTH variables together, deciding what to do with a
+`project_workspaces` volume that already has data), and that is its own front.
 
-- **Código:** `docker/docker-compose.yml:266` (o default de `BROKER_URL`),
-  `:571` (a derivação de `PROJECT_WORKSPACES_HOST_ROOT`);
+- **Code:** `docker/docker-compose.yml:266` (the default of `BROKER_URL`),
+  `:571` (the derivation of `PROJECT_WORKSPACES_HOST_ROOT`);
   `scripts/dev/pasta-gerenciada.mjs:63` (`avaliarPastaGerenciada`), `:89`
   (`mensagemDaPastaGerenciada`); `scripts/dev/preflight.mjs:424`
   (`relatarPastaGerenciada`)
-- **Teste:** `scripts/dev/broker-url-no-dev.spec.ts:42` (o default existe),
-  `:47` (aponta para o serviço e a porta do arquivo), `:64` (produção e
-  instalação sem default); `scripts/dev/pasta-gerenciada.spec.ts:31`
-  (ausente), `:51` (o `~`), `:67` (divergente com o volume), `:75` (a
-  mensagem diz sintoma, conserto e o que não migra), `:113` (o preflight
-  chama o relato sem sair por ele)
-- **Origem:** AT-213 — teste do dono em 2026-09-26
+- **Test:** `scripts/dev/broker-url-no-dev.spec.ts:42` (the default exists),
+  `:47` (points to the file's service and port), `:64` (production and
+  installation without a default); `scripts/dev/pasta-gerenciada.spec.ts:31`
+  (absent), `:51` (the `~`), `:67` (divergent with the volume), `:75` (the
+  message states symptom, fix and what does not migrate), `:113` (the preflight
+  calls the report without exiting because of it)
+- **Origin:** AT-213 — the owner's test on 2026-09-26
