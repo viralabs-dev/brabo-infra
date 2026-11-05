@@ -500,7 +500,7 @@ services:
       # monta o worktree e escreve o código — não enxerga. Por isso a linha é
       # literalmente idêntica lá em cima, incluindo o volume nomeado de default:
       # se `BRABO_PROJECTS_BASE` estiver vazia, os dois caem no MESMO volume
-      # inerte. Ver docs/runbook.md, "Project in Mounted mode".
+      # inerte. Ver deploy/docs/runbook.md, "Project in Mounted mode".
       - ${BRABO_PROJECTS_BASE:-brabo_projects_base}:${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}
     depends_on:
       postgres:

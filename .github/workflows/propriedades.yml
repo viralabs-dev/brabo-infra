@@ -32,7 +32,7 @@ name: Provas de propriedade (agendado)
 # Elas provam propriedade, não configuração: um backup que roda todo dia e não
 # restaura passa pelos cinco alertas de `brabo-alerts.yaml` (backup ATRASADO e
 # backup FALHO, nunca restore que deixou de funcionar). Sem agenda, a última
-# prova do restore era a data escrita à mão em `docs/runbook.md`.
+# prova do restore era a data escrita à mão em `deploy/docs/runbook.md`.
 #
 # SEPARADO de `ci.yml`, pelo mesmo motivo de `golden-set-rag.yml`: aquele é
 # deliberadamente só `pull_request`, e `schedule` misturado ali afetaria todo
@@ -67,7 +67,7 @@ name: Provas de propriedade (agendado)
 on:
   schedule:
     # Semanal, domingo 04:00 UTC. A cadência é pelo CUSTO MEDIDO — ver
-    # `docs/runbook.md`, seção "Scheduled property proofs".
+    # `deploy/docs/runbook.md`, seção "Scheduled property proofs".
     - cron: '0 4 * * 0'
   workflow_dispatch:
 
@@ -274,7 +274,7 @@ jobs:
 
       # A última execução boa do restore, como FATO datado pelo workflow: só
       # existe se o restore passou E a quebra proposital foi pega na mesma
-      # rodada. A data que `docs/runbook.md` ("Last verified run") guardava à
+      # rodada. A data que `deploy/docs/runbook.md` ("Last verified run") guardava à
       # mão sai daqui — o run mais recente com este artefato é a resposta.
       - name: Registrar a última execução boa do restore
         id: ultima_boa

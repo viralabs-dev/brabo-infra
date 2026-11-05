@@ -74,7 +74,7 @@ spec:
       # dar o privilégio a ela é escalar permissão sem necessidade. Lá o
       # restore usa uma credencial administrativa própria, via
       # `RESTORE_ADMIN_URL` — que o docker/backup/restore.sh já aceita e o
-      # docs/runbook.md (seção "Restore") documenta.
+      # deploy/docs/runbook.md (seção "Restore") documenta.
       postInitSQL:
         - ALTER ROLE brabo CREATEDB
       # pgvector criado pelo SUPERUSUÁRIO, dentro da database da aplicação.

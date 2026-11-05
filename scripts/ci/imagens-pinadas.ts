@@ -593,7 +593,7 @@ function principal(): void {
     }
     console.error(
       `::error::imagens-pinadas: ${violacoes.length} imagem(ns) sem pin imutável. ` +
-        'Ver docs/explanation/cadeia-de-suprimentos-do-ci.md e o comentário no topo de ' +
+        'Ver scripts/ci/docs/explanation/cadeia-de-suprimentos-do-ci.md e o comentário no topo de ' +
         'scripts/ci/imagens-pinadas.ts.',
     );
     process.exit(1);

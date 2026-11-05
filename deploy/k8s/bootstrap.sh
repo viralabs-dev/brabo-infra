@@ -386,7 +386,7 @@ aguardar_releases
 # Grafana. Sem o Collector, api e engine seguem exportando OTLP para um
 # Service que não existe: o exportador falha em segundo plano e nada que
 # as provas medem depende dele (medido na rodada de `propriedades.yml` que
-# introduziu a variável — ver `docs/runbook.md`, "Scheduled property proofs").
+# introduziu a variável — ver `deploy/docs/runbook.md`, "Scheduled property proofs").
 if [[ "${BRABO_SKIP_OBSERVABILITY:-}" == "1" ]]; then
   info "BRABO_SKIP_OBSERVABILITY=1 — sem Tempo, Loki, Collector, Alloy e Grafana"
 else
@@ -447,7 +447,7 @@ kubectl -n brabo-db create secret generic brabo-pg-credentials \
 # recusando o boot). A lista abaixo continua sendo o inventário das chaves
 # OBRIGATÓRIAS — e tudo o que entrar aqui vira variável de api, engine,
 # migrações e backup. As `_PREVIOUS` NÃO entram: só existem durante uma
-# rotação (docs/runbook.md, "Auth key rotation").
+# rotação (deploy/docs/runbook.md, "Auth key rotation").
 kubectl -n brabo create secret generic brabo \
   --from-literal=DATABASE_URL="${DATABASE_URL}" \
   --from-literal=SECRET_KEY_BASE="$(openssl rand -hex 32)" \
