@@ -4,7 +4,7 @@
 # Makefile exists for what isn't JavaScript nor Elixir — bringing up the
 # cluster, applying manifests, validating. Doesn't duplicate package.json
 # on purpose.
-.PHONY: help deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-mutacao test-restore-compose test-reprojecao test-reprojecao-k8s test-reprojecao-artefatos-k8s test-rotacao-chave-mestra-k8s k8s-validate k8s-logs k8s-down imagens-do-release
+.PHONY: help dev deploy-local deploy-local-clean smoke-k8s hpa-test rollout-test test-restore test-restore-mutacao test-restore-compose test-reprojecao test-reprojecao-k8s test-reprojecao-artefatos-k8s test-rotacao-chave-mestra-k8s k8s-validate k8s-logs k8s-down imagens-do-release
 
 SHELL := /usr/bin/env bash
 K8S := deploy/k8s
@@ -12,6 +12,11 @@ NS ?= brabo
 # Which overlay `imagens-do-release` writes to. `prod` by default because that
 # is the one the digest exists for: staging is fed by the same release.
 OVERLAY ?= prod
+
+# Sobe o ambiente de DEV a partir da pasta-mãe dos clones irmãos (BRABO_IRMAOS, padrão `..`):
+# o preflight confere que os irmãos existem e cria os pontos de montagem; depois, `compose up`.
+dev: ## Brings up the dev environment (preflight + docker compose up) from the sibling clones
+	@node scripts/dev/preflight.mjs && docker compose -f docker/docker-compose.yml --env-file .env up
 
 help: ## Lists the available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \

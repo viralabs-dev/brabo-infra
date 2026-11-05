@@ -15,8 +15,8 @@
 # INCOMPLETO".
 
 # As migrations e o seed rodam no HOST: `mix ecto.migrate` com o `deps`/`_build`
-# de `apps/engine` do checkout (NÃO os volumes do container do engine), e
-# `drizzle-kit`/`ts-node` com o `node_modules` do checkout. Nada do que o
+# do repo irmão `brabo-engine` (IRMAO_ENGINE, definido pelo reset-total.sh) (NÃO os volumes do container do engine), e
+# `drizzle-kit`/`ts-node` com o `node_modules` do repo irmão `brabo-api` (IRMAO_API). Nada do que o
 # `build` das imagens faz os atualiza. `mix deps.get` alinha as dependências ao
 # `mix.lock` (é o que faltava) e `mix compile` prova que o engine compila no
 # MESMO ambiente em que `engine:migrate` vai rodar (MIX_ENV de sempre, `dev`).
@@ -27,18 +27,18 @@ preparar_host_para_migrar() {
     return 1
   fi
   echo "==> alinhando as dependências do engine ao mix.lock no host (mix deps.get)…"
-  if ! (cd apps/engine && mix deps.get); then
-    echo "RECUSADO antes de qualquer efeito: \`mix deps.get\` falhou em apps/engine (rede? hex?). Nada foi parado nem apagado." >&2
+  if ! (cd "${IRMAO_ENGINE}" && mix deps.get); then
+    echo "RECUSADO antes de qualquer efeito: \`mix deps.get\` falhou em ${IRMAO_ENGINE} (rede? hex?). Nada foi parado nem apagado." >&2
     return 1
   fi
   echo "==> conferindo que o engine compila no host (mix compile)…"
-  if ! (cd apps/engine && mix compile); then
-    echo "RECUSADO antes de qualquer efeito: o engine NÃO compila no host, e \`pnpm engine:migrate\` roda no host — o reset morreria depois do DROP SCHEMA. Corrija a compilação (cd apps/engine && mix compile) e rode de novo. Nada foi parado nem apagado." >&2
+  if ! (cd "${IRMAO_ENGINE}" && mix compile); then
+    echo "RECUSADO antes de qualquer efeito: o engine NÃO compila no host, e \`pnpm engine:migrate\` roda no host — o reset morreria depois do DROP SCHEMA. Corrija a compilação (cd ${IRMAO_ENGINE} && mix compile) e rode de novo. Nada foi parado nem apagado." >&2
     return 1
   fi
   echo "==> conferindo drizzle-kit e ts-node no node_modules do host…"
-  if ! pnpm --filter api exec drizzle-kit --version >/dev/null 2>&1 \
-      || ! pnpm --filter api exec ts-node --version >/dev/null 2>&1; then
+  if ! pnpm --dir "${IRMAO_API}" exec drizzle-kit --version >/dev/null 2>&1 \
+      || ! pnpm --dir "${IRMAO_API}" exec ts-node --version >/dev/null 2>&1; then
     echo "RECUSADO antes de qualquer efeito: \`drizzle-kit\` ou \`ts-node\` não resolvem no node_modules do host (\`pnpm db:migrate\` e o seed rodam no host). Rode \`pnpm install --frozen-lockfile\` e tente de novo. Nada foi parado nem apagado." >&2
     return 1
   fi

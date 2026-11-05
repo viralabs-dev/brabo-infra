@@ -48,6 +48,27 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+  # O reutilizável de imagens do compose, chamado como um chamador sem o repo na raiz o faria:
+  # ele faz checkout explícito do brabo-infra em `infra/` (o spec confere o `repository:`).
+  imagens:
+    uses: ./.github/workflows/imagens-do-compose.yml
+    with:
+      infra_ref: ${{ github.sha }}
+
+  imagens-lidas:
+    name: Imagens lidas do compose
+    needs: imagens
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: As saídas vieram do compose do infra
+        env:
+          PGVECTOR: ${{ needs.imagens.outputs.pgvector }}
+          OLLAMA: ${{ needs.imagens.outputs.ollama }}
+        run: |
+          set -euo pipefail
+          [[ "${PGVECTOR}" == *@sha256:* && "${OLLAMA}" == *@sha256:* ]] || { echo "saídas vazias ou sem digest"; exit 1; }
+
   # `docker compose config` dos cinco composes, com os irmãos como contexto de build.
   composes:
     name: Composes resolvem
