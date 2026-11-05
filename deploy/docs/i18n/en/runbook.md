@@ -1144,7 +1144,7 @@ and smoke as [Local deploy](#deploy-local), which are proven.
 
 Since [ADR 0119](adr/0119-imagens-publicadas-no-ghcr-por-digest.md) every
 final tag publishes the production images to GHCR
-(`ghcr.io/daneiel/brabo-{api,engine,web,backup,broker}`, public — no
+(`ghcr.io/viralabs-dev/brabo-{api,engine,web,backup,broker}`, public — no
 `imagePullSecret` anywhere) and records what it published, **by digest**,
 in `.release/images.json`. The fifth, the container broker
 ([ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md)), is
@@ -3984,7 +3984,7 @@ branch, a ceiling on corrections, verdicts as an artifact, and a terminal
 ## Installing {#instalando}
 
 ```sh
-curl -fsSLO https://github.com/daneiel/brabo/releases/latest/download/install.sh && bash install.sh
+curl -fsSLO https://github.com/viralabs-dev/brabo/releases/latest/download/install.sh && bash install.sh
 ```
 
 **Download a file, then run it with `bash`.** The two shorter forms that look
@@ -4167,7 +4167,7 @@ and the dev agents stay in `dev.blocked_by_container`. **Runner** mode does not
 depend on it — there the local agent uses the Docker on your machine.
 
 Since [ADR 0162](adr/0162-broker-publicado-e-oferecido-pelo-instalador.md) the
-broker is the **fifth published image** (`ghcr.io/daneiel/brabo-broker`, by
+broker is the **fifth published image** (`ghcr.io/viralabs-dev/brabo-broker`, by
 digest, signed like the other four) and the installation compose has the
 service — **off by default**, under the same `container-broker` profile as the
 validation compose. The installer **asks** (*"Ligar o broker de container?
@@ -4319,9 +4319,9 @@ DIGEST=$(gh release download vX.Y.Z --pattern images.json --output - \
   | jq -r '.imagens[] | select(.alvo == "api") | .digest')
 
 cosign verify \
-  --certificate-identity-regexp '^https://github.com/daneiel/brabo/\.github/workflows/release\.yml@' \
+  --certificate-identity-regexp '^https://github.com/viralabs-dev/brabo/\.github/workflows/release\.yml@' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  "ghcr.io/daneiel/brabo-api@${DIGEST}"
+  "ghcr.io/viralabs-dev/brabo-api@${DIGEST}"
 ```
 
 ### The runner binaries
@@ -4332,11 +4332,11 @@ since [ADR 0174](adr/0174-runner-sem-binario-darwin-x64.md) — it uses
 steps: the manifest's signature, then the binary against the manifest.
 
 ```bash
-gh release download vX.Y.Z --pattern 'checksums.txt*' --pattern 'brabo-runner-*'
+gh release download vX.Y.Z --repo viralabs-dev/brabo-runner --pattern 'checksums.txt*' --pattern 'brabo-runner-*'
 
 cosign verify-blob \
   --bundle checksums.txt.bundle \
-  --certificate-identity-regexp '^https://github.com/daneiel/brabo/\.github/workflows/build-runner-binaries\.yml@' \
+  --certificate-identity-regexp '^https://github.com/viralabs-dev/brabo-runner/\.github/workflows/build-runner-binaries\.yml@' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   checksums.txt
 
@@ -4377,7 +4377,7 @@ The written offer is `THIRD_PARTY_NOTICES.md`, and it ships **inside** the
 image, because whoever runs `docker pull` does not have the repository:
 
 ```bash
-docker run --rm --entrypoint sh ghcr.io/daneiel/brabo-engine:vX.Y.Z \
+docker run --rm --entrypoint sh ghcr.io/viralabs-dev/brabo-engine:vX.Y.Z \
   -c 'cat /usr/share/doc/brabo/THIRD_PARTY_NOTICES.md'
 ```
 
@@ -4398,7 +4398,7 @@ execute bit and the image's non-root user could not traverse it. Each
 Dockerfile now creates the directory `0755` first. For the runner:
 
 ```bash
-gh release download vX.Y.Z --repo daneiel/brabo \
+gh release download vX.Y.Z --repo viralabs-dev/brabo \
   --pattern THIRD_PARTY_NOTICES.md --pattern checksums.txt
 sha256sum -c --ignore-missing checksums.txt
 ```

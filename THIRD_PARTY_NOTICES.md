@@ -83,7 +83,7 @@ oferta que só existe no GitHub não acompanha a cópia que a pessoa recebeu.
 Confira com:
 
 ```bash
-docker run --rm --entrypoint sh ghcr.io/daneiel/brabo-engine:<tag> \
+docker run --rm --entrypoint sh ghcr.io/viralabs-dev/brabo-engine:<tag> \
   -c 'cat /usr/share/doc/brabo/THIRD_PARTY_NOTICES.md'
 ```
 
