@@ -602,10 +602,10 @@ vive no pgvector e vem no dump. Desde a [RN-569](api.md#rn-569) ela existe
 
 - **Onde:** `docker/backup/lib.sh:28` (`destino_tipo`, a inferência que mantém o
   CronJob intacto), `:65` (`destino_esperar` perguntando por ESCRITA e não por
-  existência), `:105` (`destino_enviar`, escrita em `.parcial` e rename),
+  existência), `:116` (`destino_enviar`, escrita em `.parcial` e rename),
   `:181` (a garantia dos bare repos, escrita junto do código que a produz),
-  `:221` (`git_arquivar`, o status do `tar` num arquivo), `:259`
-  (`git_restaurar`, a devolução do dono) e `:273` (`git_raiz_gravavel`);
+  `:232` (`git_arquivar`, o status do `tar` num arquivo), `:272`
+  (`git_restaurar`, a devolução do dono) e `:286` (`git_raiz_gravavel`);
   `docker/backup/backup.sh:31` (`destino_preparar` — as cinco variáveis de S3
   deixando de ser obrigatórias), `:149` (os três desfechos do volume de repos,
   sem colapsar "não montado" com "vazio"), `:170` (a conferência do status do
