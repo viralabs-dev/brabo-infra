@@ -55,7 +55,7 @@ limpar() { rc=$?; rm -f "${ARQUIVO}"; exit "${rc}"; }
 trap limpar EXIT
 
 # --- achar e baixar --------------------------------------------------------
-destino_esperar \
+destino_esperar leitura \
   || { falha "destino inacessível ($(destino_descricao)): ${destino_saida}"; exit 1; }
 
 OBJETO="$(destino_listar "${PREFIXO}" | sort -r | head -n 1)"
@@ -121,10 +121,12 @@ fi
 # uid 70 lê mas não escreve. Descobrir isso no meio da extração deixa o destino
 # pela metade e o diagnóstico apontando para o tar.
 git_raiz_gravavel "${GIT_REPOS_DIR}" || {
+  dono_do_volume="$(stat -c '%u:%g' "${GIT_REPOS_DIR}" 2>/dev/null || echo '<uid:gid do volume>')"
   falha "${GIT_REPOS_DIR} não aceita escrita por este usuário (uid $(id -u)).
-       O volume pertence à api/ao engine, que rodam com outro uid. Restaure como root:
-         docker compose -f docker/docker-compose.prod.yml run --rm --user 0:0 backup brabo-restore-git --restaurar
-       Os arquivos extraídos são devolvidos ao dono do diretório, nunca deixados como root."
+       O volume pertence à api/ao engine, que rodam com outro uid. Restaure como o dono do volume
+       (root não serve: o serviço tem cap_drop: ALL):
+         docker compose -f docker/docker-compose.install.yml run --rm --user ${dono_do_volume} backup brabo-restore-git --restaurar
+       (numa instalação de desenvolvimento/validação, troque pelo docker/docker-compose.prod.yml)."
   exit 1
 }
 

@@ -2332,12 +2332,12 @@ Restaurar é o gesto de uma vez por incidente, e tem de ser digitado:
 
 ```bash
 docker compose -f docker/docker-compose.prod.yml \
-  run --rm --user 0:0 backup brabo-restore-git --restaurar
+  run --rm --user "$(docker run --rm -v brabo_git_local_repos:/v alpine stat -c %u:%g /v)" backup brabo-restore-git --restaurar
 ```
 
 Duas coisas sobre esse comando, as duas medidas e não supostas:
 
-- **`--user 0:0` não é opcional aqui.** O `git_local_repos` é compartilhado por três
+- **`--user <dono do volume>` não é opcional aqui, e root não serve** (o serviço tem `cap_drop: ALL`; a mensagem de recusa imprime o `uid:gid` lido por `stat`). O `git_local_repos` é compartilhado por três
   imagens rodando com três uids diferentes (a api como `node`, o engine como
   `engine`, a imagem de backup como uid 70). O volume fica com o dono de quem
   o montou primeiro, modo 0755: o uid 70 o lê e não consegue escrever. Sem
@@ -2647,7 +2647,7 @@ outro alvo.
 | `destination inaccessible … does not accept writes` | com `BACKUP_DIR`, o diretório existe e o uid do container não consegue escrever nele. É uma checagem de **escrita**, não de existência, de propósito: um destino só de leitura passaria no `ls` e reprovaria o dump, com o erro aparecendo depois do `pg_dump` e apontando para a coisa errada |
 | `tar of the bare repos exited with N` | algo mudou sob os repos no meio da leitura — o mais provável é um `git gc` concorrente. A execução é marcada `failed` em vez de entregar um arquivo parcial. Rode de novo |
 | `there are N bare repo(s) … and NO archive` | este volume não tem cobertura: o arquivo falta enquanto os repos não. Ausente-e-vazio é normal e informado de outro jeito |
-| `does not accept writes by this user (uid 70)` no `--restaurar` | o caso do dono do volume compartilhado — restaure com `--user 0:0`, veja [Recuperando os bare repos](#restore-dos-bare-repos) |
+| `does not accept writes by this user (uid 70)` no `--restaurar` | o caso do dono do volume compartilhado — restaure com `--user <dono do volume>`, veja [Recuperando os bare repos](#restore-dos-bare-repos) |
 
 ### Provas de propriedade agendadas {#provas-de-propriedade-agendadas}
 
@@ -2957,7 +2957,7 @@ uids; ele fica com o dono de quem o montou primeiro (medido: `1000:1000`,
 modo 0755) e a imagem de backup roda como uid 70. O primeiro `--restaurar` morreu
 no meio da extração com `tar: can't make dir ./exp001.git: Permission denied`,
 deixando o alvo escrito pela metade. Duas mudanças vieram disso, as duas acima: o
-comando recusa **antes** de extrair e nomeia `--user 0:0`, e quando ele de fato
+comando recusa **antes** de extrair e nomeia `--user <dono do volume>`, e quando ele de fato
 roda como root devolve a árvore extraída ao dono do diretório em vez de
 deixá-la com dono root — o que teria produzido um volume que restaura
 perfeitamente e em que api e engine não conseguem escrever.
