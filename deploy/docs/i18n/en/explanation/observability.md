@@ -5,7 +5,7 @@ sidebar_label: Observability
 sidebar_position: 3
 description: Brabo's observability model — why context is always on and export is conditional, what the cross-layer path is, and why trace_id is a contract.
 keywords: [observability, trace, log, OpenTelemetry, correlation]
-traducao_de: 929963d24eb727bd64875486f2f1889172f3084a
+traducao_de: 9ecc443e59
 ---
 
 # How an action is followed through the system

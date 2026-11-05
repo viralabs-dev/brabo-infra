@@ -5,7 +5,7 @@ sidebar_label: 可观测性
 sidebar_position: 3
 description: Brabo 的可观测性模型——为什么上下文总是开启而导出是有条件的、什么是跨层路径，以及为什么 trace_id 是合约。
 keywords: [可观测性, trace, log, OpenTelemetry, 关联]
-traducao_de: 929963d24eb727bd64875486f2f1889172f3084a
+traducao_de: 9ecc443e59
 ---
 
 # 如何在系统中追踪一个动作 {#how-an-action-is-followed-through-the-system}

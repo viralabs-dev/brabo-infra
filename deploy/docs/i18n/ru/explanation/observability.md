@@ -5,7 +5,7 @@ sidebar_label: Наблюдаемость
 sidebar_position: 3
 description: Модель наблюдаемости Brabo — почему контекст включён всегда, а экспорт условен, что такое путь между слоями и почему trace_id — это контракт.
 keywords: [наблюдаемость, trace, log, OpenTelemetry, корреляция]
-traducao_de: 929963d24eb727bd64875486f2f1889172f3084a
+traducao_de: 9ecc443e59
 ---
 
 # Как отследить действие через систему {#how-an-action-is-followed-through-the-system}
