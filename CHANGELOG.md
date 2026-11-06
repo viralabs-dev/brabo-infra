@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix: `propriedades.yml` now checks out `brabo-api`, `brabo-engine` and `brabo-web` (`dev`, public repos, `github.token` only) under `irmaos/` in the `provas` and `restore-compose` jobs and points `BRABO_IRMAOS`/`IRMAOS` there; the bake step uses the local checkout (`source: .`) instead of the remote git context that could not see the siblings (AT-761).
 - Docs: `THIRD_PARTY_NOTICES.md` is now in English (AT-745). It ships inside the image, so the `Dockerfile` copy and the notice contents that tests check (`ADR 0119`, the in-image path, `checksums.txt`) are unchanged.
 - Docs: `README.md` and the `deploy/k8s/base/{neo4j,ollama}/README.md` files are in English, the same as the rest of the repository's docs (AT-745).
 - Docs: `deploy/docs` (runbook, RNs do infra, observabilidade) passa a ter o inglês como fonte única, com `idioma_original: en`; as traduções de `deploy/docs/i18n/` saíram e o runbook reconciliou o que a tradução en tinha defasado (AT-745).
