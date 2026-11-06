@@ -3,7 +3,7 @@
 # containers, rede e volumes (`brabo_pgdata`…) compartilhados, e o reset total
 # apagaria o banco de uma instalação na mesma máquina. Os volumes de dev são
 # `brabo-dev_*`; os `brabo_*` de antes do ADR ficam no disco (ver o runbook,
-# "Moving a dev environment to brabo-dev"). O overlay de observabilidade repete
+# "Levando um ambiente de dev para brabo-dev"). O overlay de observabilidade repete
 # este nome: o `name:` do ÚLTIMO arquivo passado com `-f` vence.
 name: brabo-dev
 
@@ -186,8 +186,8 @@ services:
       # senão quem desiste primeiro é a api e o teto do engine não vale nada.
       OLLAMA_REQUEST_TIMEOUT_MS: ${OLLAMA_REQUEST_TIMEOUT_MS:-300000}
       CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-dev-master-key-change-me}
-      # Os `_PREVIOUS` só existem durante uma rotação sem downtime (runbook: "Auth
-      # key rotation" e "Master key rotation"); vazio = sem rotação, o normal. Sem
+      # Os `_PREVIOUS` só existem durante uma rotação sem downtime (runbook: "Rotação
+      # das chaves do auth" e "Rotação da chave mestra"); vazio = sem rotação, o normal. Sem
       # estas linhas o Compose não os repassa e a rotação não acontece (RN-595).
       CREDENTIALS_MASTER_KEY_PREVIOUS: ${CREDENTIALS_MASTER_KEY_PREVIOUS:-}
       # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
@@ -498,7 +498,7 @@ services:
       # monta o worktree e escreve o código — não enxerga. Por isso a linha é
       # literalmente idêntica lá em cima, incluindo o volume nomeado de default:
       # se `BRABO_PROJECTS_BASE` estiver vazia, os dois caem no MESMO volume
-      # inerte. Ver deploy/docs/runbook.md, "Project in Mounted mode".
+      # inerte. Ver deploy/docs/runbook.md, "Projeto no modo Pasta montada".
       - ${BRABO_PROJECTS_BASE:-brabo_projects_base}:${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}
     depends_on:
       postgres:

@@ -27,7 +27,7 @@ name: Provas de propriedade (agendado)
 # reprova se o restore NÃO reprovar — "um verde não diz que a prova ainda
 # enxerga uma falha". Só numa rodada em que restore e mutação passam, o
 # workflow guarda `ultima-execucao-boa.json` como artefato (a data que a seção
-# "Last verified run" do runbook deixou de manter à mão).
+# "Última execução verificada" do runbook deixou de manter à mão).
 #
 # Elas provam propriedade, não configuração: um backup que roda todo dia e não
 # restaura passa pelos cinco alertas de `brabo-alerts.yaml` (backup ATRASADO e
@@ -67,7 +67,7 @@ name: Provas de propriedade (agendado)
 on:
   schedule:
     # Semanal, domingo 04:00 UTC. A cadência é pelo CUSTO MEDIDO — ver
-    # `deploy/docs/runbook.md`, seção "Scheduled property proofs".
+    # `deploy/docs/runbook.md`, seção "Provas de propriedade agendadas".
     - cron: '0 4 * * 0'
   workflow_dispatch:
 
@@ -297,7 +297,7 @@ jobs:
 
       # A última execução boa do restore, como FATO datado pelo workflow: só
       # existe se o restore passou E a quebra proposital foi pega na mesma
-      # rodada. A data que `deploy/docs/runbook.md` ("Last verified run") guardava à
+      # rodada. A data que `deploy/docs/runbook.md` ("Última execução verificada") guardava à
       # mão sai daqui — o run mais recente com este artefato é a resposta.
       - name: Registrar a última execução boa do restore
         id: ultima_boa
