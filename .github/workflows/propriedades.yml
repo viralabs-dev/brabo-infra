@@ -87,6 +87,11 @@ permissions:
   contents: read
 
 env:
+  # Clones irmãos (AT-761): o build espera `brabo-api/engine/web` ao lado do infra; o
+  # checkout não escreve fora do workspace, então ficam em `irmaos/` e os dois
+  # consumidores (compose/bootstrap e o bake) apontam para lá.
+  BRABO_IRMAOS: ${{ github.workspace }}/irmaos
+  IRMAOS: ${{ github.workspace }}/irmaos
   # Versões IGUAIS às que `deploy/k8s/bootstrap.sh` instalaria. O bootstrap
   # baixa o k3d sem conferir checksum — instalando aqui antes, com hash pinado,
   # o `ensure_k3d` dele encontra o binário e não baixa nada. O passo
@@ -110,6 +115,24 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-api
+          ref: dev
+          path: irmaos/brabo-api
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-engine
+          ref: dev
+          path: irmaos/brabo-engine
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-web
+          ref: dev
+          path: irmaos/brabo-web
+          persist-credentials: false
 
       - name: Versões batem com o bootstrap
         run: |
@@ -437,6 +460,24 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-api
+          ref: dev
+          path: irmaos/brabo-api
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-engine
+          ref: dev
+          path: irmaos/brabo-engine
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-web
+          ref: dev
+          path: irmaos/brabo-web
+          persist-credentials: false
 
       - name: Tabela de durações
         run: |
@@ -452,6 +493,7 @@ jobs:
         id: build
         uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e  # v7.5.0
         with:
+          source: .
           files: docker-bake.hcl
           targets: api,engine,web,backup
           load: true
