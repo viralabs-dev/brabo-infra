@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # AT-146 — o ENSAIO da rotação da chave mestra (`CREDENTIALS_MASTER_KEY`),
 # contra o cluster da prova, pelos três passos do runbook
-# (deploy/docs/runbook.md, "Master key rotation"; RN-562/RN-563, ADR 0158).
+# (deploy/docs/runbook.md, "Rotação da chave mestra"; RN-562/RN-563, ADR 0158).
 #
 # ## Por que existe
 #

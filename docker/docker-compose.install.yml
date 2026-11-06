@@ -205,8 +205,8 @@ services:
       # (ADR 0059, RN-093/RN-114). A linha continua aqui, com valor vazio,
       # porque omiti-la esconderia que a variável existe.
       CREDENTIALS_MASTER_KEY: ${CREDENTIALS_MASTER_KEY:-}
-      # Os `_PREVIOUS` só existem durante uma rotação sem downtime (runbook: "Auth
-      # key rotation" e "Master key rotation"); vazio = sem rotação, o normal. Sem
+      # Os `_PREVIOUS` só existem durante uma rotação sem downtime (runbook: "Rotação
+      # das chaves do auth" e "Rotação da chave mestra"); vazio = sem rotação, o normal. Sem
       # estas linhas o Compose não os repassa e a rotação não acontece (RN-595).
       CREDENTIALS_MASTER_KEY_PREVIOUS: ${CREDENTIALS_MASTER_KEY_PREVIOUS:-}
       # Auth first-party (Fase 7a). AUTH_JWT_SECRET deriva o par Ed25519 que
