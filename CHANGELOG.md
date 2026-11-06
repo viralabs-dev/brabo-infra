@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix: `deploy/k8s/hpa-test.sh` reads only the job count from `bin/engine rpc`, with the same filter as `rollout-test.sh` (`grep -E '^[0-9]+$' | tail -n1`). The OTP 29.1.1 warning (`=ESOCK WARNING… libsctp.so.1`) written to stdout before the number no longer fails the exact comparison (AT-762).
 - Fix: `propriedades.yml` now checks out `brabo-api`, `brabo-engine` and `brabo-web` (`dev`, public repos, `github.token` only) under `irmaos/` in the `provas` and `restore-compose` jobs and points `BRABO_IRMAOS`/`IRMAOS` there; the bake step uses the local checkout (`source: .`) instead of the remote git context that could not see the siblings (AT-761).
 - Docs: `THIRD_PARTY_NOTICES.md` is now in English (AT-745). It ships inside the image, so the `Dockerfile` copy and the notice contents that tests check (`ADR 0119`, the in-image path, `checksums.txt`) are unchanged.
 - Docs: `README.md` and the `deploy/k8s/base/{neo4j,ollama}/README.md` files are in English, the same as the rest of the repository's docs (AT-745).
