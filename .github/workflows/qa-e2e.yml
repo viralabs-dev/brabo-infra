@@ -13,9 +13,9 @@ permissions:
 
 jobs:
   qa-e2e:
-    uses: viralabs-dev/brabo-ci/.github/workflows/qa-e2e-gatilho.yml@46d66150926054d605baaa3634ab9af7864cd424  # brabo-ci#10 (AT-765)
+    uses: viralabs-dev/brabo-ci/.github/workflows/qa-e2e-gatilho.yml@13f3697aaf3e4a151637755babb58422a44db303  # brabo-ci#17 (AT-765)
     with:
-      ci_ref: 46d66150926054d605baaa3634ab9af7864cd424  # brabo-ci#10 (AT-765)
+      ci_ref: 13f3697aaf3e4a151637755babb58422a44db303  # brabo-ci#17 (AT-765)
     secrets:
       APP_ID: ${{ secrets.BRABO_APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.BRABO_APP_PRIVATE_KEY }}
