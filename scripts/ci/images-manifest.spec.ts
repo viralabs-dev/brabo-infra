@@ -15,23 +15,23 @@ function metadataCompleto(): Record<string, unknown> {
   return {
     api: {
       'containerimage.digest': DIGEST_API,
-      'image.name': 'ghcr.io/daneiel/brabo-api:3.2.0,ghcr.io/daneiel/brabo-api:abcabcabcabc',
+      'image.name': 'ghcr.io/viralabs-dev/brabo-api:3.2.0,ghcr.io/viralabs-dev/brabo-api:abcabcabcabc',
     },
     engine: {
       'containerimage.digest': DIGEST_ENGINE,
-      'image.name': 'ghcr.io/daneiel/brabo-engine:3.2.0,ghcr.io/daneiel/brabo-engine:abcabcabcabc',
+      'image.name': 'ghcr.io/viralabs-dev/brabo-engine:3.2.0,ghcr.io/viralabs-dev/brabo-engine:abcabcabcabc',
     },
     web: {
       'containerimage.digest': DIGEST_WEB,
-      'image.name': 'ghcr.io/daneiel/brabo-web:3.2.0,ghcr.io/daneiel/brabo-web:abcabcabcabc',
+      'image.name': 'ghcr.io/viralabs-dev/brabo-web:3.2.0,ghcr.io/viralabs-dev/brabo-web:abcabcabcabc',
     },
     backup: {
       'containerimage.digest': DIGEST_BACKUP,
-      'image.name': 'ghcr.io/daneiel/brabo-backup:3.2.0,ghcr.io/daneiel/brabo-backup:abcabcabcabc',
+      'image.name': 'ghcr.io/viralabs-dev/brabo-backup:3.2.0,ghcr.io/viralabs-dev/brabo-backup:abcabcabcabc',
     },
     broker: {
       'containerimage.digest': DIGEST_BROKER,
-      'image.name': 'ghcr.io/daneiel/brabo-broker:3.2.0,ghcr.io/daneiel/brabo-broker:abcabcabcabc',
+      'image.name': 'ghcr.io/viralabs-dev/brabo-broker:3.2.0,ghcr.io/viralabs-dev/brabo-broker:abcabcabcabc',
     },
   };
 }
@@ -52,9 +52,9 @@ const CONTEXTO = {
 describe('separarRepositorioETags', () => {
   it('separa repositório único e as duas tags que o release publica', () => {
     expect(
-      separarRepositorioETags('ghcr.io/daneiel/brabo-api:3.2.0,ghcr.io/daneiel/brabo-api:abc123'),
+      separarRepositorioETags('ghcr.io/viralabs-dev/brabo-api:3.2.0,ghcr.io/viralabs-dev/brabo-api:abc123'),
     ).toEqual({
-      repositorio: 'ghcr.io/daneiel/brabo-api',
+      repositorio: 'ghcr.io/viralabs-dev/brabo-api',
       tags: ['3.2.0', 'abc123'],
     });
   });
@@ -67,7 +67,7 @@ describe('separarRepositorioETags', () => {
   });
 
   it('referência SEM tag reprova — o bake sempre publica com tag', () => {
-    expect(() => separarRepositorioETags('ghcr.io/daneiel/brabo-api')).toThrow(
+    expect(() => separarRepositorioETags('ghcr.io/viralabs-dev/brabo-api')).toThrow(
       /sem tag/,
     );
   });
@@ -98,7 +98,7 @@ describe('manifestoDeImagens', () => {
     expect(manifesto.imagens.map((i) => i.alvo)).toEqual(['api', 'engine', 'web', 'backup', 'broker']);
     expect(manifesto.imagens[0]).toEqual({
       alvo: 'api',
-      repositorio: 'ghcr.io/daneiel/brabo-api',
+      repositorio: 'ghcr.io/viralabs-dev/brabo-api',
       digest: DIGEST_API,
       tags: ['3.2.0', 'abcabcabcabc'],
     });
@@ -123,7 +123,7 @@ describe('manifestoDeImagens', () => {
 
   it('digest ausente reprova', () => {
     const metadata = metadataCompleto();
-    metadata.web = { 'image.name': 'ghcr.io/daneiel/brabo-web:3.2.0' };
+    metadata.web = { 'image.name': 'ghcr.io/viralabs-dev/brabo-web:3.2.0' };
 
     expect(() => manifestoDeImagens(metadata, CONTEXTO)).toThrow(/sem digest válido/);
   });
@@ -132,7 +132,7 @@ describe('manifestoDeImagens', () => {
     const metadata = metadataCompleto();
     metadata.engine = {
       'containerimage.digest': 'sha256:naoehhex',
-      'image.name': 'ghcr.io/daneiel/brabo-engine:3.2.0',
+      'image.name': 'ghcr.io/viralabs-dev/brabo-engine:3.2.0',
     };
 
     expect(() => manifestoDeImagens(metadata, CONTEXTO)).toThrow(/sem digest válido/);
@@ -151,10 +151,10 @@ describe('argumentosDeSetImage', () => {
     const argumentos = argumentosDeSetImage(manifestoDeImagens(metadataCompleto(), CONTEXTO));
 
     expect(argumentos).toEqual([
-      `brabo-api=ghcr.io/daneiel/brabo-api@${DIGEST_API}`,
-      `brabo-engine=ghcr.io/daneiel/brabo-engine@${DIGEST_ENGINE}`,
-      `brabo-web=ghcr.io/daneiel/brabo-web@${DIGEST_WEB}`,
-      `brabo-backup=ghcr.io/daneiel/brabo-backup@${DIGEST_BACKUP}`,
+      `brabo-api=ghcr.io/viralabs-dev/brabo-api@${DIGEST_API}`,
+      `brabo-engine=ghcr.io/viralabs-dev/brabo-engine@${DIGEST_ENGINE}`,
+      `brabo-web=ghcr.io/viralabs-dev/brabo-web@${DIGEST_WEB}`,
+      `brabo-backup=ghcr.io/viralabs-dev/brabo-backup@${DIGEST_BACKUP}`,
     ]);
   });
 

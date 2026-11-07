@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixtures de `alarmar-prova`, `images-manifest`, `aplicar-imagens`, `imagens-pinadas` e `prova-de-restauracao-env` e o comentário do `docker-bake.hcl` passam de `daneiel/brabo` e `ghcr.io/daneiel/` para `viralabs-dev`; o handle do dono como pessoa continua `daneiel` (AT-783).
+
 - O spec `alvos-do-runner` espera a issue do `brabo-runner` no lugar de `npm install -g @brabo/runner` (na recusa da api e no `install.sh`), e o runbook deixa de citar o npm: o runner sai só como binário (AT-774). Depende da `brabo-api` e do `brabo` (PR #44) já na `dev`.
 - CI: repina os reutilizáveis do `brabo-ci` em `13f3697` (merge da ci#17, que inclui a ci#16): `ubuntu-26.04`, `client-id` no lugar de `app-id`, rótulo de família criado antes de aplicar, linha `Carimbo:` na tag e helper `vinculos` (AT-772, AT-773).
 - CI: todo `runs-on` fixa `ubuntu-26.04` no lugar de `ubuntu-latest`, e o `create-github-app-token` usa `client-id` no lugar do `app-id` obsoleto; os runs saem sem anotação de aviso (AT-772).
