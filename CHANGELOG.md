@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- CI: repina os reutilizáveis do `brabo-ci` em `384b5d1` (merge da ci#22: o job `disparar` do `qa-e2e-gatilho.yml` agora instala as dependências) em todos os pins, `uses:`, `ci_ref:` e checkout do `brabo-ci` (AT-785).
+
+- Fixtures de `alarmar-prova`, `images-manifest`, `aplicar-imagens`, `imagens-pinadas` e `prova-de-restauracao-env` e o comentário do `docker-bake.hcl` passam de `daneiel/brabo` e `ghcr.io/daneiel/` para `viralabs-dev`; o handle do dono como pessoa continua `daneiel` (AT-783).
+
+- O spec `alvos-do-runner` espera a issue do `brabo-runner` no lugar de `npm install -g @brabo/runner` (na recusa da api e no `install.sh`), e o runbook deixa de citar o npm: o runner sai só como binário (AT-774). Depende da `brabo-api` e do `brabo` (PR #44) já na `dev`.
+- CI: repina os reutilizáveis do `brabo-ci` em `13f3697` (merge da ci#17, que inclui a ci#16): `ubuntu-26.04`, `client-id` no lugar de `app-id`, rótulo de família criado antes de aplicar, linha `Carimbo:` na tag e helper `vinculos` (AT-772, AT-773).
+- CI: todo `runs-on` fixa `ubuntu-26.04` no lugar de `ubuntu-latest`, e o `create-github-app-token` usa `client-id` no lugar do `app-id` obsoleto; os runs saem sem anotação de aviso (AT-772).
+
+- Ko-fi do mantenedor: `.github/FUNDING.yml` (botão Sponsor) e seção Apoie no README (AT-768).
+
+- Docs: a documentação do repositório volta ao pt-BR por padrão (AT-766, decisão do dono de 06/11/2026, que reverte o ADR 0260). `README.md`, `deploy/k8s/base/{neo4j,ollama}/README.md` e as três páginas de `deploy/docs` (runbook, RNs do infra, observabilidade) voltam ao pt-BR, sem o campo `idioma_original`; as âncoras `{#id}` e os blocos de código (inclusive o SQL do runbook) ficam iguais. O README ganha a seção "Repositórios do Brabo" e deixa de citar o monorepo antigo; os comentários e mensagens que citam seções do runbook (`preflight.mjs`, `instalacao-na-maquina.mjs`, `reset-total.sh`, `bootstrap.sh`, `test-rotacao-chave-mestra.sh`, `.env.example`, composes, `propriedades.yml`) passam a usar os títulos em pt-BR.
+- Fix: `deploy/k8s/hpa-test.sh` lê só a contagem de jobs do `bin/engine rpc`, com o mesmo filtro do `rollout-test.sh` (`grep -E '^[0-9]+$' | tail -n1`). O aviso do OTP 29.1.1 (`=ESOCK WARNING… libsctp.so.1`), escrito no stdout antes do número, deixa de reprovar a comparação exata (AT-762).
+- Fix: o `propriedades.yml` passa a fazer checkout de `brabo-api`, `brabo-engine` e `brabo-web` (`dev`, repos públicos, só `github.token`) em `irmaos/` nos jobs `provas` e `restore-compose` e aponta `BRABO_IRMAOS`/`IRMAOS` para lá; o passo do bake usa o checkout local (`source: .`) em vez do contexto git remoto, que não enxergava os irmãos (AT-761).
+- Docs: o `THIRD_PARTY_NOTICES.md` passa a ser em inglês (AT-745). Ele vai dentro da imagem, então a cópia no `Dockerfile` e o conteúdo do aviso que os testes conferem (`ADR 0119`, o caminho na imagem, `checksums.txt`) não mudam.
+- Docs: o `README.md` e os `deploy/k8s/base/{neo4j,ollama}/README.md` passam a ser em inglês, como o resto da doc do repositório (AT-745).
+- Docs: `deploy/docs` (runbook, RNs do infra, observabilidade) passa a ter o inglês como fonte única, com `idioma_original: en`; as traduções de `deploy/docs/i18n/` saíram e o runbook reconciliou o que a tradução en tinha defasado (AT-745).
 - `brabo-restore --banco-vazio` (AT-738, ADR 0256): restaura o dump direto no banco do `DATABASE_URL`, numa transação, só se ele não tiver nenhuma tabela em `public`/`drizzle`/`engine` (senão recusa nomeando); valida estrutura e contagens contra o próprio dump. Runbook ganha o procedimento por compose; RN-530 deixa de citar um spec inexistente; job `restore-banco-vazio` no `propriedades.yml` e spec com mutação da recusa.
 - Backup: o serviço `backup` ganha `user: ${BRABO_BACKUP_USER:-70:70}` (install e prod; default inalterado) para escrever na pasta criada pelo instalador; `restore.sh`/`restore-git.sh` checam o destino só por LEITURA (`destino_esperar leitura`); a recusa do `restore-git.sh` manda rodar `--user <dono lido do volume>` no compose de instalação (root não serve com `cap_drop: ALL`); o cabeçalho do serviço cita o arquivo certo (AT-738, achados 1, 4 e 11).
 - `politica.yml` novo: `pr-police` e `escada` do `brabo-ci` pinados por SHA (AT-733) e o job `politica` saiu do `ci.yml`; inclui a dispensa da PR do bot (ADR 0255).

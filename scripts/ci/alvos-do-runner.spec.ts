@@ -52,13 +52,13 @@ describe('os alvos do binário do runner (ADR 0174, ADR 0187)', () => {
   it('a api aceita exatamente o que a matriz constrói', () => {
     const fonte = ler('apps/api/src/interfaces/http/runner/runner-releases.controller.ts');
     expect(listaDoTs(fonte, 'PLATAFORMAS')).toEqual(daMatriz);
-    // E o Mac Intel e o Windows têm recusa PRÓPRIA, que aponta o npm e o ADR.
+    // E o Mac Intel e o Windows têm recusa PRÓPRIA, que aponta a issue do runner e o ADR.
     expect(fonte).toMatch(/'darwin-x64': \{ nome: 'Mac Intel', adr: 'ADR 0174' \}/);
     expect(fonte).toMatch(/'win32-x64': \{ nome: 'Windows', adr: 'ADR 0187' \}/);
-    expect(fonte).toContain('npm install -g @brabo/runner');
+    expect(fonte).toContain('https://github.com/viralabs-dev/brabo-runner/issues');
   });
 
-  it.skipIf(!existe('install.sh'))('o instalador só baixa alvo que a matriz constrói, e manda o Mac Intel para o npm', () => {
+  it.skipIf(!existe('install.sh'))('o instalador só baixa alvo que a matriz constrói, e manda o Mac Intel para a issue do runner', () => {
     const fonte = ler('install.sh');
     const inicio = fonte.indexOf('instalar_o_runner() {');
     const fim = fonte.indexOf('\n}\n', inicio);
@@ -67,7 +67,7 @@ describe('os alvos do binário do runner (ADR 0174, ADR 0187)', () => {
     const baixados = [...corpo.matchAll(/alvo='([^']+)'/g)].map((x) => x[1]);
     expect(baixados.length).toBeGreaterThan(0);
     for (const alvo of baixados) expect(daMatriz).toContain(alvo);
-    expect(corpo).toMatch(/darwin-amd64\)\s*\n[\s\S]*?npm install -g @brabo\/runner[\s\S]*?return 0/);
+    expect(corpo).toMatch(/darwin-amd64\)\s*\n[\s\S]*?issues[\s\S]*?return 0/);
     // Windows nem chega aqui: a instalação inteira é recusada antes (ADR 0150).
     expect(fonte).toMatch(/windows\)\s*\n\s*recusar "Windows está fora de escopo/);
   });

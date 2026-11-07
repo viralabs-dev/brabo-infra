@@ -1,0 +1,21 @@
+name: qa-e2e
+
+# Liga o E2E do brabo-qa nas PRs para a main (portão da main, AT-765).
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  qa-e2e:
+    uses: viralabs-dev/brabo-ci/.github/workflows/qa-e2e-gatilho.yml@384b5d134cf099087b2f8e6b9fa911f1c8ee345d  # brabo-ci dev, merge da ci#22
+    with:
+      ci_ref: 384b5d134cf099087b2f8e6b9fa911f1c8ee345d  # brabo-ci dev, merge da ci#22
+    secrets:
+      APP_ID: ${{ secrets.BRABO_APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.BRABO_APP_PRIVATE_KEY }}

@@ -34,7 +34,7 @@
 # INEXISTENTE, como o `node_modules` que nascia `root` (AT-172). Provar esse
 # caminho é outro instrumento: um projeto compose DESCARTÁVEL
 # (`docker compose -p <nome-descartável> … run --rm --no-deps <serviço>`, e
-# `down -v` no fim), nunca este script — ver o runbook, "Total reset".
+# `down -v` no fim), nunca este script — ver o runbook, "Reset total do ambiente de dev".
 #
 # E o que ele pergunta ANTES do primeiro efeito (AT-203): tudo o que o faria
 # morrer DEPOIS do `DROP SCHEMA` por um motivo do host ou de um volume — as

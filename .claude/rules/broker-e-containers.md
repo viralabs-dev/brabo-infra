@@ -19,7 +19,7 @@ paths:
   `docker/broker/`, e o binário `docker` DENTRO da imagem (`docker-cli`, só o
   cliente) — preço declarado da decisão de usar um mecanismo só dos dois lados.
   **Ele não aceita especificação de container**: recebe um `projectId` e uma
-  das cinco operações da `DockerPort`, vai à api LER a decisão do Arquiteto
+  das seis operações da `DockerPort`, vai à api LER a decisão do Arquiteto
   (`GET /internal/projects/:projectId/container-spec`) e COMPÕE imagem, rede,
   recursos e o único mount. Não existe campo em que se escreva `privileged`,
   `cap_add`, `network: host` ou um `-v` livre — se a spec viajasse no corpo, a

@@ -55,7 +55,7 @@ depth="$(engine_rpc "
   {:ok, r} = Ecto.Adapters.SQL.query(Engine.Repo, \"SELECT count(*) FROM engine.oban_jobs WHERE queue = '${PROBE_QUEUE}' AND state = 'available'\", [])
   [[n]] = r.rows
   IO.puts(n)
-" | tr -d '\r')"
+" 2>/dev/null | tr -d '\r' | grep -E '^[0-9]+$' | tail -n1 || true)"
 [[ "${depth}" == "${JOBS}" ]] || die "esperava ${JOBS} jobs available, encontrei '${depth}'"
 ok "${depth} jobs esperando em available"
 

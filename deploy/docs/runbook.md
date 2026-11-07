@@ -2777,7 +2777,7 @@ branches diferentes rodam lado a lado, dois na mesma ref esperam um pelo outro.
 Ele **não** é gate nem check obrigatório — nada espera por ele.
 
 Medido nas execuções que construíram o workflow (4 vCPUs, 15 GiB de RAM, 87 GB de
-disco livre no `ubuntu-latest`):
+disco livre no `ubuntu-26.04`):
 
 | passo | duração |
 |---|---|
@@ -4155,7 +4155,8 @@ manifesto assinado e posto com `install -m 0755`, então não há `chmod` manual
 ([RN-531](business-rules/produto.md#rn-531)) — e pergunta UMA base, escrevendo-a nos
 dois lados: `BRABO_PROJECTS_BASE` no `.env` e `base` no
 `runner.json` do runner. Uma Release sem binário para esta plataforma não interrompe
-a instalação: ela diz isso e aponta para `npm install -g @brabo/runner`.
+a instalação: ela diz isso e aponta para abrir uma issue em
+`https://github.com/viralabs-dev/brabo-runner/issues` (o runner sai só como binário, AT-774).
 
 Sobre uma instalação existente ele **migra ou para** — um `up` em volumes
 de outra versão é dano que não avisa. A ordem é backup →
@@ -4383,8 +4384,8 @@ cosign verify \
 ### Os binários do runner {#the-runner-binaries}
 
 Um `checksums.txt` assinado cobre os quatro alvos (o Mac Intel não tem binário
-desde o [ADR 0174](adr/0174-runner-sem-binario-darwin-x64.md) — ele usa
-`npm install -g @brabo/runner`), então a verificação tem dois
+desde o [ADR 0174](adr/0174-runner-sem-binario-darwin-x64.md) — ele fica
+sem runner e pede suporte por issue no `brabo-runner`, AT-774), então a verificação tem dois
 passos: a assinatura do manifesto, depois o binário contra o manifesto.
 
 ```bash

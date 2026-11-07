@@ -227,7 +227,7 @@ export function mensagemDeVolumesOrfaos({ deDev, comuns }) {
       : '') +
     `            O dev agora é \`${PROJETO_DE_DEV}\` e sobe com volumes NOVOS e vazios; os\n` +
     '            dados antigos continuam nesses volumes. Para copiá-los ou recomeçar do\n' +
-    '            zero, veja o runbook, "Moving a dev environment to brabo-dev".\n' +
+    '            zero, veja o runbook, "Levando um ambiente de dev para brabo-dev".\n' +
     '            Nada foi apagado, e o preflight nunca apaga volume.'
   );
 }

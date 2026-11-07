@@ -27,7 +27,7 @@ name: Provas de propriedade (agendado)
 # reprova se o restore NÃO reprovar — "um verde não diz que a prova ainda
 # enxerga uma falha". Só numa rodada em que restore e mutação passam, o
 # workflow guarda `ultima-execucao-boa.json` como artefato (a data que a seção
-# "Last verified run" do runbook deixou de manter à mão).
+# "Última execução verificada" do runbook deixou de manter à mão).
 #
 # Elas provam propriedade, não configuração: um backup que roda todo dia e não
 # restaura passa pelos cinco alertas de `brabo-alerts.yaml` (backup ATRASADO e
@@ -67,7 +67,7 @@ name: Provas de propriedade (agendado)
 on:
   schedule:
     # Semanal, domingo 04:00 UTC. A cadência é pelo CUSTO MEDIDO — ver
-    # `deploy/docs/runbook.md`, seção "Scheduled property proofs".
+    # `deploy/docs/runbook.md`, seção "Provas de propriedade agendadas".
     - cron: '0 4 * * 0'
   workflow_dispatch:
 
@@ -87,6 +87,11 @@ permissions:
   contents: read
 
 env:
+  # Clones irmãos (AT-761): o build espera `brabo-api/engine/web` ao lado do infra; o
+  # checkout não escreve fora do workspace, então ficam em `irmaos/` e os dois
+  # consumidores (compose/bootstrap e o bake) apontam para lá.
+  BRABO_IRMAOS: ${{ github.workspace }}/irmaos
+  IRMAOS: ${{ github.workspace }}/irmaos
   # Versões IGUAIS às que `deploy/k8s/bootstrap.sh` instalaria. O bootstrap
   # baixa o k3d sem conferir checksum — instalando aqui antes, com hash pinado,
   # o `ensure_k3d` dele encontra o binário e não baixa nada. O passo
@@ -103,13 +108,31 @@ env:
 jobs:
   provas:
     name: Provas de propriedade (k3d)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     permissions:
       contents: read
       issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-api
+          ref: dev
+          path: irmaos/brabo-api
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-engine
+          ref: dev
+          path: irmaos/brabo-engine
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-web
+          ref: dev
+          path: irmaos/brabo-web
+          persist-credentials: false
 
       - name: Versões batem com o bootstrap
         run: |
@@ -274,7 +297,7 @@ jobs:
 
       # A última execução boa do restore, como FATO datado pelo workflow: só
       # existe se o restore passou E a quebra proposital foi pega na mesma
-      # rodada. A data que `deploy/docs/runbook.md` ("Last verified run") guardava à
+      # rodada. A data que `deploy/docs/runbook.md` ("Última execução verificada") guardava à
       # mão sai daqui — o run mais recente com este artefato é a resposta.
       - name: Registrar a última execução boa do restore
         id: ultima_boa
@@ -430,13 +453,31 @@ jobs:
   # constrói pelo bootstrap; o cache do bake ali foi medido e recusado, AT-178).
   restore-compose:
     name: Restore da instalação por compose
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
       issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-api
+          ref: dev
+          path: irmaos/brabo-api
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-engine
+          ref: dev
+          path: irmaos/brabo-engine
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: viralabs-dev/brabo-web
+          ref: dev
+          path: irmaos/brabo-web
+          persist-credentials: false
 
       - name: Tabela de durações
         run: |
@@ -452,6 +493,7 @@ jobs:
         id: build
         uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e  # v7.5.0
         with:
+          source: .
           files: docker-bake.hcl
           targets: api,engine,web,backup
           load: true
@@ -546,7 +588,7 @@ jobs:
   # Também prova a recusa: o mesmo comando contra o banco já restaurado reprova.
   restore-banco-vazio:
     name: Restore em banco vazio (compose de instalação)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: read

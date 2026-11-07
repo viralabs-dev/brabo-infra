@@ -547,7 +547,7 @@ async function main() {
       '\nQuem segura as portas é o compose de dev ANTIGO (projeto `brabo`, antes do\n' +
         'ADR 0170). Derrube-o SEM `-v` — os volumes e os dados ficam:\n\n' +
         '  docker compose -p brabo -f docker/docker-compose.yml --env-file .env down\n\n' +
-        'e veja no runbook, "Moving a dev environment to brabo-dev", como levar os dados.\n',
+        'e veja no runbook, "Levando um ambiente de dev para brabo-dev", como levar os dados.\n',
     );
     process.exit(1);
   }
