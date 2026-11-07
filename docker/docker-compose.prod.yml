@@ -103,6 +103,8 @@ services:
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-api
       dockerfile: Dockerfile
+      secrets:
+        - npmrc
     <<: *app-hardening
     restart: "no"
     tmpfs:
@@ -155,6 +157,8 @@ services:
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-api
       dockerfile: Dockerfile
+      secrets:
+        - npmrc
     <<: *app-hardening
     # /tmp é o único caminho gravável fora dos volumes (uploads temporários,
     # arquivos intermediários). O resto do rootfs é read-only.
@@ -393,6 +397,8 @@ services:
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-broker
       dockerfile: Dockerfile
+      secrets:
+        - npmrc
     profiles: ["container-broker"]
     <<: *app-hardening
     # O CLI do docker escreve arquivo temporário; o resto do rootfs é
@@ -503,6 +509,8 @@ services:
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-web
       dockerfile: Dockerfile
+      secrets:
+        - npmrc
       # As VITE_* seguem sendo compile-time (o Vite as inlina no bundle), mas
       # deixaram de ser o mecanismo: viraram só o FALLBACK de `pnpm dev:web`.
       # A configuração de verdade vem em runtime por /config.js, gerado pelo
@@ -584,6 +592,12 @@ services:
     volumes:
       - ./ollama/pull-models.sh:/pull-models.sh:ro
     restart: "no"
+
+# Secret do BuildKit para o `pnpm install` dos builds de api, web e broker (RN-1039):
+# só existe durante o `RUN --mount=type=secret,id=npmrc`, nunca em camada nem em ENV.
+secrets:
+  npmrc:
+    file: ${NPMRC:-${HOME}/.npmrc}
 
 networks:
   # Rede PRÓPRIA do broker, `internal: true` (ADR 0130): o engine e o web não a

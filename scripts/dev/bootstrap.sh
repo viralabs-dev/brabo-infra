@@ -96,6 +96,24 @@ garantir_env() {
 }
 
 # ---------------------------------------------------------------------------
+# Token do GitHub Packages (pré-checagem)
+#
+# POR QUE EXISTE: api, web e broker instalam `@viralabs-dev/brabo-*` do GitHub
+# Packages, e o compose de dev monta o `~/.npmrc` do host como secret (RN-1039).
+# Sem a linha do registry com token, o `up` morre dentro do container com um 401
+# que não diz como sair. Aqui só se confere se a linha EXISTE: o valor nunca é
+# lido para a tela, nem ecoado. Só avisa (o menu tem itens que não usam npm).
+# ---------------------------------------------------------------------------
+conferir_npmrc() {
+  local arquivo="${NPMRC:-${HOME}/.npmrc}"
+  if [[ -r "${arquivo}" ]] && grep -qE '^//npm\.pkg\.github\.com/:_authToken=.' "${arquivo}"; then
+    return 0
+  fi
+  printf '%s%s%s\n' "${C_WARNING}" "bootstrap: ${arquivo} sem token do GitHub Packages (read:packages) — build e dev da api, web e broker vão falhar" "${C_RESET}" >&2
+  printf '%s\n' "  crie um PAT classic só com read:packages e grave: //npm.pkg.github.com/:_authToken=<PAT>" >&2
+}
+
+# ---------------------------------------------------------------------------
 # Donos corrompidos por container (auto-cura)
 #
 # POR QUE EXISTE: os Dockerfiles de dev (docker/*/Dockerfile) não têm `USER` e
@@ -1044,6 +1062,7 @@ if [[ ! -t 0 || ! -t 1 ]]; then
 fi
 
 garantir_env
+conferir_npmrc
 corrigir_donos
 
 STTY_ORIGINAL="$(stty -g 2>/dev/null || true)"

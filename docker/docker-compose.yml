@@ -7,6 +7,14 @@
 # este nome: o `name:` do ÚLTIMO arquivo passado com `-f` vence.
 name: brabo-dev
 
+# Token de leitura do GitHub Packages (`@viralabs-dev/brabo-*`, RN-1039): o `~/.npmrc` do host
+# entra nos serviços que rodam `pnpm install` como secret (arquivo montado em /run/secrets/npmrc),
+# nunca como ARG/ENV nem em camada. Sem o arquivo, o `up` recusa: crie o PAT (read:packages),
+# ver docs/getting-started.md. O `bootstrap.sh` confere antes, sem ecoar o valor.
+secrets:
+  npmrc:
+    file: ${NPMRC:-${HOME}/.npmrc}
+
 services:
   postgres:
     image: pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
@@ -165,7 +173,10 @@ services:
     # container.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    secrets:
+      - npmrc
     environment:
+      NPM_CONFIG_USERCONFIG: /run/secrets/npmrc
       # AT-722: o compose de DEV é sempre local; o acesso rápido por papel liga aqui.
       BRABO_AMBIENTE: ${BRABO_AMBIENTE:-local}
       PORT: 3000
@@ -561,6 +572,8 @@ services:
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-broker
       dockerfile: Dockerfile.dev
+      secrets:
+        - npmrc
     environment:
       BROKER_PORT: 8090
       # Mesmo segredo dos outros dois serviços — ver EngineServiceGuard,
@@ -649,7 +662,10 @@ services:
         DEV_UID: ${DEV_UID:-1000}
         DEV_GID: ${DEV_GID:-1000}
     working_dir: /workspace
+    secrets:
+      - npmrc
     environment:
+      NPM_CONFIG_USERCONFIG: /run/secrets/npmrc
       VITE_BRABO_AMBIENTE: ${VITE_BRABO_AMBIENTE:-local}
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
       VITE_ENGINE_URL: ${VITE_ENGINE_URL:-http://localhost:4000}

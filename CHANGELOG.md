@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- brabo-contracts como pacote (AT-770, R2a, RN-1039): `.github/actions/irmaos` passa a `v1.2.0`; `docker-bake.hcl` ganha `NPMRC` e o secret `npmrc` nos alvos `api`, `web` e `broker`; os composes dev e prod montam o `~/.npmrc` como secret (dev: `api`, `web` e build do `broker`; prod: build de `api`, `web` e `broker`); `propriedades.yml` (`provas` e `restore-compose`) ganha `packages: read` e o passo `.github/actions/npmrc` (`.npmrc` temporário com o `GITHUB_TOKEN`); `deploy/k8s/bootstrap.sh` passa `--secret` aos builds de api e web; `scripts/dev/bootstrap.sh` confere o `~/.npmrc` sem ecoar valor; `ci.yml` liga o `contracts-alinhado` (pin `4976af2`); spec `token-do-registry`. O `release.yml` só constrói o `backup` e fica igual. Depende das PRs `feature/contracts-por-pacote` de api, web e broker na `dev` para o bake/compose construírem.
+
 - Regressivo por funcionalidade (AT-769, B6): `qa-e2e.yml` liga o gatilho também nas PRs para a `dev` (`branches: [dev, main]`); a PR para a `dev` recebe o check `Regressivo do brabo-qa`, que só atesta e nunca é exigido. CLAUDE.md ganha a regra do card.
 - Vínculos nos runs (AT-773, B2): `propriedades.yml` ganha `run-name` (`Provas de propriedade · agendado|manual · <ator>`) e o passo `Vínculos` (helper `vinculos` do `brabo-ci`, pinado em `13f3697`) no início de `provas`, `restore-compose` e `restore-banco-vazio`; `ci.yml` ganha o mesmo passo depois dos irmãos em `afericoes` e `composes`; `alarmar-prova.sh` anexa `vinculos.md` ao corpo da issue quando `VINCULOS_MD` existe (spec com mutação); o runbook diz onde ver. O `release.yml` deste repo não liga repos e fica fora.
 

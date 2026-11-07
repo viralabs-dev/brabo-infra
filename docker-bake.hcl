@@ -40,6 +40,19 @@ variable "IRMAOS" {
   default = ".."
 }
 
+# Arquivo `.npmrc` com o token de leitura do GitHub Packages (`@viralabs-dev/brabo-*`).
+# Entra nos builds de api, web e broker SÓ como secret do BuildKit
+# (`RUN --mount=type=secret,id=npmrc`, RN-1039): nunca em ARG, ENV nem camada.
+# No CI, um passo grava o arquivo temporário com o GITHUB_TOKEN e aponta NPMRC para ele.
+# `HOME` vem do ambiente (o bake sobrepõe o default); declarada só para o default de NPMRC resolver.
+variable "HOME" {
+  default = ""
+}
+
+variable "NPMRC" {
+  default = "${HOME}/.npmrc"
+}
+
 variable "TAG" {
   default = "prod"
 }
@@ -124,6 +137,7 @@ target "api" {
   dockerfile = "Dockerfile"
   tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-api:${TAG}"] : ["${REGISTRY}brabo-api:${TAG}", "${REGISTRY}brabo-api:${TAG_EXTRA}"]
   args       = { BRABO_VERSION = VERSION, BRABO_AMBIENTE = AMBIENTE }
+  secret     = ["id=npmrc,src=${NPMRC}"]
   cache-from = ["type=gha,scope=api"]
   cache-to   = ["type=gha,scope=api,mode=max"]
 }
@@ -143,6 +157,7 @@ target "web" {
   dockerfile = "Dockerfile"
   tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-web:${TAG}"] : ["${REGISTRY}brabo-web:${TAG}", "${REGISTRY}brabo-web:${TAG_EXTRA}"]
   args       = { VITE_BRABO_VERSION = VERSION, VITE_BRABO_AMBIENTE = AMBIENTE }
+  secret     = ["id=npmrc,src=${NPMRC}"]
   cache-from = ["type=gha,scope=web"]
   cache-to   = ["type=gha,scope=web,mode=max"]
 }
@@ -174,6 +189,7 @@ target "broker" {
   dockerfile = "Dockerfile"
   tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-broker:${TAG}"] : ["${REGISTRY}brabo-broker:${TAG}", "${REGISTRY}brabo-broker:${TAG_EXTRA}"]
   args       = { BRABO_VERSION = VERSION }
+  secret     = ["id=npmrc,src=${NPMRC}"]
   cache-from = ["type=gha,scope=broker"]
   cache-to   = ["type=gha,scope=broker,mode=max"]
 }
