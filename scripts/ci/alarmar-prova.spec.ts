@@ -179,3 +179,20 @@ describe('alarmar — o ramo padrão vem do GitHub quando o ambiente não o traz
     expect(mutaveis(chamadas)).toEqual([]);
   });
 });
+
+describe('alarmar — Vínculos no corpo (AT-773)', () => {
+  const noPadrao = { RAMO_PADRAO: 'main', GITHUB_REF_NAME: 'main' };
+
+  it('com VINCULOS_MD, o corpo da issue anexa o bloco de vínculos', () => {
+    const md = path.join(area, 'vinculos.md');
+    writeFileSync(md, '## Vínculos\n\nMARCA-DO-VINCULO\n');
+    alarmar('failure', { ...noPadrao, VINCULOS_MD: md });
+    expect(readFileSync(`${log}.corpo`, 'utf8')).toContain('MARCA-DO-VINCULO');
+  });
+
+  it('sem o arquivo, o corpo sai sem o bloco e o alarme não falha', () => {
+    const { chamadas } = alarmar('failure', { ...noPadrao, VINCULOS_MD: path.join(area, 'nao-existe.md') });
+    expect(mutaveis(chamadas)).toHaveLength(1);
+    expect(readFileSync(`${log}.corpo`, 'utf8')).not.toContain('## Vínculos');
+  });
+});
