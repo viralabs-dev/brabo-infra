@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CI: todo `runs-on` fixa `ubuntu-26.04` no lugar de `ubuntu-latest`, e o `create-github-app-token` usa `client-id` no lugar do `app-id` obsoleto; os runs saem sem anotação de aviso (AT-772).
+
 - Ko-fi do mantenedor: `.github/FUNDING.yml` (botão Sponsor) e seção Apoie no README (AT-768).
 
 - Docs: a documentação do repositório volta ao pt-BR por padrão (AT-766, decisão do dono de 06/11/2026, que reverte o ADR 0260). `README.md`, `deploy/k8s/base/{neo4j,ollama}/README.md` e as três páginas de `deploy/docs` (runbook, RNs do infra, observabilidade) voltam ao pt-BR, sem o campo `idioma_original`; as âncoras `{#id}` e os blocos de código (inclusive o SQL do runbook) ficam iguais. O README ganha a seção "Repositórios do Brabo" e deixa de citar o monorepo antigo; os comentários e mensagens que citam seções do runbook (`preflight.mjs`, `instalacao-na-maquina.mjs`, `reset-total.sh`, `bootstrap.sh`, `test-rotacao-chave-mestra.sh`, `.env.example`, composes, `propriedades.yml`) passam a usar os títulos em pt-BR.

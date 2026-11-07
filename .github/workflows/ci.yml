@@ -18,7 +18,7 @@ env:
 jobs:
   actionlint:
     name: actionlint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -31,7 +31,7 @@ jobs:
   # Typecheck e as aferições (inclusive as CRUZADAS, que leem os clones irmãos na `dev` deles).
   afericoes:
     name: Typecheck e aferições (com os irmãos)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     env:
       BRABO_IRMAOS: ${{ github.workspace }}/irmaos
@@ -60,7 +60,7 @@ jobs:
   imagens-lidas:
     name: Imagens lidas do compose
     needs: imagens
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 2
     steps:
       - name: As saídas vieram do compose do infra
@@ -74,7 +74,7 @@ jobs:
   # `docker compose config` dos cinco composes, com os irmãos como contexto de build.
   composes:
     name: Composes resolvem
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     env:
       BRABO_IRMAOS: ${{ github.workspace }}/irmaos
@@ -88,7 +88,7 @@ jobs:
   # `make k8s-validate`: kustomize build + kubeconform nos overlays.
   manifests:
     name: Manifests de Kubernetes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
