@@ -14,7 +14,7 @@ runs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with: { repository: viralabs-dev/brabo-broker, ref: dev, path: irmaos/brabo-broker }
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      with: { repository: viralabs-dev/brabo-contracts, ref: v1.0.0, path: irmaos/brabo-contracts }
+      with: { repository: viralabs-dev/brabo-contracts, ref: v1.2.0, path: irmaos/brabo-contracts }
     # O repositório do produto (install.sh, release) pode ainda não existir/estar público: as aferições que o leem pulam.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       continue-on-error: true

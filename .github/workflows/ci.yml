@@ -28,6 +28,14 @@ jobs:
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/al.tgz" | sha256sum -c -
           tar -xzf /tmp/al.tgz -C /tmp actionlint
       - run: /tmp/actionlint -color -ignore SC2016 -ignore SC2129
+  # RN-1038: a versão do brabo-contracts é a mesma em todo lugar (aqui, só a ref em `.github/actions/irmaos`).
+  # Não é check obrigatório. O SHA é o do brabo-ci (R1 da AT-770) e vale também para `ci_ref`.
+  contracts-alinhado:
+    name: Contracts alinhado
+    uses: viralabs-dev/brabo-ci/.github/workflows/contracts-alinhado.yml@4976af2cd947966df43bbbcae5c3c80f91ac2310
+    with:
+      ci_ref: 4976af2cd947966df43bbbcae5c3c80f91ac2310
+
   # Typecheck e as aferições (inclusive as CRUZADAS, que leem os clones irmãos na `dev` deles).
   afericoes:
     name: Typecheck e aferições (com os irmãos)

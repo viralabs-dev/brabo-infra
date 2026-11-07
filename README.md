@@ -36,6 +36,20 @@ já está na `dev` do `brabo-broker`, e a rodada com os seis serviços saudávei
 
 Para `docker buildx bake` com os irmãos: `docker buildx bake --allow=fs.read=.. -f docker-bake.hcl`.
 
+### Token do GitHub Packages (AT-770)
+
+api, web e broker instalam `@viralabs-dev/brabo-shared` e `@viralabs-dev/brabo-docker-port` (pacotes públicos, mas o
+registry pede token até para instalar). O token é um PAT classic só com `read:packages`, numa linha do `~/.npmrc` do host:
+
+```text
+//npm.pkg.github.com/:_authToken=<PAT>
+```
+
+- **Dev (`make dev`, `bootstrap.sh`)**: o compose monta o `~/.npmrc` como secret nos serviços que rodam `pnpm install` (`api`, `web`) e no build do `broker`. `NPMRC=<arquivo>` aponta para outro arquivo. O `bootstrap.sh` avisa, sem ecoar valor, se a linha não existe.
+- **Build de imagem (bake, compose prod, `deploy/k8s/bootstrap.sh`)**: o mesmo arquivo entra como secret do BuildKit (`id=npmrc`), nunca como `ARG`/`ENV` nem em camada (RN-1039). Sem ele o build recusa.
+- **CI**: o passo `.github/actions/npmrc` grava um `.npmrc` temporário com o `GITHUB_TOKEN` (job com `packages: read`) e exporta `NPMRC`.
+- A ref do `brabo-contracts` nos clones irmãos (`.github/actions/irmaos`) é a `v1.2.0`; o check `contracts-alinhado` do `brabo-ci` a confere.
+
 ## O que não vem para cá
 
 `install.sh`, os assets `brabo-install-*`, os workflows de release do produto e o
