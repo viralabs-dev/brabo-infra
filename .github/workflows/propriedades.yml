@@ -1,5 +1,7 @@
 name: Provas de propriedade (agendado)
 
+run-name: ${{ format('Provas de propriedade · {0} · {1}', github.event_name == 'schedule' && 'agendado' || format('manual · {0}', github.actor), github.ref_name) }}
+
 # BRB-009 — as três provas de PROPRIEDADE do deploy em Kubernetes, que até
 # aqui só rodavam quando alguém digitava `make`:
 #
@@ -133,6 +135,15 @@ jobs:
           ref: dev
           path: irmaos/brabo-web
           persist-credentials: false
+
+      - name: Vínculos do run (origem, irmãos e destino no Summary)
+        id: vinculos
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@2d9ec1b9a8045d0d35e769d81b4c441264452ebb  # brabo-ci dev, merge da ci#22 (AT-773)
+        with:
+          irmaos: |
+            irmaos/brabo-api
+            irmaos/brabo-engine
+            irmaos/brabo-web
 
       - name: Versões batem com o bootstrap
         run: |
@@ -414,6 +425,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           URL_DO_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VINCULOS_MD: ${{ steps.vinculos.outputs.arquivo }}
           BOOTSTRAP: ${{ steps.bootstrap.outcome }}
           SMOKE: ${{ steps.smoke.outcome }}
           HPA: ${{ steps.hpa.outcome }}
@@ -478,6 +490,15 @@ jobs:
           ref: dev
           path: irmaos/brabo-web
           persist-credentials: false
+
+      - name: Vínculos do run (origem, irmãos e destino no Summary)
+        id: vinculos
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@2d9ec1b9a8045d0d35e769d81b4c441264452ebb  # brabo-ci dev, merge da ci#22 (AT-773)
+        with:
+          irmaos: |
+            irmaos/brabo-api
+            irmaos/brabo-engine
+            irmaos/brabo-web
 
       - name: Tabela de durações
         run: |
@@ -565,6 +586,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           URL_DO_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VINCULOS_MD: ${{ steps.vinculos.outputs.arquivo }}
           BUILD: ${{ steps.build.outcome }}
           COMPOSE: ${{ steps.compose.outcome }}
           FIXTURE: ${{ steps.fixture.outcome }}
@@ -601,6 +623,10 @@ jobs:
       BRABO_BACKUP_IMAGE: brabo-backup:ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Vínculos do run (origem e destino no Summary)
+        id: vinculos
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@2d9ec1b9a8045d0d35e769d81b4c441264452ebb  # brabo-ci dev, merge da ci#22 (AT-773)
 
       - name: Build da imagem de backup
         run: docker build -f docker/backup/Dockerfile.prod -t "${BRABO_BACKUP_IMAGE}" .
@@ -669,6 +695,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           URL_DO_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VINCULOS_MD: ${{ steps.vinculos.outputs.arquivo }}
           RESTORE: ${{ steps.restore.outcome }}
         run: |
           set -euo pipefail

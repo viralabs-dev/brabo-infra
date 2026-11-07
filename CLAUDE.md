@@ -39,6 +39,7 @@ assinatura, Trivy). Os caminhos que elas citam (`apps/api/...`) são os do monor
   string. O `.env` do instalador é conferido por `docker compose config` (`prova-de-restauracao-env.spec.ts`).
 - Imagem de terceiro por digest com a tag inline; `uses:` preso a SHA com `# vX`; Dependabot de
   linguagem só segurança (`open-pull-requests-limit: 0`), `docker` com `ignore: brabo-*`.
+- Regressivo por funcionalidade (AT-769): PR que toca uma funcionalidade do catálogo (`brabo-qa/funcionalidades.yml`, mapa por caminho) ajusta o regressivo dela no `brabo-qa` contra a `dev`, ou diz no card por que não precisa. Na PR para a `dev` o check `Regressivo do brabo-qa` só atesta (nunca obrigatório); na PR para a `main` o `E2E do brabo-qa` roda o catálogo inteiro e bloqueia, salvo `/qa-aceitar`.
 
 ## O que NÃO fazer
 - Não subir broker/compose com socket do Docker em produção sem a contenção do ADR 0189.

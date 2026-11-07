@@ -93,6 +93,8 @@ alarmar() {
     echo "O log do passo tem a mensagem do script${onde:+; ${onde}}."
     echo "Uma nova falha deste alvo vira comentário AQUI, e a primeira rodada em que ele passar fecha a issue sozinha."
   } > "${corpo}"
+  # Vínculos (AT-773): o bloco do helper `vinculos`, se o passo gerou o arquivo.
+  [ -f "${VINCULOS_MD:-}" ] && { echo; cat "${VINCULOS_MD}"; } >> "${corpo}" || true
 
   if [ -n "${existente}" ]; then
     gh issue comment "${existente}" --body-file "${corpo}"
