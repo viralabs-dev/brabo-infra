@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- O spec `alvos-do-runner` espera a issue do `brabo-runner` no lugar de `npm install -g @brabo/runner` (na recusa da api e no `install.sh`), e o runbook deixa de citar o npm: o runner sai só como binário (AT-774). Depende da `brabo-api` e do `brabo` (PR #44) já na `dev`.
 - CI: todo `runs-on` fixa `ubuntu-26.04` no lugar de `ubuntu-latest`, e o `create-github-app-token` usa `client-id` no lugar do `app-id` obsoleto; os runs saem sem anotação de aviso (AT-772).
 
 - Ko-fi do mantenedor: `.github/FUNDING.yml` (botão Sponsor) e seção Apoie no README (AT-768).
