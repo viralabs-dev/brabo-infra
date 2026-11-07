@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CI: repina os reutilizáveis do `brabo-ci` em `384b5d1` (merge da ci#22: o job `disparar` do `qa-e2e-gatilho.yml` agora instala as dependências) em todos os pins, `uses:`, `ci_ref:` e checkout do `brabo-ci` (AT-785).
+
 - Fixtures de `alarmar-prova`, `images-manifest`, `aplicar-imagens`, `imagens-pinadas` e `prova-de-restauracao-env` e o comentário do `docker-bake.hcl` passam de `daneiel/brabo` e `ghcr.io/daneiel/` para `viralabs-dev`; o handle do dono como pessoa continua `daneiel` (AT-783).
 
 - O spec `alvos-do-runner` espera a issue do `brabo-runner` no lugar de `npm install -g @brabo/runner` (na recusa da api e no `install.sh`), e o runbook deixa de citar o npm: o runner sai só como binário (AT-774). Depende da `brabo-api` e do `brabo` (PR #44) já na `dev`.
