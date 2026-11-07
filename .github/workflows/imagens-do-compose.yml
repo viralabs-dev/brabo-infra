@@ -52,7 +52,7 @@ permissions:
 jobs:
   ler:
     name: Ler as imagens do compose
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       pgvector: ${{ steps.ler.outputs.pgvector }}
