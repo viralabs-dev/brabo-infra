@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Regressivo por funcionalidade (AT-769, B6): `qa-e2e.yml` liga o gatilho também nas PRs para a `dev` (`branches: [dev, main]`); a PR para a `dev` recebe o check `Regressivo do brabo-qa`, que só atesta e nunca é exigido. CLAUDE.md ganha a regra do card.
+- Vínculos nos runs (AT-773, B2): `propriedades.yml` ganha `run-name` (`Provas de propriedade · agendado|manual · <ator>`) e o passo `Vínculos` (helper `vinculos` do `brabo-ci`, pinado em `13f3697`) no início de `provas`, `restore-compose` e `restore-banco-vazio`; `ci.yml` ganha o mesmo passo depois dos irmãos em `afericoes` e `composes`; `alarmar-prova.sh` anexa `vinculos.md` ao corpo da issue quando `VINCULOS_MD` existe (spec com mutação); o runbook diz onde ver. O `release.yml` deste repo não liga repos e fica fora.
+
 - CI: repina os reutilizáveis do `brabo-ci` em `384b5d1` (merge da ci#22: o job `disparar` do `qa-e2e-gatilho.yml` agora instala as dependências) em todos os pins, `uses:`, `ci_ref:` e checkout do `brabo-ci` (AT-785).
 
 - Fixtures de `alarmar-prova`, `images-manifest`, `aplicar-imagens`, `imagens-pinadas` e `prova-de-restauracao-env` e o comentário do `docker-bake.hcl` passam de `daneiel/brabo` e `ghcr.io/daneiel/` para `viralabs-dev`; o handle do dono como pessoa continua `daneiel` (AT-783).

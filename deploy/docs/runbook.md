@@ -2689,6 +2689,8 @@ outro alvo.
 
 ### Provas de propriedade agendadas {#provas-de-propriedade-agendadas}
 
+Desde a AT-773, cada run mostra no título quem o disparou (`Provas de propriedade · agendado`, ou `manual · <ator>`) e, no Summary, o bloco `## Vínculos`: a origem, os irmãos lidos com o SHA de cada um (`brabo-api`, `brabo-engine`, `brabo-web`) e o destino do resultado. O helper nunca reprova o job; sem a tabela a prova segue. A issue de alarme recebe o mesmo bloco no corpo.
+
 `make test-restore`, `make rollout-test` e `make hpa-test` provam
 **propriedades**, não configuração — um backup que roda toda noite e não
 restaura passa nos cinco alertas de `brabo-alerts.yaml`. Até o BRB-009 eles rodavam
