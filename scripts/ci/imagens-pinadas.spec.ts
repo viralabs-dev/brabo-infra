@@ -115,7 +115,7 @@ describe('partesDaReferencia', () => {
 
 describe('verificarImagens — o que NÃO é imagem de terceiro', () => {
   it('não cobra as imagens que este repositório constrói', () => {
-    const conteudo = '    image: brabo-api:prod\n    image: ghcr.io/daneiel/brabo-engine:prod\n';
+    const conteudo = '    image: brabo-api:prod\n    image: ghcr.io/viralabs-dev/brabo-engine:prod\n';
     expect(verificarImagens(compose(conteudo))).toEqual([]);
   });
 

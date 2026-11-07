@@ -75,7 +75,7 @@ variable "AMBIENTE" {
   default = ""
 }
 # Prefixo de registry, COM a barra final quando presente:
-# `ghcr.io/daneiel/`. Vazio por padrão de propósito — o `ci.yml` constrói para
+# `ghcr.io/viralabs-dev/`. Vazio por padrão de propósito — o `ci.yml` constrói para
 # o daemon local e compara nomes curtos (`brabo-api:prod`) no scan e no smoke;
 # quem publica é só o `release.yml` (ADR 0119).
 #

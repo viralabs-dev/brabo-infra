@@ -4,6 +4,11 @@
 
 - Regressivo por funcionalidade (AT-769, B6): `qa-e2e.yml` liga o gatilho também nas PRs para a `dev` (`branches: [dev, main]`); a PR para a `dev` recebe o check `Regressivo do brabo-qa`, que só atesta e nunca é exigido. CLAUDE.md ganha a regra do card.
 - Vínculos nos runs (AT-773, B2): `propriedades.yml` ganha `run-name` (`Provas de propriedade · agendado|manual · <ator>`) e o passo `Vínculos` (helper `vinculos` do `brabo-ci`, pinado em `13f3697`) no início de `provas`, `restore-compose` e `restore-banco-vazio`; `ci.yml` ganha o mesmo passo depois dos irmãos em `afericoes` e `composes`; `alarmar-prova.sh` anexa `vinculos.md` ao corpo da issue quando `VINCULOS_MD` existe (spec com mutação); o runbook diz onde ver. O `release.yml` deste repo não liga repos e fica fora.
+
+- CI: repina os reutilizáveis do `brabo-ci` em `384b5d1` (merge da ci#22: o job `disparar` do `qa-e2e-gatilho.yml` agora instala as dependências) em todos os pins, `uses:`, `ci_ref:` e checkout do `brabo-ci` (AT-785).
+
+- Fixtures de `alarmar-prova`, `images-manifest`, `aplicar-imagens`, `imagens-pinadas` e `prova-de-restauracao-env` e o comentário do `docker-bake.hcl` passam de `daneiel/brabo` e `ghcr.io/daneiel/` para `viralabs-dev`; o handle do dono como pessoa continua `daneiel` (AT-783).
+
 - O spec `alvos-do-runner` espera a issue do `brabo-runner` no lugar de `npm install -g @brabo/runner` (na recusa da api e no `install.sh`), e o runbook deixa de citar o npm: o runner sai só como binário (AT-774). Depende da `brabo-api` e do `brabo` (PR #44) já na `dev`.
 - CI: repina os reutilizáveis do `brabo-ci` em `13f3697` (merge da ci#17, que inclui a ci#16): `ubuntu-26.04`, `client-id` no lugar de `app-id`, rótulo de família criado antes de aplicar, linha `Carimbo:` na tag e helper `vinculos` (AT-772, AT-773).
 - CI: todo `runs-on` fixa `ubuntu-26.04` no lugar de `ubuntu-latest`, e o `create-github-app-token` usa `client-id` no lugar do `app-id` obsoleto; os runs saem sem anotação de aviso (AT-772).

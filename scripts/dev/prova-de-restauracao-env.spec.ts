@@ -32,11 +32,11 @@ const composeDisponivel = spawnSync('docker', ['compose', 'version'], { encoding
 const PULAR = composeDisponivel ? undefined : 'sem `docker compose` — o parser do Compose é o validador';
 
 const IMAGENS = {
-  BRABO_API_IMAGE: 'ghcr.io/daneiel/brabo-api@sha256:' + 'a'.repeat(64),
-  BRABO_ENGINE_IMAGE: 'ghcr.io/daneiel/brabo-engine@sha256:' + 'b'.repeat(64),
-  BRABO_WEB_IMAGE: 'ghcr.io/daneiel/brabo-web@sha256:' + 'c'.repeat(64),
-  BRABO_BACKUP_IMAGE: 'ghcr.io/daneiel/brabo-backup@sha256:' + 'd'.repeat(64),
-  BRABO_BROKER_IMAGE: 'ghcr.io/daneiel/brabo-broker@sha256:' + 'e'.repeat(64),
+  BRABO_API_IMAGE: 'ghcr.io/viralabs-dev/brabo-api@sha256:' + 'a'.repeat(64),
+  BRABO_ENGINE_IMAGE: 'ghcr.io/viralabs-dev/brabo-engine@sha256:' + 'b'.repeat(64),
+  BRABO_WEB_IMAGE: 'ghcr.io/viralabs-dev/brabo-web@sha256:' + 'c'.repeat(64),
+  BRABO_BACKUP_IMAGE: 'ghcr.io/viralabs-dev/brabo-backup@sha256:' + 'd'.repeat(64),
+  BRABO_BROKER_IMAGE: 'ghcr.io/viralabs-dev/brabo-broker@sha256:' + 'e'.repeat(64),
 };
 
 function ambiente(extra: Record<string, string> = {}, pathEnv?: string): NodeJS.ProcessEnv {

@@ -8,7 +8,7 @@ const VALIDO = JSON.stringify({
   imagens: [
     {
       alvo: 'api',
-      repositorio: 'ghcr.io/daneiel/brabo-api',
+      repositorio: 'ghcr.io/viralabs-dev/brabo-api',
       digest: `sha256:${'a'.repeat(64)}`,
       tags: ['3.2.0'],
     },
