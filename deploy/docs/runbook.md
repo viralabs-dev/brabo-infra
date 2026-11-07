@@ -2777,7 +2777,7 @@ branches diferentes rodam lado a lado, dois na mesma ref esperam um pelo outro.
 Ele **não** é gate nem check obrigatório — nada espera por ele.
 
 Medido nas execuções que construíram o workflow (4 vCPUs, 15 GiB de RAM, 87 GB de
-disco livre no `ubuntu-latest`):
+disco livre no `ubuntu-26.04`):
 
 | passo | duração |
 |---|---|

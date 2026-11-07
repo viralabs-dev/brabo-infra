@@ -1,0 +1,4 @@
+# actionlint 1.7.12 ainda não conhece o rótulo do runner Ubuntu 26.04 (AT-772).
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

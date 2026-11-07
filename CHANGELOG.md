@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- CI: repina os reutilizáveis do `brabo-ci` em `13f3697` (merge da ci#17, que inclui a ci#16): `ubuntu-26.04`, `client-id` no lugar de `app-id`, rótulo de família criado antes de aplicar, linha `Carimbo:` na tag e helper `vinculos` (AT-772, AT-773).
+- CI: todo `runs-on` fixa `ubuntu-26.04` no lugar de `ubuntu-latest`, e o `create-github-app-token` usa `client-id` no lugar do `app-id` obsoleto; os runs saem sem anotação de aviso (AT-772).
+
+- Ko-fi do mantenedor: `.github/FUNDING.yml` (botão Sponsor) e seção Apoie no README (AT-768).
+
 - Docs: a documentação do repositório volta ao pt-BR por padrão (AT-766, decisão do dono de 06/11/2026, que reverte o ADR 0260). `README.md`, `deploy/k8s/base/{neo4j,ollama}/README.md` e as três páginas de `deploy/docs` (runbook, RNs do infra, observabilidade) voltam ao pt-BR, sem o campo `idioma_original`; as âncoras `{#id}` e os blocos de código (inclusive o SQL do runbook) ficam iguais. O README ganha a seção "Repositórios do Brabo" e deixa de citar o monorepo antigo; os comentários e mensagens que citam seções do runbook (`preflight.mjs`, `instalacao-na-maquina.mjs`, `reset-total.sh`, `bootstrap.sh`, `test-rotacao-chave-mestra.sh`, `.env.example`, composes, `propriedades.yml`) passam a usar os títulos em pt-BR.
 - Fix: `deploy/k8s/hpa-test.sh` lê só a contagem de jobs do `bin/engine rpc`, com o mesmo filtro do `rollout-test.sh` (`grep -E '^[0-9]+$' | tail -n1`). O aviso do OTP 29.1.1 (`=ESOCK WARNING… libsctp.so.1`), escrito no stdout antes do número, deixa de reprovar a comparação exata (AT-762).
 - Fix: o `propriedades.yml` passa a fazer checkout de `brabo-api`, `brabo-engine` e `brabo-web` (`dev`, repos públicos, só `github.token`) em `irmaos/` nos jobs `provas` e `restore-compose` e aponta `BRABO_IRMAOS`/`IRMAOS` para lá; o passo do bake usa o checkout local (`source: .`) em vez do contexto git remoto, que não enxergava os irmãos (AT-761).

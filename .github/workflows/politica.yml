@@ -13,10 +13,10 @@ permissions:
 
 jobs:
   pr-police:
-    uses: viralabs-dev/brabo-ci/.github/workflows/pr-police.yml@b030fbffca23f055771706cd3631911e30d5ad2e  # dev
+    uses: viralabs-dev/brabo-ci/.github/workflows/pr-police.yml@13f3697aaf3e4a151637755babb58422a44db303  # brabo-ci dev, merge da ci#17
     with:
-      ci_ref: b030fbffca23f055771706cd3631911e30d5ad2e  # dev
+      ci_ref: 13f3697aaf3e4a151637755babb58422a44db303
   escada:
-    uses: viralabs-dev/brabo-ci/.github/workflows/approval-ladder.yml@b030fbffca23f055771706cd3631911e30d5ad2e  # dev
+    uses: viralabs-dev/brabo-ci/.github/workflows/approval-ladder.yml@13f3697aaf3e4a151637755babb58422a44db303  # brabo-ci dev, merge da ci#17
     with:
-      ci_ref: b030fbffca23f055771706cd3631911e30d5ad2e  # dev
+      ci_ref: 13f3697aaf3e4a151637755babb58422a44db303
