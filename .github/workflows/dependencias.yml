@@ -11,9 +11,9 @@ permissions:
 
 jobs:
   dependencias:
-    uses: viralabs-dev/brabo-ci/.github/workflows/dependencias-de-merge.yml@c6d9394136d00dd8389c7f36c09206f81a836121  # v1.4.0-dev.10
+    uses: viralabs-dev/brabo-ci/.github/workflows/dependencias-de-merge.yml@6390ef56b6c405db9a24956bf41c55a7ea601612  # v1.4.0-dev.17
     with:
-      ci_ref: c6d9394136d00dd8389c7f36c09206f81a836121  # v1.4.0-dev.10
+      ci_ref: 6390ef56b6c405db9a24956bf41c55a7ea601612  # v1.4.0-dev.17
     secrets:
       APP_ID: ${{ secrets.BRABO_APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.BRABO_APP_PRIVATE_KEY }}
