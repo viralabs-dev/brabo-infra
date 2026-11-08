@@ -23,7 +23,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brabo}
       POSTGRES_DB: ${POSTGRES_DB:-brabo}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -64,8 +64,8 @@ services:
       NEO4J_server_memory_heap_initial__size: 512m
       NEO4J_server_memory_pagecache_size: 256m
     ports:
-      - "${NEO4J_BOLT_PORT:-7687}:7687"
-      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"
+      - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
@@ -103,7 +103,7 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     ports:
-      - "${OLLAMA_PORT:-11434}:11434"
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     environment:
       # Sem GPU (o host precisaria do nvidia-container-toolkit), o modelo vive
       # na RAM e o default de 5min descarrega ele entre um agente e outro — o
@@ -485,7 +485,7 @@ services:
       ANAMNESE_MAX_PROMPT_EVENTS: ${ANAMNESE_MAX_PROMPT_EVENTS:-500}
       ANAMNESE_MAX_PAYLOAD_CHARS: ${ANAMNESE_MAX_PAYLOAD_CHARS:-600}
     ports:
-      - "${ENGINE_PORT:-4000}:4000"
+      - "${BRABO_BIND:-127.0.0.1}:${ENGINE_PORT:-4000}:4000"
     volumes:
       - ${BRABO_IRMAOS:-../..}/brabo-engine:/workspace
       - engine_build:/workspace/_build

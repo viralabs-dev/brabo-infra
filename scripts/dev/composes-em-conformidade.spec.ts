@@ -196,3 +196,70 @@ describe('a instalação não publica porta fora do bind', () => {
     }
   });
 });
+
+// AT-813: sem `ENGINE_PUBLIC_URL` a api devolve ao runner/terminal o host
+// interno (`ws://engine:4000`), que não resolve fora do compose (RN-433).
+describe('a api diz ao runner o endereço público do engine', () => {
+  const dev = ler('docker-compose.yml');
+
+  it('os três composes definem ENGINE_PUBLIC_URL sem o host interno', () => {
+    for (const [nome, c] of Object.entries({ dev, validacao, instalacao })) {
+      const v = c.services.api?.environment?.ENGINE_PUBLIC_URL;
+      expect(v, nome).toBeDefined();
+      expect(v, nome).not.toContain('engine:');
+    }
+  });
+
+  it('instalação e prod seguem o mesmo endereço que o navegador recebe', () => {
+    for (const c of [instalacao, validacao]) {
+      expect(c.services.api?.environment?.ENGINE_PUBLIC_URL).toContain(
+        '${VITE_ENGINE_URL:-http://localhost:4000}',
+      );
+    }
+  });
+
+  it('o k8s lê PUBLIC_ENGINE_URL do brabo-config', () => {
+    const dep = parse(
+      fs.readFileSync(path.join(RAIZ, 'deploy/k8s/base/api/deployment.yaml'), 'utf8'),
+    ) as { spec: { template: { spec: { containers: { env?: { name: string; valueFrom?: { configMapKeyRef?: { key: string } } }[] }[] } } } };
+    const env = dep.spec.template.spec.containers.flatMap((c) => c.env ?? []);
+    const e = env.find((x) => x.name === 'ENGINE_PUBLIC_URL');
+    expect(e?.valueFrom?.configMapKeyRef?.key).toBe('PUBLIC_ENGINE_URL');
+  });
+});
+
+// AT-814: o dev segue a régua da RN-1057, com default 127.0.0.1.
+describe('o dev não publica porta fora do bind', () => {
+  const BIND = '${BRABO_BIND:-127.0.0.1}:';
+  const LOOPBACK = '127.0.0.1:';
+  const composes = {
+    dev: ler('docker-compose.yml'),
+    observability: ler('docker-compose.observability.yml'),
+  };
+  const portas = (s: string): string[] =>
+    (composes.dev.services[s]?.ports ?? []).map(String);
+
+  it('toda porta publicada começa com o bind ou com 127.0.0.1', () => {
+    for (const [arq, c] of Object.entries(composes)) {
+      for (const [nome, s] of Object.entries(c.services)) {
+        for (const p of (s.ports ?? []).map(String)) {
+          expect(p.startsWith(BIND) || p.startsWith(LOOPBACK), `${arq}/${nome}: ${p}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('api, web e engine seguem o BRABO_BIND', () => {
+    for (const s of ['api', 'web', 'engine']) {
+      expect(portas(s).length, s).toBeGreaterThan(0);
+      for (const p of portas(s)) expect(p.startsWith(BIND), `${s}: ${p}`).toBe(true);
+    }
+  });
+
+  it('postgres, neo4j e ollama ficam sempre em 127.0.0.1', () => {
+    for (const s of ['postgres', 'neo4j', 'ollama']) {
+      expect(portas(s).length, s).toBeGreaterThan(0);
+      for (const p of portas(s)) expect(p.startsWith(LOOPBACK), `${s}: ${p}`).toBe(true);
+    }
+  });
+});
