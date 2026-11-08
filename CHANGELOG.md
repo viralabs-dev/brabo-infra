@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CI: o check `Dependências de merge` (AT-787) entra pelo `dependencias.yml`, que chama o reutilizável `dependencias-de-merge.yml` do `brabo-ci` pinado em `c6d9394` (`v1.4.0-dev.10`). A PR declara `Depende-de: viralabs-dev/<repo>#<n>` no corpo e o check fica amarelo (`esperando …`) até cada PR citada estar mergeada. Sem linha `Depende-de` o check fica verde ("Sem dependências declaradas"). Não é exigido por ruleset ainda.
+
 - Bind do compose de validação (AT-838, RN-1057): no `docker-compose.prod.yml` api, engine e web publicam em `${BRABO_BIND:-127.0.0.1}:` (antes em todas as interfaces) e o ollama fica em `127.0.0.1:` fixo. O `smoke.sh` e o job `restore-compose` seguem em `localhost`. `composes-em-conformidade.spec.ts` ganha o `describe` que reprova porta fora do bind; RN-1057 e `.env.example` atualizados.
 
 - `ENGINE_PUBLIC_URL` na api da instalação, do prod e do k8s (AT-813, RN-433): `${ENGINE_PUBLIC_URL:-${VITE_ENGINE_URL:-http://localhost:4000}}` nos dois composes e `PUBLIC_ENGINE_URL` do `brabo-config` no `deployment.yaml`; sem ela o `/runner-ticket` devolvia `ws://engine:4000`, que não resolve fora do compose. Travado no `composes-em-conformidade.spec.ts`; `.env.example` e runbook atualizados.
