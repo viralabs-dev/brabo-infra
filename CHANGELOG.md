@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Bind da instalação (AT-811, RN-1051): no `docker-compose.install.yml` o engine publica em `${BRABO_BIND:-0.0.0.0}:${ENGINE_PORT:-4000}` (igual à api e ao web) e o ollama em `127.0.0.1:${OLLAMA_PORT:-11434}` fixo (como o neo4j; sem autenticação). `composes-em-conformidade.spec.ts` ganha o `describe` que reprova porta fora de `${BRABO_BIND:-0.0.0.0}:` ou `127.0.0.1:`. `ENGINE_PUBLIC_URL` (AT-813) e o compose de dev (AT-814) ficam de fora.
+- Bind da instalação (AT-811, RN-1057): no `docker-compose.install.yml` o engine publica em `${BRABO_BIND:-0.0.0.0}:${ENGINE_PORT:-4000}` (igual à api e ao web) e o ollama em `127.0.0.1:${OLLAMA_PORT:-11434}` fixo (como o neo4j; sem autenticação). `composes-em-conformidade.spec.ts` ganha o `describe` que reprova porta fora de `${BRABO_BIND:-0.0.0.0}:` ou `127.0.0.1:`. `ENGINE_PUBLIC_URL` (AT-813) e o compose de dev (AT-814) ficam de fora.
 
 - brabo-contracts como pacote (AT-770, R2a, RN-1039): `.github/actions/irmaos` passa a `v1.2.0`; `docker-bake.hcl` ganha `NPMRC` e o secret `npmrc` nos alvos `api`, `web` e `broker`; os composes dev e prod montam o `~/.npmrc` como secret (dev: `api`, `web` e build do `broker`; prod: build de `api`, `web` e `broker`); `propriedades.yml` (`provas` e `restore-compose`) ganha `packages: read` e o passo `.github/actions/npmrc` (`.npmrc` temporário com o `GITHUB_TOKEN`); `deploy/k8s/bootstrap.sh` passa `--secret` aos builds de api e web; `scripts/dev/bootstrap.sh` confere o `~/.npmrc` sem ecoar valor; `ci.yml` liga o `contracts-alinhado` (pin `4976af2`); spec `token-do-registry`. O `release.yml` só constrói o `backup` e fica igual. Depende das PRs `feature/contracts-por-pacote` de api, web e broker na `dev` para o bake/compose construírem.
 

@@ -745,7 +745,7 @@ certo, gravar as DUAS variáveis juntas, decidir o que fazer com um volume
   chama o relato sem sair por ele)
 - **Origem:** AT-213 — teste do dono em 2026-09-26
 
-## A instalação não publica porta fora do bind (RN-1051)
+## A instalação não publica porta fora do bind (RN-1057)
 
 Com `BRABO_BIND=127.0.0.1` (AT-722) a api e o web ficavam só no loopback, mas
 o engine e o ollama seguiam em todas as interfaces e expostos na rede local
