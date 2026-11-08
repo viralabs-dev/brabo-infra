@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bind do compose de validação (AT-838, RN-1057): no `docker-compose.prod.yml` api, engine e web publicam em `${BRABO_BIND:-127.0.0.1}:` (antes em todas as interfaces) e o ollama fica em `127.0.0.1:` fixo. O `smoke.sh` e o job `restore-compose` seguem em `localhost`. `composes-em-conformidade.spec.ts` ganha o `describe` que reprova porta fora do bind; RN-1057 e `.env.example` atualizados.
+
 - `ENGINE_PUBLIC_URL` na api da instalação, do prod e do k8s (AT-813, RN-433): `${ENGINE_PUBLIC_URL:-${VITE_ENGINE_URL:-http://localhost:4000}}` nos dois composes e `PUBLIC_ENGINE_URL` do `brabo-config` no `deployment.yaml`; sem ela o `/runner-ticket` devolvia `ws://engine:4000`, que não resolve fora do compose. Travado no `composes-em-conformidade.spec.ts`; `.env.example` e runbook atualizados.
 
 - Bind do dev (AT-814, RN-1057): postgres, neo4j e ollama do `docker-compose.yml` e loki, prometheus e grafana da observabilidade publicam em `127.0.0.1`; o engine segue `${BRABO_BIND:-127.0.0.1}`. `.env.example` documenta o `BRABO_BIND`. Spec novo no mesmo arquivo.
