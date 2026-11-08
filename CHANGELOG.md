@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Docs (AT-848): o bloco do mapa do README é regenerado do `repos.yml` do brabo, que ganha a aresta `brabo → brabo-contracts` e a prova em `{arquivo, trecho}` (`mapa-alinhado` volta a bater).
 - CI: repina todos os `uses:` e `ci_ref` do `brabo-ci` em `6390ef5` (`v1.4.0-dev.17`, ci#53), que aceita a prova `{arquivo, trecho}` do `mapa-dos-repos.ts`; o pin antigo dá `throw` no formato novo e o `mapa-alinhado` quebra.
 - Docs: o `README.md` segue o esqueleto de 8 seções do brabo-ci (AT-826): para que existe, onde se encaixa (bloco gerado do `repos.yml`), como é usado, como desenvolver, o que o CI garante, documentação, como replicar, apoie e licença. Os clones irmãos e o token do GitHub Packages seguem no README; o `ci.yml` ganha os checks informativos `readme-esqueleto` e `mapa-alinhado` do brabo-ci pinado em `b5df60b` (`v1.4.0-dev.14`).
 
