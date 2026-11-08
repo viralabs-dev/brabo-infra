@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- CI: repina todos os `uses:` e `ci_ref` do `brabo-ci` em `6390ef5` (`v1.4.0-dev.17`, ci#53), que aceita a prova `{arquivo, trecho}` do `mapa-dos-repos.ts`; o pin antigo dá `throw` no formato novo e o `mapa-alinhado` quebra.
 - Docs: o `README.md` segue o esqueleto de 8 seções do brabo-ci (AT-826): para que existe, onde se encaixa (bloco gerado do `repos.yml`), como é usado, como desenvolver, o que o CI garante, documentação, como replicar, apoie e licença. Os clones irmãos e o token do GitHub Packages seguem no README; o `ci.yml` ganha os checks informativos `readme-esqueleto` e `mapa-alinhado` do brabo-ci pinado em `b5df60b` (`v1.4.0-dev.14`).
 
 - Tetos da api no compose de instalação (AT-840, RN-1074): `docker-compose.install.yml` repassa `RATE_LIMIT_ENABLED`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_USER`, `RATE_LIMIT_IP` e `AUTH_LOCKOUT_IP_THRESHOLDS` com os padrões da própria api, então a instalação não muda. `composes-em-conformidade.spec.ts` confere o repasse; `.env.example` documenta os tetos, que só o compose de teste sobe. O `configuration.md` do `brabo` fica de fora desta mudança.
