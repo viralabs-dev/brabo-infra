@@ -8,9 +8,9 @@ permissions:
   issues: write
 jobs:
   carimbar:
-    uses: viralabs-dev/brabo-ci/.github/workflows/tag-release.yml@2d9ec1b9a8045d0d35e769d81b4c441264452ebb  # brabo-ci dev, merge da ci#22
+    uses: viralabs-dev/brabo-ci/.github/workflows/tag-release.yml@0a9eba831fb82b9a20a5ad03bc2273a3ede69796  # v1.4.0-dev.5
     with:
-      ci_ref: 2d9ec1b9a8045d0d35e769d81b4c441264452ebb  # brabo-ci dev, merge da ci#22
+      ci_ref: 0a9eba831fb82b9a20a5ad03bc2273a3ede69796  # v1.4.0-dev.5
     secrets:
       APP_ID: ${{ secrets.BRABO_APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.BRABO_APP_PRIVATE_KEY }}

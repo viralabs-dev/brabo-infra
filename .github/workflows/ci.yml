@@ -16,25 +16,20 @@ env:
   KUBECONFORM_SHA256: 'c31518ddd122663b3f3aa874cfe8178cb0988de944f29c74a0b9260920d115d3'
 
 jobs:
-  actionlint:
-    name: actionlint
-    runs-on: ubuntu-26.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - name: Instalar o actionlint
-        run: |
-          curl -fsSL -o /tmp/al.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/al.tgz" | sha256sum -c -
-          tar -xzf /tmp/al.tgz -C /tmp actionlint
-      - run: /tmp/actionlint -color -ignore SC2016 -ignore SC2129
+  # Actionlint e pins do brabo-ci (AT-819). Não é check obrigatório.
+  cadeia:
+    name: Cadeia (actionlint e pins)
+    uses: viralabs-dev/brabo-ci/.github/workflows/cadeia.yml@0a9eba831fb82b9a20a5ad03bc2273a3ede69796  # v1.4.0-dev.5
+    with:
+      ci_ref: 0a9eba831fb82b9a20a5ad03bc2273a3ede69796  # v1.4.0-dev.5
+
   # RN-1038: a versão do brabo-contracts é a mesma em todo lugar (aqui, só a ref em `.github/actions/irmaos`).
   # Não é check obrigatório. O SHA é o do brabo-ci (R1 da AT-770) e vale também para `ci_ref`.
   contracts-alinhado:
     name: Contracts alinhado
-    uses: viralabs-dev/brabo-ci/.github/workflows/contracts-alinhado.yml@4976af2cd947966df43bbbcae5c3c80f91ac2310
+    uses: viralabs-dev/brabo-ci/.github/workflows/contracts-alinhado.yml@0a9eba831fb82b9a20a5ad03bc2273a3ede69796  # v1.4.0-dev.5
     with:
-      ci_ref: 4976af2cd947966df43bbbcae5c3c80f91ac2310
+      ci_ref: 0a9eba831fb82b9a20a5ad03bc2273a3ede69796
 
   # Typecheck e as aferições (inclusive as CRUZADAS, que leem os clones irmãos na `dev` deles).
   afericoes:
@@ -48,7 +43,7 @@ jobs:
       - name: Irmãos (dev de cada repositório)
         uses: ./.github/actions/irmaos
       - name: Vínculos do run (origem, irmãos e destino no Summary)
-        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@2d9ec1b9a8045d0d35e769d81b4c441264452ebb  # brabo-ci dev, merge da ci#22 (AT-773)
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@0a9eba831fb82b9a20a5ad03bc2273a3ede69796  # v1.4.0-dev.5 (AT-773)
         with:
           irmaos: |
             irmaos/brabo-api
@@ -101,7 +96,7 @@ jobs:
       - name: Irmãos (dev de cada repositório)
         uses: ./.github/actions/irmaos
       - name: Vínculos do run (origem, irmãos e destino no Summary)
-        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@2d9ec1b9a8045d0d35e769d81b4c441264452ebb  # brabo-ci dev, merge da ci#22 (AT-773)
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@0a9eba831fb82b9a20a5ad03bc2273a3ede69796  # v1.4.0-dev.5 (AT-773)
         with:
           irmaos: |
             irmaos/brabo-api
@@ -148,6 +143,7 @@ jobs:
           faltou=0
           for arquivo in docker/docker-compose.yml docker/docker-compose.prod.yml; do
             while IFS= read -r linha; do
+              # shellcheck disable=SC2016  # o '${WEB_PORT' é literal de propósito
               case "${linha}" in
                 *'${WEB_PORT'*) ;;
                 *) echo "${arquivo}: WEB_ORIGIN não deriva de WEB_PORT -> ${linha}"; faltou=1 ;;

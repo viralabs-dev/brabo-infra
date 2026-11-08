@@ -82,9 +82,11 @@ jobs:
           if [ -n "$TAG" ]; then
             digest="$(printf '%s' "$METADATA" | jq -r '.backup["containerimage.digest"]')"
             printf '%s' "$digest" | grep -qE '^sha256:[0-9a-f]{64}$'
-            echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER}/brabo-backup@${digest}" >> "$GITHUB_OUTPUT"
-            echo "digest=${digest}" >> "$GITHUB_OUTPUT"
-            echo "src=remote" >> "$GITHUB_OUTPUT"
+            {
+              echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER}/brabo-backup@${digest}"
+              echo "digest=${digest}"
+              echo "src=remote"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER}/brabo-backup:ensaio" >> "$GITHUB_OUTPUT"
             echo "src=docker" >> "$GITHUB_OUTPUT"
