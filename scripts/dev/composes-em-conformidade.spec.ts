@@ -164,3 +164,35 @@ describe('o broker da instalação guarda as camadas do ADR 0130', () => {
     }
   });
 });
+
+// AT-811: com `BRABO_BIND=127.0.0.1` nada da instalação pode ficar na rede. O
+// engine segue o bind (o navegador e o runner o alcançam onde alcançam a api);
+// o ollama e o neo4j são sempre loopback (o ollama não tem autenticação).
+describe('a instalação não publica porta fora do bind', () => {
+  const BIND = '${BRABO_BIND:-0.0.0.0}:';
+  const LOOPBACK = '127.0.0.1:';
+  const portas = (s: string): string[] =>
+    (instalacao.services[s]?.ports ?? []).map(String);
+
+  it('toda porta publicada começa com o bind ou com 127.0.0.1', () => {
+    for (const [nome, s] of Object.entries(instalacao.services)) {
+      for (const p of (s.ports ?? []).map(String)) {
+        expect(p.startsWith(BIND) || p.startsWith(LOOPBACK), `${nome}: ${p}`).toBe(true);
+      }
+    }
+  });
+
+  it('api, web e engine seguem o BRABO_BIND', () => {
+    for (const s of ['api', 'web', 'engine']) {
+      expect(portas(s).length, s).toBeGreaterThan(0);
+      for (const p of portas(s)) expect(p.startsWith(BIND), `${s}: ${p}`).toBe(true);
+    }
+  });
+
+  it('ollama e neo4j ficam sempre em 127.0.0.1', () => {
+    for (const s of ['ollama', 'neo4j']) {
+      expect(portas(s).length, s).toBeGreaterThan(0);
+      for (const p of portas(s)) expect(p.startsWith(LOOPBACK), `${s}: ${p}`).toBe(true);
+    }
+  });
+});
