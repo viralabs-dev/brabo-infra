@@ -1469,7 +1469,9 @@ causas empilhadas, todas fechadas pela [RN-433](business-rules/infra.md#rn-433):
    rede do compose. `docker/docker-compose.yml` agora define
    `ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://localhost:4000}` no
    serviço `api` (o mesmo default que `VITE_ENGINE_URL` já usa para o `web`).
-   Confirme de dentro do container:
+   A instalação e o prod têm a mesma variável, com `VITE_ENGINE_URL` como
+   default (`docker exec brabo-api-1 printenv ENGINE_PUBLIC_URL`). Confirme de
+   dentro do container:
 
    ```bash
    docker exec brabo-dev-api-1 sh -c 'echo $ENGINE_PUBLIC_URL'
