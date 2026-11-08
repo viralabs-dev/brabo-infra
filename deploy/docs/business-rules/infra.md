@@ -181,7 +181,13 @@ baixo. Corrigir só um deixa os outros de pé:
    ele nunca resolve. `docker/docker-compose.yml` ganhou
    `ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://localhost:4000}` no
    serviço `api` — o MESMO default que `VITE_ENGINE_URL` já usa no
-   serviço `web`, pelo mesmo motivo.
+   serviço `web`, pelo mesmo motivo. A AT-813 estendeu o item aos outros
+   dois destinos: `docker-compose.install.yml` e `docker-compose.prod.yml`
+   definem `ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-${VITE_ENGINE_URL:-http://localhost:4000}}`
+   (navegador e runner no mesmo endereço) e o `deploy/k8s/base/api/deployment.yaml`
+   lê `PUBLIC_ENGINE_URL` do `brabo-config`. Spec:
+   `scripts/dev/composes-em-conformidade.spec.ts` (`a api diz ao runner o
+   endereço público do engine`).
 2. Mesmo com a URL certa, um transporte que NUNCA abre (engine fora do ar,
    firewall, reconfiguração futura errada) não tinha teto nenhum:
    `apps/web/src/lib/terminal-channel.ts` nunca passava `reconnectAfterMs`
@@ -760,6 +766,12 @@ o engine e o ollama seguiam em todas as interfaces e expostos na rede local
 - **ollama e neo4j** ficam sempre em `127.0.0.1`, qualquer que seja o bind: só
   a rede interna os usa, e o ollama não tem autenticação.
 - O broker não publica porta nenhuma.
+
+**Dev (AT-814).** O `docker/docker-compose.yml` e o
+`docker/docker-compose.observability.yml` seguem a mesma régua, com default
+`127.0.0.1`: api, web e engine em `${BRABO_BIND:-127.0.0.1}:`; postgres, neo4j,
+ollama, loki, prometheus e grafana sempre em `127.0.0.1:`. Spec: `describe('o
+dev não publica porta fora do bind')`. O `docker-compose.prod.yml` fica fora.
 
 - **Código:** `docker/docker-compose.install.yml:` (engine),
   `:` (ollama), `:102` (neo4j)

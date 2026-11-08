@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `ENGINE_PUBLIC_URL` na api da instalação, do prod e do k8s (AT-813, RN-433): `${ENGINE_PUBLIC_URL:-${VITE_ENGINE_URL:-http://localhost:4000}}` nos dois composes e `PUBLIC_ENGINE_URL` do `brabo-config` no `deployment.yaml`; sem ela o `/runner-ticket` devolvia `ws://engine:4000`, que não resolve fora do compose. Travado no `composes-em-conformidade.spec.ts`; `.env.example` e runbook atualizados.
+
+- Bind do dev (AT-814, RN-1057): postgres, neo4j e ollama do `docker-compose.yml` e loki, prometheus e grafana da observabilidade publicam em `127.0.0.1`; o engine segue `${BRABO_BIND:-127.0.0.1}`. `.env.example` documenta o `BRABO_BIND`. Spec novo no mesmo arquivo.
+
 - CI: o `ci.yml` chama o reutilizável `cadeia.yml` do `brabo-ci` (actionlint e pins, `ci_ref` obrigatório, AT-819) e perde o job `actionlint` copiado e o `.github/actionlint.yaml` (idêntico ao do brabo-ci). Repina todos os `uses:`, actions `vinculos` e `ci_ref` em `0a9eba8` (`v1.4.0-dev.5`, brabo-ci#39), e o `contracts-alinhado` ganha o comentário de versão que faltava. Como o `cadeia` não repete os `-ignore` antigos, o `ci.yml` ganha `shellcheck disable=SC2016` no `case` do WEB_ORIGIN e o `release.yml` agrupa as redireções para `$GITHUB_OUTPUT` (SC2129).
 
 - Bind da instalação (AT-811, RN-1057): no `docker-compose.install.yml` o engine publica em `${BRABO_BIND:-0.0.0.0}:${ENGINE_PORT:-4000}` (igual à api e ao web) e o ollama em `127.0.0.1:${OLLAMA_PORT:-11434}` fixo (como o neo4j; sem autenticação). `composes-em-conformidade.spec.ts` ganha o `describe` que reprova porta fora de `${BRABO_BIND:-0.0.0.0}:` ou `127.0.0.1:`. `ENGINE_PUBLIC_URL` (AT-813) e o compose de dev (AT-814) ficam de fora.
