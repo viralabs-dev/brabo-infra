@@ -1048,6 +1048,8 @@ nesta máquina, nunca nas das Actions. Para a instalação local do TP-01
    `--build-arg VITE_BRABO_AMBIENTE=local` no web).
 2. No `.env` da instalação: `BRABO_AMBIENTE=local` e `BRABO_BIND=127.0.0.1`
    (sem o bind, a porta fica aberta na rede e qualquer um entra como owner).
+   O bind prende a api, o web e o engine; o Ollama e o neo4j ficam sempre em
+   `127.0.0.1` (AT-811, RN-1057).
 3. Copie o `docker/docker-compose.install.yml` novo para a pasta da
    instalação (o de lá é cópia).
 4. `docker compose up -d`. A tela de login mostra o botão "Acesso rápido"; as

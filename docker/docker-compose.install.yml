@@ -179,7 +179,8 @@ services:
     environment:
       NODE_ENV: production
       # AT-722: vazio por padrão = sem acesso rápido. `local` só nesta máquina, e
-      # junto com BRABO_BIND=127.0.0.1 (runbook): senão a porta está aberta na rede.
+      # junto com BRABO_BIND=127.0.0.1 (runbook): senão a porta está aberta na rede
+      # (a api, o web e o engine seguem o BRABO_BIND; AT-811).
       BRABO_AMBIENTE: ${BRABO_AMBIENTE:-}
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL:-postgres://brabo:brabo@postgres:5432/brabo}
@@ -388,7 +389,8 @@ services:
       GRAPH_TEMPLATES_ENABLED: ${GRAPH_TEMPLATES_ENABLED:-false}
       GRAPH_INSTRUCTION_TEMPLATES_ENABLED: ${GRAPH_INSTRUCTION_TEMPLATES_ENABLED:-false}
     ports:
-      - "${ENGINE_PORT:-4000}:4000"
+      # AT-811: o navegador e o runner precisam dele onde alcançam a api.
+      - "${BRABO_BIND:-0.0.0.0}:${ENGINE_PORT:-4000}:4000"
     volumes:
       - git_local_repos:/data/git-repos
       - project_workspaces:/data/project-workspaces
@@ -509,7 +511,8 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     ports:
-      - "${OLLAMA_PORT:-11434}:11434"
+      # AT-811: só a rede interna usa; o ollama não tem autenticação.
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     environment:
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-1h}
       OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}

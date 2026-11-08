@@ -744,3 +744,25 @@ certo, gravar as DUAS variáveis juntas, decidir o que fazer com um volume
   mensagem diz sintoma, conserto e o que não migra), `:113` (o preflight
   chama o relato sem sair por ele)
 - **Origem:** AT-213 — teste do dono em 2026-09-26
+
+## A instalação não publica porta fora do bind (RN-1057)
+
+Com `BRABO_BIND=127.0.0.1` (AT-722) a api e o web ficavam só no loopback, mas
+o engine e o ollama seguiam em todas as interfaces e expostos na rede local
+(achado da AT-801, Rodada 249).
+
+**Regra.** Toda porta publicada pelo `docker-compose.install.yml` começa com
+`${BRABO_BIND:-0.0.0.0}:` ou com `127.0.0.1:`:
+
+- **api, web e engine** seguem o `BRABO_BIND`, com o mesmo default `0.0.0.0`
+  (o default da instalação não muda). O engine fica publicado porque o navegador
+  (socket do Phoenix) e o `brabo-runner` o alcançam onde alcançam a api.
+- **ollama e neo4j** ficam sempre em `127.0.0.1`, qualquer que seja o bind: só
+  a rede interna os usa, e o ollama não tem autenticação.
+- O broker não publica porta nenhuma.
+
+- **Código:** `docker/docker-compose.install.yml:` (engine),
+  `:` (ollama), `:102` (neo4j)
+- **Teste:** `scripts/dev/composes-em-conformidade.spec.ts:171` (o describe: toda
+  porta, api/web/engine no bind, ollama/neo4j no loopback)
+- **Origem:** AT-811 — achado lateral da AT-801 (Rodada 249, 2026-11-07)
