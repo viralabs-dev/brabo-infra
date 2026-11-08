@@ -31,6 +31,19 @@ jobs:
     with:
       ci_ref: 0a9eba831fb82b9a20a5ad03bc2273a3ede69796
 
+  # README no esqueleto e bloco "Onde se encaixa" em dia (AT-826, AT-825). Informativos, não exigidos.
+  readme-esqueleto:
+    name: README no esqueleto
+    uses: viralabs-dev/brabo-ci/.github/workflows/readme-esqueleto.yml@b5df60b6e114827dd3a59889d6a4b0ecda730ecc  # v1.4.0-dev.14
+    with:
+      ci_ref: b5df60b6e114827dd3a59889d6a4b0ecda730ecc  # v1.4.0-dev.14
+
+  mapa-alinhado:
+    name: Mapa alinhado
+    uses: viralabs-dev/brabo-ci/.github/workflows/mapa-alinhado.yml@b5df60b6e114827dd3a59889d6a4b0ecda730ecc  # v1.4.0-dev.14
+    with:
+      ci_ref: b5df60b6e114827dd3a59889d6a4b0ecda730ecc  # v1.4.0-dev.14
+
   # Typecheck e as aferições (inclusive as CRUZADAS, que leem os clones irmãos na `dev` deles).
   afericoes:
     name: Typecheck e aferições (com os irmãos)
