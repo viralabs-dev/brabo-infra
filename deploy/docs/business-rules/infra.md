@@ -771,7 +771,19 @@ o engine e o ollama seguiam em todas as interfaces e expostos na rede local
 `docker/docker-compose.observability.yml` seguem a mesma régua, com default
 `127.0.0.1`: api, web e engine em `${BRABO_BIND:-127.0.0.1}:`; postgres, neo4j,
 ollama, loki, prometheus e grafana sempre em `127.0.0.1:`. Spec: `describe('o
-dev não publica porta fora do bind')`. O `docker-compose.prod.yml` fica fora.
+dev não publica porta fora do bind')`.
+
+**Validação (AT-838).** O `docker/docker-compose.prod.yml` segue a mesma régua
+do dev, com default `127.0.0.1`: api, web e engine em
+`${BRABO_BIND:-127.0.0.1}:`; ollama sempre em `127.0.0.1:`; neo4j já estava lá.
+Ele roda na máquina de quem valida, nunca na rede. Spec: `describe('a validação
+não publica porta fora do bind')`.
+
+- **Código:** `docker/docker-compose.prod.yml:257` (api), `:365` (engine),
+  `:543` (web), `:569` (ollama)
+- **Teste:** `scripts/dev/composes-em-conformidade.spec.ts:269` (o describe da
+  validação)
+- **Origem:** AT-838 — levantamento da AT-813/814 (Rodada 271, 2026-11-08)
 
 - **Código:** `docker/docker-compose.install.yml:` (engine),
   `:` (ollama), `:102` (neo4j)

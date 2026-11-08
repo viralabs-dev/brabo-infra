@@ -263,3 +263,34 @@ describe('o dev não publica porta fora do bind', () => {
     }
   });
 });
+
+// AT-838: o compose de VALIDAÇÃO segue a régua do dev (RN-1057), com default
+// 127.0.0.1 — ele roda na máquina de quem valida, nunca na rede.
+describe('a validação não publica porta fora do bind', () => {
+  const BIND = '${BRABO_BIND:-127.0.0.1}:';
+  const LOOPBACK = '127.0.0.1:';
+  const portas = (s: string): string[] =>
+    (validacao.services[s]?.ports ?? []).map(String);
+
+  it('toda porta publicada começa com o bind ou com 127.0.0.1', () => {
+    for (const [nome, s] of Object.entries(validacao.services)) {
+      for (const p of (s.ports ?? []).map(String)) {
+        expect(p.startsWith(BIND) || p.startsWith(LOOPBACK), `${nome}: ${p}`).toBe(true);
+      }
+    }
+  });
+
+  it('api, web e engine seguem o BRABO_BIND', () => {
+    for (const s of ['api', 'web', 'engine']) {
+      expect(portas(s).length, s).toBeGreaterThan(0);
+      for (const p of portas(s)) expect(p.startsWith(BIND), `${s}: ${p}`).toBe(true);
+    }
+  });
+
+  it('ollama e neo4j ficam sempre em 127.0.0.1', () => {
+    for (const s of ['ollama', 'neo4j']) {
+      expect(portas(s).length, s).toBeGreaterThan(0);
+      for (const p of portas(s)) expect(p.startsWith(LOOPBACK), `${s}: ${p}`).toBe(true);
+    }
+  });
+});
