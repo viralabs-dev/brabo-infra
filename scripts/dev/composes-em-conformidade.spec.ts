@@ -197,6 +197,21 @@ describe('a instalação não publica porta fora do bind', () => {
   });
 });
 
+// AT-840 (RN-1074): a api da instalação repassa os tetos de limite, com o padrão
+// da própria api. Sem o repasse, o E2E do brabo-qa bate em 429.
+describe('a api da instalação repassa os tetos de limite', () => {
+  const env = instalacao.services.api?.environment ?? {};
+  it.each([
+    ['RATE_LIMIT_ENABLED', '${RATE_LIMIT_ENABLED:-true}'],
+    ['RATE_LIMIT_WINDOW_MS', '${RATE_LIMIT_WINDOW_MS:-60000}'],
+    ['RATE_LIMIT_USER', '${RATE_LIMIT_USER:-300}'],
+    ['RATE_LIMIT_IP', '${RATE_LIMIT_IP:-600}'],
+    ['AUTH_LOCKOUT_IP_THRESHOLDS', '${AUTH_LOCKOUT_IP_THRESHOLDS:-20:30,30:120}'],
+  ])('%s chega à api com o padrão da api', (chave, valor) => {
+    expect(env[chave]).toBe(valor);
+  });
+});
+
 // AT-813: sem `ENGINE_PUBLIC_URL` a api devolve ao runner/terminal o host
 // interno (`ws://engine:4000`), que não resolve fora do compose (RN-433).
 describe('a api diz ao runner o endereço público do engine', () => {

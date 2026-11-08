@@ -790,3 +790,35 @@ não publica porta fora do bind')`.
 - **Teste:** `scripts/dev/composes-em-conformidade.spec.ts:171` (o describe: toda
   porta, api/web/engine no bind, ollama/neo4j no loopback)
 - **Origem:** AT-811 — achado lateral da AT-801 (Rodada 249, 2026-11-07)
+
+## Os tetos da api chegam à instalação pelo compose, com o padrão da api (RN-1074)
+
+### RN-1074 — O compose de instalação repassa os tetos de rate limit e de lockout da api, com o padrão da própria api, e só o compose de teste sobe esses valores {#rn-1074}
+
+A api lê `RATE_LIMIT_ENABLED`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_USER`,
+`RATE_LIMIT_IP` e `AUTH_LOCKOUT_IP_THRESHOLDS`. Sem o repasse no
+`docker-compose.install.yml` o E2E do `brabo-qa` não conseguia subir os tetos, e
+a suíte inteira batia em `429` (AT-840, web#48).
+
+**Regra.** O serviço `api` do `docker-compose.install.yml` repassa as cinco com
+o padrão IGUAL ao da api hoje, então a instalação não muda:
+
+- `RATE_LIMIT_ENABLED` → `${RATE_LIMIT_ENABLED:-true}`;
+- `RATE_LIMIT_WINDOW_MS` → `${RATE_LIMIT_WINDOW_MS:-60000}`;
+- `RATE_LIMIT_USER` → `${RATE_LIMIT_USER:-300}`;
+- `RATE_LIMIT_IP` → `${RATE_LIMIT_IP:-600}`;
+- `AUTH_LOCKOUT_IP_THRESHOLDS` → `${AUTH_LOCKOUT_IP_THRESHOLDS:-20:30,30:120}`.
+
+O padrão do lockout é o literal, não `:-` vazio: a api lê a variável com `??`,
+então string vazia não cai no padrão do IP, e sim na escada do e-mail.
+
+Quem sobe tetos maiores é o compose de teste, pelo `.env` do job. A instalação
+e o dev ficam nos padrões. O spec `composes-em-conformidade.spec.ts` trava o
+repasse das cinco no compose de instalação.
+
+- **Código:** `docker/docker-compose.install.yml` (serviço `api`, bloco de
+  `environment`, logo antes de `API_PUBLIC_URL`)
+- **Teste:** `scripts/dev/composes-em-conformidade.spec.ts` (o describe `a api da
+  instalação repassa os tetos de limite`)
+- **Origem:** AT-840 — regressivo vermelho da web#48 (rate limit 429 no E2E,
+  08/11/2026)
