@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Tetos da api no compose de instalação (AT-840, RN-1074): `docker-compose.install.yml` repassa `RATE_LIMIT_ENABLED`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_USER`, `RATE_LIMIT_IP` e `AUTH_LOCKOUT_IP_THRESHOLDS` com os padrões da própria api, então a instalação não muda. `composes-em-conformidade.spec.ts` confere o repasse; `.env.example` documenta os tetos, que só o compose de teste sobe. O `configuration.md` do `brabo` fica de fora desta mudança.
 - CI: o check `Dependências de merge` (AT-787) entra pelo `dependencias.yml`, que chama o reutilizável `dependencias-de-merge.yml` do `brabo-ci` pinado em `c6d9394` (`v1.4.0-dev.10`). A PR declara `Depende-de: viralabs-dev/<repo>#<n>` no corpo e o check fica amarelo (`esperando …`) até cada PR citada estar mergeada. Sem linha `Depende-de` o check fica verde ("Sem dependências declaradas"). Não é exigido por ruleset ainda.
 
 - Bind do compose de validação (AT-838, RN-1057): no `docker-compose.prod.yml` api, engine e web publicam em `${BRABO_BIND:-127.0.0.1}:` (antes em todas as interfaces) e o ollama fica em `127.0.0.1:` fixo. O `smoke.sh` e o job `restore-compose` seguem em `localhost`. `composes-em-conformidade.spec.ts` ganha o `describe` que reprova porta fora do bind; RN-1057 e `.env.example` atualizados.

@@ -224,6 +224,15 @@ services:
       BRABO_SERVICE_TOKEN: ${BRABO_SERVICE_TOKEN:-}
       BRABO_SERVICE_TOKEN_PREVIOUS: ${BRABO_SERVICE_TOKEN_PREVIOUS:-}
       GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-}
+      # Tetos da api (AT-840, RN-1074). Os padrões são os da própria api
+      # (rate-limit.guard.ts e drizzle-login-throttle.ts): a instalação não muda.
+      # AUTH_LOCKOUT_IP_THRESHOLDS vai com o padrão literal porque a api trata
+      # vazio como escada de e-mail, não como padrão do IP.
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_USER: ${RATE_LIMIT_USER:-300}
+      RATE_LIMIT_IP: ${RATE_LIMIT_IP:-600}
+      AUTH_LOCKOUT_IP_THRESHOLDS: ${AUTH_LOCKOUT_IP_THRESHOLDS:-20:30,30:120}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
       ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-${VITE_ENGINE_URL:-http://localhost:4000}}
