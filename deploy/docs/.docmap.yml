@@ -5,5 +5,5 @@ rules:
     watch:
       - "deploy/k8s/**"
       - "Makefile"
-    docs: ["deploy/docs/runbook.md"]
+    docs: ["deploy/docs/runbook/deploy.md"]
     severity: warn

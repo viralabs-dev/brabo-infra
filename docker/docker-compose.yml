@@ -546,7 +546,7 @@ services:
   # desligado, o modo padrão termina em `BrokerIndisponivelError`.
   #
   # O que sustenta subir aqui e não lá é o que o socket SIGNIFICA de cada lado.
-  # Quem roda `pnpm dev` já tem o socket do Docker — está rodando `docker
+  # Quem roda `make dev` já tem o socket do Docker — está rodando `docker
   # compose`, contra o daemon do próprio host —, então o broker recebê-lo não
   # concede nada que o operador já não possua. A superfície marginal é o HTTP
   # deste serviço, que não publica porta (abaixo), vive numa rede
@@ -562,7 +562,7 @@ services:
   #
   # `DOCKER_GID` passa a importar para TODA máquina de desenvolvimento, e não
   # só para quem ligava o profile de propósito — ver o `group_add` no fim deste
-  # serviço. `scripts/dev/preflight.mjs` relata o estado dele a cada `pnpm dev`.
+  # serviço. `scripts/dev/preflight.mjs` relata o estado dele a cada `make dev`.
   #
   # NENHUM serviço tem `depends_on` dele, e isso segue obrigatório enquanto o
   # de PRODUÇÃO estiver sob profile: um serviço FORA do profile dependendo de
@@ -626,7 +626,7 @@ services:
     # Desde o ADR 0146 (este serviço sem profile) isso vale para TODA máquina de
     # desenvolvimento, e não só para quem ligava o profile de propósito — por
     # isso `scripts/dev/preflight.mjs` passa a RELATAR o estado dele a cada
-    # `pnpm dev`, em vez de a divergência aparecer só quando alguém propõe
+    # `make dev`, em vez de a divergência aparecer só quando alguém propõe
     # `container_start` e o socket recusa.
     group_add:
       - "${DOCKER_GID:-999}"

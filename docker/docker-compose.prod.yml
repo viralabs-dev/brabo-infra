@@ -516,7 +516,7 @@ services:
       secrets:
         - npmrc
       # As VITE_* seguem sendo compile-time (o Vite as inlina no bundle), mas
-      # deixaram de ser o mecanismo: viraram só o FALLBACK de `pnpm dev:web`.
+      # deixaram de ser o mecanismo: viraram só o FALLBACK do servidor de dev do `brabo-web`.
       # A configuração de verdade vem em runtime por /config.js, gerado pelo
       # entrypoint a partir das variáveis abaixo — é o que permite promover a
       # mesma imagem entre ambientes. Ver docs/adr/0025.
