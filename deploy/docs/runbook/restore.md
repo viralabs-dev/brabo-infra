@@ -6,7 +6,7 @@ tipo: guia
 description: Backup, restore, bare repos, grafo e pasta de artefatos.
 ---
 
-# Restore
+# Backup e restore
 
 Parte do [Runbook operacional](../runbook.md). Comece pela triagem do índice.
 

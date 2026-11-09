@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Docs (AT-875): o título da parte `runbook/restore.md` vira "Backup e restore". Antes, o `# Restore` gerava o mesmo `id="restore"` que o `## Restore {#restore}`, e o build do site acusava id repetido.
 
 - Doc (AT-868): os 18 links das páginas de RN que apontavam para docs de outro repo (`../adr/…`, `api.md`) viram URL do arquivo no GitHub do repo dono, na `dev`. No site continuam relativos.
 - Docs (AT-873): a tabela "Onde se encaixa" do README linka cada repo no GitHub (o do próprio README fica sem link), gerada pelo `mapa-dos-repos.ts` do brabo-ci repinado em `a571e82` (`v1.4.0-dev.28`, ci#63).
