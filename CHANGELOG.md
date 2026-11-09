@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Docs (AT-869): o `deploy/docs/runbook.md` (275 KB) vira o índice (Triagem, Procedimentos e a grade das 118 âncoras antigas, que seguem existindo) e as seis partes vão para `deploy/docs/runbook/` (`ambiente-local`, `deploy`, `restore`, `segredos`, `operacao`, `instalacao`), cortadas por tema e todas abaixo de 90 KB. Os comandos do monorepo (`pnpm dev`, `pnpm dev:down`, `pnpm dev:obs`, `pnpm obs:down`, `pnpm dev:preflight`, `pnpm dev:gpu`) passam para `make dev` e os `docker compose` equivalentes, também nos comentários dos composes; o docmap aponta para `runbook/deploy.md`. O merge depende da PR A do `brabo` (`docs/runbook-em-partes`), que ensina os checks a lerem o runbook em partes.
+
 - Docs (AT-867): a linha de badges logo abaixo do título mostra o CI da `dev` e o da `main`, a versão da `dev` (última tag `-dev`), licença MIT, documentação e Ko-fi, no estilo do `brabo`.
 
 - Docs (AT-848): o bloco do mapa do README é regenerado do `repos.yml` do brabo, que ganha a aresta `brabo → brabo-contracts` e a prova em `{arquivo, trecho}` (`mapa-alinhado` volta a bater).
