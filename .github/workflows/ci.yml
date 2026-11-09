@@ -19,30 +19,30 @@ jobs:
   # Actionlint e pins do brabo-ci (AT-819). Não é check obrigatório.
   cadeia:
     name: Cadeia (actionlint e pins)
-    uses: viralabs-dev/brabo-ci/.github/workflows/cadeia.yml@a571e82f02edf165142aa298c65ac05213d4687d  # v1.4.0-dev.28
+    uses: viralabs-dev/brabo-ci/.github/workflows/cadeia.yml@53200467cadc73c5c23b90545474d4948764932f  # v1.4.0
     with:
-      ci_ref: a571e82f02edf165142aa298c65ac05213d4687d  # v1.4.0-dev.28
+      ci_ref: 53200467cadc73c5c23b90545474d4948764932f  # v1.4.0
 
   # RN-1038: a versão do brabo-contracts é a mesma em todo lugar (aqui, só a ref em `.github/actions/irmaos`).
   # Não é check obrigatório. O SHA é o do brabo-ci (R1 da AT-770) e vale também para `ci_ref`.
   contracts-alinhado:
     name: Contracts alinhado
-    uses: viralabs-dev/brabo-ci/.github/workflows/contracts-alinhado.yml@a571e82f02edf165142aa298c65ac05213d4687d  # v1.4.0-dev.28
+    uses: viralabs-dev/brabo-ci/.github/workflows/contracts-alinhado.yml@53200467cadc73c5c23b90545474d4948764932f  # v1.4.0
     with:
-      ci_ref: a571e82f02edf165142aa298c65ac05213d4687d  # v1.4.0-dev.28
+      ci_ref: 53200467cadc73c5c23b90545474d4948764932f  # v1.4.0
 
   # README no esqueleto e bloco "Onde se encaixa" em dia (AT-826, AT-825). Informativos, não exigidos.
   readme-esqueleto:
     name: README no esqueleto
-    uses: viralabs-dev/brabo-ci/.github/workflows/readme-esqueleto.yml@a571e82f02edf165142aa298c65ac05213d4687d  # v1.4.0-dev.28
+    uses: viralabs-dev/brabo-ci/.github/workflows/readme-esqueleto.yml@53200467cadc73c5c23b90545474d4948764932f  # v1.4.0
     with:
-      ci_ref: a571e82f02edf165142aa298c65ac05213d4687d  # v1.4.0-dev.28
+      ci_ref: 53200467cadc73c5c23b90545474d4948764932f  # v1.4.0
 
   mapa-alinhado:
     name: Mapa alinhado
-    uses: viralabs-dev/brabo-ci/.github/workflows/mapa-alinhado.yml@a571e82f02edf165142aa298c65ac05213d4687d  # v1.4.0-dev.28
+    uses: viralabs-dev/brabo-ci/.github/workflows/mapa-alinhado.yml@53200467cadc73c5c23b90545474d4948764932f  # v1.4.0
     with:
-      ci_ref: a571e82f02edf165142aa298c65ac05213d4687d  # v1.4.0-dev.28
+      ci_ref: 53200467cadc73c5c23b90545474d4948764932f  # v1.4.0
 
   # Typecheck e as aferições (inclusive as CRUZADAS, que leem os clones irmãos na `dev` deles).
   afericoes:
@@ -56,7 +56,7 @@ jobs:
       - name: Irmãos (dev de cada repositório)
         uses: ./.github/actions/irmaos
       - name: Vínculos do run (origem, irmãos e destino no Summary)
-        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@a571e82f02edf165142aa298c65ac05213d4687d  # v1.4.0-dev.28 (AT-773)
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@53200467cadc73c5c23b90545474d4948764932f  # v1.4.0 (AT-773)
         with:
           irmaos: |
             irmaos/brabo-api
@@ -109,7 +109,7 @@ jobs:
       - name: Irmãos (dev de cada repositório)
         uses: ./.github/actions/irmaos
       - name: Vínculos do run (origem, irmãos e destino no Summary)
-        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@a571e82f02edf165142aa298c65ac05213d4687d  # v1.4.0-dev.28 (AT-773)
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@53200467cadc73c5c23b90545474d4948764932f  # v1.4.0 (AT-773)
         with:
           irmaos: |
             irmaos/brabo-api

@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+- CI: repina o brabo-ci na release final `v1.4.0` (`5320046`), para a promoção `dev → main` de 09/11/2026 (a `main` só aceita release final).
 - Docs (AT-875): o título da parte `runbook/restore.md` vira "Backup e restore". Antes, o `# Restore` gerava o mesmo `id="restore"` que o `## Restore {#restore}`, e o build do site acusava id repetido.
 
 - Doc (AT-868): os 18 links das páginas de RN que apontavam para docs de outro repo (`../adr/…`, `api.md`) viram URL do arquivo no GitHub do repo dono, na `dev`. No site continuam relativos.
