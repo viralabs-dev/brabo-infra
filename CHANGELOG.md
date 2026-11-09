@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+- CI: repina o brabo-ci na release final `v1.4.0` (`5320046`), para a promoção `dev → main` de 09/11/2026 (a `main` só aceita release final).
+- Docs (AT-875): o título da parte `runbook/restore.md` vira "Backup e restore". Antes, o `# Restore` gerava o mesmo `id="restore"` que o `## Restore {#restore}`, e o build do site acusava id repetido.
+
+- Doc (AT-868): os 18 links das páginas de RN que apontavam para docs de outro repo (`../adr/…`, `api.md`) viram URL do arquivo no GitHub do repo dono, na `dev`. No site continuam relativos.
+- Docs (AT-873): a tabela "Onde se encaixa" do README linka cada repo no GitHub (o do próprio README fica sem link), gerada pelo `mapa-dos-repos.ts` do brabo-ci repinado em `a571e82` (`v1.4.0-dev.28`, ci#63).
+- Docs (AT-869): os links de uma parte do runbook para outra da mesma pasta perdem o `../` que a divisão pôs (`../segredos.md#...` vira `segredos.md#...`). Eram 18 links quebrados no site.
+
+- Docs (AT-869): o `deploy/docs/runbook.md` (275 KB) vira o índice (Triagem, Procedimentos e a grade das 118 âncoras antigas, que seguem existindo) e as seis partes vão para `deploy/docs/runbook/` (`ambiente-local`, `deploy`, `restore`, `segredos`, `operacao`, `instalacao`), cortadas por tema e todas abaixo de 90 KB. Os comandos do monorepo (`pnpm dev`, `pnpm dev:down`, `pnpm dev:obs`, `pnpm obs:down`, `pnpm dev:preflight`, `pnpm dev:gpu`) passam para `make dev` e os `docker compose` equivalentes, também nos comentários dos composes; o docmap aponta para `runbook/deploy.md`. O merge depende da PR A do `brabo` (`docs/runbook-em-partes`), que ensina os checks a lerem o runbook em partes.
+
+- Docs (AT-867): a linha de badges logo abaixo do título mostra o CI da `dev` e o da `main`, a versão da `dev` (última tag `-dev`), licença MIT, documentação e Ko-fi, no estilo do `brabo`.
+
+- Docs (AT-848): o bloco do mapa do README é regenerado do `repos.yml` do brabo, que ganha a aresta `brabo → brabo-contracts` e a prova em `{arquivo, trecho}` (`mapa-alinhado` volta a bater).
+- CI: repina todos os `uses:` e `ci_ref` do `brabo-ci` em `6390ef5` (`v1.4.0-dev.17`, ci#53), que aceita a prova `{arquivo, trecho}` do `mapa-dos-repos.ts`; o pin antigo dá `throw` no formato novo e o `mapa-alinhado` quebra.
+- Docs: o `README.md` segue o esqueleto de 8 seções do brabo-ci (AT-826): para que existe, onde se encaixa (bloco gerado do `repos.yml`), como é usado, como desenvolver, o que o CI garante, documentação, como replicar, apoie e licença. Os clones irmãos e o token do GitHub Packages seguem no README; o `ci.yml` ganha os checks informativos `readme-esqueleto` e `mapa-alinhado` do brabo-ci pinado em `b5df60b` (`v1.4.0-dev.14`).
+
+- Tetos da api no compose de instalação (AT-840, RN-1074): `docker-compose.install.yml` repassa `RATE_LIMIT_ENABLED`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_USER`, `RATE_LIMIT_IP` e `AUTH_LOCKOUT_IP_THRESHOLDS` com os padrões da própria api, então a instalação não muda. `composes-em-conformidade.spec.ts` confere o repasse; `.env.example` documenta os tetos, que só o compose de teste sobe. O `configuration.md` do `brabo` fica de fora desta mudança.
+- CI: o check `Dependências de merge` (AT-787) entra pelo `dependencias.yml`, que chama o reutilizável `dependencias-de-merge.yml` do `brabo-ci` pinado em `c6d9394` (`v1.4.0-dev.10`). A PR declara `Depende-de: viralabs-dev/<repo>#<n>` no corpo e o check fica amarelo (`esperando …`) até cada PR citada estar mergeada. Sem linha `Depende-de` o check fica verde ("Sem dependências declaradas"). Não é exigido por ruleset ainda.
+
+- Bind do compose de validação (AT-838, RN-1057): no `docker-compose.prod.yml` api, engine e web publicam em `${BRABO_BIND:-127.0.0.1}:` (antes em todas as interfaces) e o ollama fica em `127.0.0.1:` fixo. O `smoke.sh` e o job `restore-compose` seguem em `localhost`. `composes-em-conformidade.spec.ts` ganha o `describe` que reprova porta fora do bind; RN-1057 e `.env.example` atualizados.
+
+- `ENGINE_PUBLIC_URL` na api da instalação, do prod e do k8s (AT-813, RN-433): `${ENGINE_PUBLIC_URL:-${VITE_ENGINE_URL:-http://localhost:4000}}` nos dois composes e `PUBLIC_ENGINE_URL` do `brabo-config` no `deployment.yaml`; sem ela o `/runner-ticket` devolvia `ws://engine:4000`, que não resolve fora do compose. Travado no `composes-em-conformidade.spec.ts`; `.env.example` e runbook atualizados.
+
+- Bind do dev (AT-814, RN-1057): postgres, neo4j e ollama do `docker-compose.yml` e loki, prometheus e grafana da observabilidade publicam em `127.0.0.1`; o engine segue `${BRABO_BIND:-127.0.0.1}`. `.env.example` documenta o `BRABO_BIND`. Spec novo no mesmo arquivo.
+
+- CI: o `ci.yml` chama o reutilizável `cadeia.yml` do `brabo-ci` (actionlint e pins, `ci_ref` obrigatório, AT-819) e perde o job `actionlint` copiado e o `.github/actionlint.yaml` (idêntico ao do brabo-ci). Repina todos os `uses:`, actions `vinculos` e `ci_ref` em `0a9eba8` (`v1.4.0-dev.5`, brabo-ci#39), e o `contracts-alinhado` ganha o comentário de versão que faltava. Como o `cadeia` não repete os `-ignore` antigos, o `ci.yml` ganha `shellcheck disable=SC2016` no `case` do WEB_ORIGIN e o `release.yml` agrupa as redireções para `$GITHUB_OUTPUT` (SC2129).
+
+- Bind da instalação (AT-811, RN-1057): no `docker-compose.install.yml` o engine publica em `${BRABO_BIND:-0.0.0.0}:${ENGINE_PORT:-4000}` (igual à api e ao web) e o ollama em `127.0.0.1:${OLLAMA_PORT:-11434}` fixo (como o neo4j; sem autenticação). `composes-em-conformidade.spec.ts` ganha o `describe` que reprova porta fora de `${BRABO_BIND:-0.0.0.0}:` ou `127.0.0.1:`. `ENGINE_PUBLIC_URL` (AT-813) e o compose de dev (AT-814) ficam de fora.
+
+- brabo-contracts como pacote (AT-770, R2a, RN-1039): `.github/actions/irmaos` passa a `v1.2.0`; `docker-bake.hcl` ganha `NPMRC` e o secret `npmrc` nos alvos `api`, `web` e `broker`; os composes dev e prod montam o `~/.npmrc` como secret (dev: `api`, `web` e build do `broker`; prod: build de `api`, `web` e `broker`); `propriedades.yml` (`provas` e `restore-compose`) ganha `packages: read` e o passo `.github/actions/npmrc` (`.npmrc` temporário com o `GITHUB_TOKEN`); `deploy/k8s/bootstrap.sh` passa `--secret` aos builds de api e web; `scripts/dev/bootstrap.sh` confere o `~/.npmrc` sem ecoar valor; `ci.yml` liga o `contracts-alinhado` (pin `4976af2`); spec `token-do-registry`. O `release.yml` só constrói o `backup` e fica igual. Depende das PRs `feature/contracts-por-pacote` de api, web e broker na `dev` para o bake/compose construírem.
+
 - Regressivo por funcionalidade (AT-769, B6): `qa-e2e.yml` liga o gatilho também nas PRs para a `dev` (`branches: [dev, main]`); a PR para a `dev` recebe o check `Regressivo do brabo-qa`, que só atesta e nunca é exigido. CLAUDE.md ganha a regra do card.
 - Vínculos nos runs (AT-773, B2): `propriedades.yml` ganha `run-name` (`Provas de propriedade · agendado|manual · <ator>`) e o passo `Vínculos` (helper `vinculos` do `brabo-ci`, pinado em `13f3697`) no início de `provas`, `restore-compose` e `restore-banco-vazio`; `ci.yml` ganha o mesmo passo depois dos irmãos em `afericoes` e `composes`; `alarmar-prova.sh` anexa `vinculos.md` ao corpo da issue quando `VINCULOS_MD` existe (spec com mutação); o runbook diz onde ver. O `release.yml` deste repo não liga repos e fica fora.
 

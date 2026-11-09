@@ -15,6 +15,9 @@
 #   bash docker/smoke.sh
 #   docker compose -f docker/docker-compose.prod.yml down -v
 #
+# Portas: api, web e engine seguem `BRABO_BIND` (default 127.0.0.1, AT-838); o
+# ollama fica sempre em 127.0.0.1. `BRABO_BIND=0.0.0.0` abre os três para a rede.
+#
 # `name` diferente do compose de dev de propósito: os dois podem coexistir na
 # mesma máquina sem disputar containers, redes nem volumes.
 name: brabo-prod
@@ -103,6 +106,8 @@ services:
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-api
       dockerfile: Dockerfile
+      secrets:
+        - npmrc
     <<: *app-hardening
     restart: "no"
     tmpfs:
@@ -155,6 +160,8 @@ services:
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-api
       dockerfile: Dockerfile
+      secrets:
+        - npmrc
     <<: *app-hardening
     # /tmp é o único caminho gravável fora dos volumes (uploads temporários,
     # arquivos intermediários). O resto do rootfs é read-only.
@@ -210,6 +217,7 @@ services:
       GIT_OAUTH_STATE_SECRET: ${GIT_OAUTH_STATE_SECRET:-}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
       ENGINE_URL: ${ENGINE_URL:-http://engine:4000}
+      ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-${VITE_ENGINE_URL:-http://localhost:4000}}
       GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
       GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
       GITLAB_OAUTH_CLIENT_ID: ${GITLAB_OAUTH_CLIENT_ID:-}
@@ -249,7 +257,7 @@ services:
       # observado declara "não observado" em vez de herdar o registrado.
       BROKER_URL: ${BROKER_URL:-}
     ports:
-      - "${API_PORT:-3000}:3000"
+      - "${BRABO_BIND:-127.0.0.1}:${API_PORT:-3000}:3000"
     networks:
       # A api participa de DUAS redes. Declarar `networks` num serviço tira
       # dele a default implícita — omitir `default` aqui a desligaria do
@@ -357,7 +365,7 @@ services:
       GRAPH_TEMPLATES_ENABLED: ${GRAPH_TEMPLATES_ENABLED:-false}
       GRAPH_INSTRUCTION_TEMPLATES_ENABLED: ${GRAPH_INSTRUCTION_TEMPLATES_ENABLED:-false}
     ports:
-      - "${ENGINE_PORT:-4000}:4000"
+      - "${BRABO_BIND:-127.0.0.1}:${ENGINE_PORT:-4000}:4000"
     volumes:
       - git_local_repos:/data/git-repos
       - project_workspaces:/data/project-workspaces
@@ -393,6 +401,8 @@ services:
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-broker
       dockerfile: Dockerfile
+      secrets:
+        - npmrc
     profiles: ["container-broker"]
     <<: *app-hardening
     # O CLI do docker escreve arquivo temporário; o resto do rootfs é
@@ -503,8 +513,10 @@ services:
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-web
       dockerfile: Dockerfile
+      secrets:
+        - npmrc
       # As VITE_* seguem sendo compile-time (o Vite as inlina no bundle), mas
-      # deixaram de ser o mecanismo: viraram só o FALLBACK de `pnpm dev:web`.
+      # deixaram de ser o mecanismo: viraram só o FALLBACK do servidor de dev do `brabo-web`.
       # A configuração de verdade vem em runtime por /config.js, gerado pelo
       # entrypoint a partir das variáveis abaixo — é o que permite promover a
       # mesma imagem entre ambientes. Ver docs/adr/0025.
@@ -531,7 +543,7 @@ services:
     # 8088 no host por convenção herdada; 8080 dentro do container porque
     # nginx roda non-root e não pode fazer bind em porta privilegiada.
     ports:
-      - "${WEB_PORT:-8088}:8080"
+      - "${BRABO_BIND:-127.0.0.1}:${WEB_PORT:-8088}:8080"
     depends_on:
       api:
         condition: service_healthy
@@ -557,7 +569,7 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     ports:
-      - "${OLLAMA_PORT:-11434}:11434"
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     environment:
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-1h}
       OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
@@ -584,6 +596,12 @@ services:
     volumes:
       - ./ollama/pull-models.sh:/pull-models.sh:ro
     restart: "no"
+
+# Secret do BuildKit para o `pnpm install` dos builds de api, web e broker (RN-1039):
+# só existe durante o `RUN --mount=type=secret,id=npmrc`, nunca em camada nem em ENV.
+secrets:
+  npmrc:
+    file: ${NPMRC:-${HOME}/.npmrc}
 
 networks:
   # Rede PRÓPRIA do broker, `internal: true` (ADR 0130): o engine e o web não a

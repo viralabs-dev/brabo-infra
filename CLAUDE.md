@@ -10,6 +10,7 @@ ciclo de vida do container) e `.claude/rules/ci-e-cadeia-de-suprimentos.md` (pin
 assinatura, Trivy). Os caminhos que elas citam (`apps/api/...`) são os do monorepo.
 
 ## Clones irmãos
+- O `~/.npmrc` (ou `NPMRC`) com o token `read:packages` do GitHub Packages entra nos builds de api, web e broker só como secret do BuildKit, nunca como ARG/ENV nem em camada (RN-1039, `token-do-registry.spec.ts`).
 - Os composes e o bake constroem com contexto em `${BRABO_IRMAOS:-../..}/brabo-<app>` (relativo a
   `docker/`); `scripts/ci/irmaos.ts` traduz os caminhos canônicos do monorepo (`apps/engine/...`) para
   o irmão e lê por `BRABO_IRMAOS` (padrão `..` a partir da raiz deste repo). Aferição cruzada nova lê

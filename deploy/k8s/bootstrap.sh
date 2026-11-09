@@ -222,9 +222,13 @@ else
   info "construindo as imagens de produção"
   # Os Dockerfiles moram nos repositórios dos apps (clones irmãos, AT-696..700).
   IRMAOS="${BRABO_IRMAOS:-${REPO_ROOT}/..}"
-  docker build -q -t brabo-api:prod    "${IRMAOS}/brabo-api"    >/dev/null
+  # api e web instalam `@viralabs-dev/brabo-*` do GitHub Packages: o token entra só como
+  # secret do BuildKit (RN-1039), do `~/.npmrc` ou do arquivo em NPMRC (CI).
+  NPMRC="${NPMRC:-${HOME}/.npmrc}"
+  [[ -r "${NPMRC}" ]] || die "sem ${NPMRC}: o build da api e do web precisa do token read:packages do GitHub Packages (docs: como criar o PAT)"
+  docker build -q --secret "id=npmrc,src=${NPMRC}" -t brabo-api:prod    "${IRMAOS}/brabo-api"    >/dev/null
   docker build -q -t brabo-engine:prod "${IRMAOS}/brabo-engine" >/dev/null
-  docker build -q -t brabo-web:prod    "${IRMAOS}/brabo-web"    >/dev/null
+  docker build -q --secret "id=npmrc,src=${NPMRC}" -t brabo-web:prod    "${IRMAOS}/brabo-web"    >/dev/null
   docker build -q -f "${REPO_ROOT}/docker/backup/Dockerfile.prod" -t brabo-backup:prod "${REPO_ROOT}" >/dev/null
   ok "quatro imagens construídas"
 fi

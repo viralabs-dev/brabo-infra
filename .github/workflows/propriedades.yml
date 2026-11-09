@@ -115,6 +115,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -138,7 +139,7 @@ jobs:
 
       - name: Vínculos do run (origem, irmãos e destino no Summary)
         id: vinculos
-        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@2d9ec1b9a8045d0d35e769d81b4c441264452ebb  # brabo-ci dev, merge da ci#22 (AT-773)
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@53200467cadc73c5c23b90545474d4948764932f  # v1.4.0 (AT-773)
         with:
           irmaos: |
             irmaos/brabo-api
@@ -190,6 +191,11 @@ jobs:
             echo '| passo | duração | saída |'
             echo '|---|---|---|'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: npmrc temporário (secret do build, RN-1039)
+        uses: ./.github/actions/npmrc
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       # `bootstrap.sh`, não `make deploy-local`: o alvo encadeia o smoke e o
       # `&&` do make esconderia qual das duas metades falhou.
@@ -470,6 +476,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -493,7 +500,7 @@ jobs:
 
       - name: Vínculos do run (origem, irmãos e destino no Summary)
         id: vinculos
-        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@2d9ec1b9a8045d0d35e769d81b4c441264452ebb  # brabo-ci dev, merge da ci#22 (AT-773)
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@53200467cadc73c5c23b90545474d4948764932f  # v1.4.0 (AT-773)
         with:
           irmaos: |
             irmaos/brabo-api
@@ -509,6 +516,11 @@ jobs:
           echo "INICIO_DO_BUILD=$(date +%s)" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+
+      - name: npmrc temporário (secret do build, RN-1039)
+        uses: ./.github/actions/npmrc
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build das quatro imagens (bake, cache do Actions)
         id: build
@@ -626,7 +638,7 @@ jobs:
 
       - name: Vínculos do run (origem e destino no Summary)
         id: vinculos
-        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@2d9ec1b9a8045d0d35e769d81b4c441264452ebb  # brabo-ci dev, merge da ci#22 (AT-773)
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@53200467cadc73c5c23b90545474d4948764932f  # v1.4.0 (AT-773)
 
       - name: Build da imagem de backup
         run: docker build -f docker/backup/Dockerfile.prod -t "${BRABO_BACKUP_IMAGE}" .

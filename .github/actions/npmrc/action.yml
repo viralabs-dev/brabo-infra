@@ -1,0 +1,20 @@
+name: npmrc temporário
+description: 'Grava um .npmrc em RUNNER_TEMP com o token de leitura do GitHub Packages e exporta NPMRC (secret do BuildKit, RN-1039). O job precisa de packages: read.'
+inputs:
+  token:
+    description: Token com `read:packages` (o GITHUB_TOKEN do job basta)
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Gravar o npmrc temporário
+      shell: bash
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        echo "::add-mask::${NODE_AUTH_TOKEN}"
+        arquivo="${RUNNER_TEMP}/npmrc"
+        umask 077
+        printf '@viralabs-dev:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "${NODE_AUTH_TOKEN}" > "${arquivo}"
+        echo "NPMRC=${arquivo}" >> "$GITHUB_ENV"

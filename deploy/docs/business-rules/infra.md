@@ -18,7 +18,7 @@ idempotente: local (onde a extensão já estava instalada) e um ambiente
 novo passam pela mesma linha sem diferença de comportamento.
 
 - **Onde:** `apps/api/src/db/migrations/0045_shallow_randall.sql`
-- **ADR:** [0079](../adr/0079-tabela-de-chunks-vetor-e-tsvector-juntos.md)
+- **ADR:** [0079](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0079-tabela-de-chunks-vetor-e-tsvector-juntos.md)
 
 ## O papel `dbre` vira dois scripts mecânicos (RN-400..403, ADR 0093)
 
@@ -43,7 +43,7 @@ divergir se um lado mudar sem o outro.
   houve backup, backup ok, atrasado, exatamente no limiar (não conta como
   atrasado), falha recente com sucesso antigo, atrasado tem prioridade
   sobre falha recente, idade nunca negativa
-- **ADR:** [0093](../adr/0093-dbre-linter-de-migracao-e-relatorio-de-backup.md)
+- **ADR:** [0093](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0093-dbre-linter-de-migracao-e-relatorio-de-backup.md)
 
 ### RN-403 — O relatório de backup NÃO reexecuta o restore; ele aponta para o procedimento já testado {#rn-403}
 
@@ -61,7 +61,7 @@ procedimento ou reexecutá-lo.
 - **Teste:** não aplicável (é texto estático apontando para o runbook,
   não lógica); a existência do procedimento testado é RN de
   `docs/runbook.md#restore` em si
-- **ADR:** [0093](../adr/0093-dbre-linter-de-migracao-e-relatorio-de-backup.md)
+- **ADR:** [0093](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0093-dbre-linter-de-migracao-e-relatorio-de-backup.md)
 
 ---
 
@@ -123,7 +123,7 @@ os templates do grafo (fonte `:graph` do `InstructionFiles`, precedência
 > texto inline, que nunca teve a seção.
 - **Origem:** decisão do dono do produto, inspirada no repositório
   [ErickWendel/neo4j-ai-experiments](https://github.com/ErickWendel/neo4j-ai-experiments)
-  (ver [ADR 0099](../adr/0099-neo4j-grafo-de-conhecimento-e-templates.md))
+  (ver [ADR 0099](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0099-neo4j-grafo-de-conhecimento-e-templates.md))
 
 ---
 
@@ -153,7 +153,7 @@ model-loader reduz a chance de a degradação acontecer em primeiro lugar.
   ponta a ponta com um modelo pequeno real (`all-minilm`) para não pagar
   o custo de vários GB da lista de produção numa máquina compartilhada
 - **Origem:** achado durante a fundação do grafo de conhecimento — ver
-  [ADR 0100](../adr/0100-rag-search-e-modelos-garantidos-no-boot.md)
+  [ADR 0100](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0100-rag-search-e-modelos-garantidos-no-boot.md)
 
 ---
 
@@ -181,7 +181,13 @@ baixo. Corrigir só um deixa os outros de pé:
    ele nunca resolve. `docker/docker-compose.yml` ganhou
    `ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://localhost:4000}` no
    serviço `api` — o MESMO default que `VITE_ENGINE_URL` já usa no
-   serviço `web`, pelo mesmo motivo.
+   serviço `web`, pelo mesmo motivo. A AT-813 estendeu o item aos outros
+   dois destinos: `docker-compose.install.yml` e `docker-compose.prod.yml`
+   definem `ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-${VITE_ENGINE_URL:-http://localhost:4000}}`
+   (navegador e runner no mesmo endereço) e o `deploy/k8s/base/api/deployment.yaml`
+   lê `PUBLIC_ENGINE_URL` do `brabo-config`. Spec:
+   `scripts/dev/composes-em-conformidade.spec.ts` (`a api diz ao runner o
+   endereço público do engine`).
 2. Mesmo com a URL certa, um transporte que NUNCA abre (engine fora do ar,
    firewall, reconfiguração futura errada) não tinha teto nenhum:
    `apps/web/src/lib/terminal-channel.ts` nunca passava `reconnectAfterMs`
@@ -270,7 +276,7 @@ espontânea de novo enquanto elas existirem.
   manualmente contra um servidor HTTP fake e contra o Ollama real desta
   máquina (ver ADR 0114) — **lacuna declarada**: não existe suíte
   automatizada própria para `preflight.mjs` hoje.
-- **ADR:** [0114](../adr/0114-deteccao-de-ollama-nativo-no-bootstrap-dev.md)
+- **ADR:** [0114](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0114-deteccao-de-ollama-nativo-no-bootstrap-dev.md)
 - **Origem:** pedido do dono do produto, achado real durante a execução
   (colisão de porta com Ollama nativo)
 
@@ -278,7 +284,7 @@ espontânea de novo enquanto elas existirem.
 
 ### RN-511 — A base é CONSENTIDA uma vez no host, o compartilhamento é provado MONTANDO, e sem terminal o passo relata em vez de consentir {#rn-511}
 
-A [RN-500](api.md#rn-500) construiu a base e disse o que fazer quando ela falta —
+A [RN-500](https://github.com/viralabs-dev/brabo-api/blob/dev/docs/business-rules/api.md#rn-500) construiu a base e disse o que fazer quando ela falta —
 `projectsBase: null`, e o modo "Pasta montada" não é oferecido. O que faltava
 era alguém **pedir** que ela fosse configurada: nada no produto o fazia, e o
 resultado é que um modo pronto ficou inalcançável para quem instala.
@@ -345,7 +351,7 @@ sem confirmação.
   `describe('validarBase')` — caminho feliz e as seis recusas — e
   `describe('exigeProvaDeCompartilhamento')`); `scripts/dev/bootstrap.spec.ts`
   (a árvore do menu, 25 folhas)
-- **ADR:** [0146](../adr/0146-base-consentida-no-bootstrap.md)
+- **ADR:** [0146](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0146-base-consentida-no-bootstrap.md)
 - **Origem:** FASE 28, sessão 2
 
 ---
@@ -440,7 +446,7 @@ não há cache a ler nem download a tentar no start (medido sob `--network none`
 - **Teste:** `scripts/dev/docker-gid.spec.ts` — o caminho feliz, as duas
   divergências (default ausente e valor errado), o "não se aplica" sem grupo
   docker, e o default que por acaso ACERTA
-- **ADR:** [0146](../adr/0146-base-consentida-no-bootstrap.md), ponto 3
+- **ADR:** [0146](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0146-base-consentida-no-bootstrap.md), ponto 3
 - **Origem:** FASE 28, sessão 4
 
 ---
@@ -449,7 +455,7 @@ não há cache a ler nem download a tentar no start (medido sob `--network none`
 
 ### RN-527 — A instalação sobe de um compose PRÓPRIO, por imagem escolhida, e confere a saúde antes de dizer que instalou {#rn-527}
 
-> **Revisada pela [RN-575](produto.md#rn-575) (ADR 0162):** o serviço `broker` passou a
+> **Revisada pela [RN-575](https://github.com/viralabs-dev/brabo/blob/dev/docs/business-rules/produto.md#rn-575) (ADR 0162):** o serviço `broker` passou a
 > existir neste compose, desligado sob o profile `container-broker` e ligado
 > pelo instalador só com consentimento; as imagens obrigatórias são CINCO. O
 > resto desta regra vale como está.
@@ -483,7 +489,7 @@ tag** — imagem construída de árvore suja não é a versão que ela diz ser, 
 marcador registraria uma mentira.
 
 **Os segredos nascem uma vez e persistem.** Os cinco de
-[RN-114](api.md#rn-114) mais o `NEO4J_PASSWORD`, gerados com
+[RN-114](https://github.com/viralabs-dev/brabo-api/blob/dev/docs/business-rules/api.md#rn-114) mais o `NEO4J_PASSWORD`, gerados com
 `openssl rand` no mesmo molde de `docker/smoke.sh:31-57` — inclusive o detalhe
 de o `NEO4J_PASSWORD` ser `-hex` e não `-base64`, porque uma `/` quebra o parse
 de `NEO4J_AUTH`. O `.env` é criado **vazio e com modo 600 ANTES** de receber
@@ -517,7 +523,7 @@ funções de verdade, passa o arquivo por `docker compose config` contra o compo
 de instalação e cobra que CADA segredo chegue INTEIRO aos serviços (pula
 nomeando o motivo sem `docker compose`), com a geração antiga fixada como
 reprovada.
-**Origem:** FASE 29, sessão 4 ([ADR 0150](../adr/0150-instalador-de-uma-linha.md)).
+**Origem:** FASE 29, sessão 4 ([ADR 0150](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0150-instalador-de-uma-linha.md)).
 Instalar o runner (sessão 7) e migrar uma instalação anterior (sessão 6)
 seguem fora, e o `--print-plan` os declara `nao-nesta-versao`.
 
@@ -597,7 +603,7 @@ velha ao lado de um Postgres restaurado noutro instante dá dois estados
 derivados de momentos diferentes, sem nada que os concilie. A reprojeção **não
 foi construída aqui** (é o BRB-018): até existir, instalação migrada nasce com
 o grafo VAZIO — degradação conhecida e nomeada, não perda de dado, porque o RAG
-vive no pgvector e vem no dump. Desde a [RN-569](api.md#rn-569) ela existe
+vive no pgvector e vem no dump. Desde a [RN-569](https://github.com/viralabs-dev/brabo-api/blob/dev/docs/business-rules/api.md#rn-569) ela existe
 (`grafo:reprojetar`), e o grafo vazio passa a durar até alguém rodá-la.
 
 - **Onde:** `docker/backup/lib.sh:28` (`destino_tipo`, a inferência que mantém o
@@ -630,7 +636,7 @@ vive no pgvector e vem no dump. Desde a [RN-569](api.md#rn-569) ela existe
   ciclo arquivar→restaurar devolvendo byte a byte; a recusa de restaurar onde
   não se pode escrever; e o tar truncado que reprova ao ser LIDO, nunca pelo
   tamanho
-- **ADR:** [0152](../adr/0152-backup-de-volumes-contra-compose.md)
+- **ADR:** [0152](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0152-backup-de-volumes-contra-compose.md)
 - **Origem:** FASE 29, sessão 5. Exercitado de verdade contra o compose de
   desenvolvimento com dados reais (55 tabelas, 422 eventos, os bare repos de
   `exp001` e `exp004`), incluindo a restauração num volume novo conferida com
@@ -690,8 +696,8 @@ eles são fonte de verdade que nasceria vazia.
 `scripts/dev/install-arquivos-da-instalacao.spec.ts` (a prova viaja na Release e
 é conferida). A ordem "prova antes da deleção" não tem spec próprio hoje: o
 `scripts/dev/install.spec.ts` que esta regra citava não existe (AT-738, achado 10).
-**Origem:** FASE 29, sessão 6 ([ADR 0150](../adr/0150-instalador-de-uma-linha.md),
-[ADR 0152](../adr/0152-backup-de-volumes-contra-compose.md)).
+**Origem:** FASE 29, sessão 6 ([ADR 0150](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0150-instalador-de-uma-linha.md),
+[ADR 0152](https://github.com/viralabs-dev/brabo/blob/dev/docs/adr/0152-backup-de-volumes-contra-compose.md)).
 
 ## O repositório nasce no aceite do handoff ao Arquiteto, e a execução não começa sem ele (RN-582)
 
@@ -701,7 +707,7 @@ O broker sobe por padrão no compose de DEV desde a [RN-512](#rn-512), mas a api
 recebia `BROKER_URL` vazia (`${BROKER_URL:-}`, e a linha vinha comentada no
 `.env.example`). O resultado, medido no teste do dono em 26/09: com o broker de
 pé ao lado, `brokerConfigurado` vinha `false` e a criação de projeto só liberava
-`runner` ([RN-573](api.md#rn-573)). Duas regras fecham isso:
+`runner` ([RN-573](https://github.com/viralabs-dev/brabo-api/blob/dev/docs/business-rules/api.md#rn-573)). Duas regras fecham isso:
 
 1. **`BROKER_URL` tem default no compose de dev, e só nele.** O default é
    `http://broker:8090` — o serviço e a porta (`BROKER_PORT`) que o MESMO
@@ -710,7 +716,7 @@ pé ao lado, `brokerConfigurado` vinha `false` e a criação de projeto só libe
    `.env` continua vencendo. Os composes de PRODUÇÃO e de INSTALAÇÃO seguem
    `${BROKER_URL:-}`, de propósito: lá o broker está sob
    `profiles: ["container-broker"]`, e quem o liga grava a URL (o `install.sh`,
-   perguntando — [RN-575](produto.md#rn-575)). Um default ali faria a api de uma
+   perguntando — [RN-575](https://github.com/viralabs-dev/brabo/blob/dev/docs/business-rules/produto.md#rn-575)). Um default ali faria a api de uma
    instalação sem broker afirmar que tem um.
 2. **O `preflight.mjs` RELATA a pasta gerenciada, no molde do `DOCKER_GID`.**
    Sem `PROJECT_WORKSPACES_HOST_DIR`, api e engine usam o volume gerenciado
@@ -744,3 +750,75 @@ certo, gravar as DUAS variáveis juntas, decidir o que fazer com um volume
   mensagem diz sintoma, conserto e o que não migra), `:113` (o preflight
   chama o relato sem sair por ele)
 - **Origem:** AT-213 — teste do dono em 2026-09-26
+
+## A instalação não publica porta fora do bind (RN-1057)
+
+Com `BRABO_BIND=127.0.0.1` (AT-722) a api e o web ficavam só no loopback, mas
+o engine e o ollama seguiam em todas as interfaces e expostos na rede local
+(achado da AT-801, Rodada 249).
+
+**Regra.** Toda porta publicada pelo `docker-compose.install.yml` começa com
+`${BRABO_BIND:-0.0.0.0}:` ou com `127.0.0.1:`:
+
+- **api, web e engine** seguem o `BRABO_BIND`, com o mesmo default `0.0.0.0`
+  (o default da instalação não muda). O engine fica publicado porque o navegador
+  (socket do Phoenix) e o `brabo-runner` o alcançam onde alcançam a api.
+- **ollama e neo4j** ficam sempre em `127.0.0.1`, qualquer que seja o bind: só
+  a rede interna os usa, e o ollama não tem autenticação.
+- O broker não publica porta nenhuma.
+
+**Dev (AT-814).** O `docker/docker-compose.yml` e o
+`docker/docker-compose.observability.yml` seguem a mesma régua, com default
+`127.0.0.1`: api, web e engine em `${BRABO_BIND:-127.0.0.1}:`; postgres, neo4j,
+ollama, loki, prometheus e grafana sempre em `127.0.0.1:`. Spec: `describe('o
+dev não publica porta fora do bind')`.
+
+**Validação (AT-838).** O `docker/docker-compose.prod.yml` segue a mesma régua
+do dev, com default `127.0.0.1`: api, web e engine em
+`${BRABO_BIND:-127.0.0.1}:`; ollama sempre em `127.0.0.1:`; neo4j já estava lá.
+Ele roda na máquina de quem valida, nunca na rede. Spec: `describe('a validação
+não publica porta fora do bind')`.
+
+- **Código:** `docker/docker-compose.prod.yml:257` (api), `:365` (engine),
+  `:543` (web), `:569` (ollama)
+- **Teste:** `scripts/dev/composes-em-conformidade.spec.ts:269` (o describe da
+  validação)
+- **Origem:** AT-838 — levantamento da AT-813/814 (Rodada 271, 2026-11-08)
+
+- **Código:** `docker/docker-compose.install.yml:` (engine),
+  `:` (ollama), `:102` (neo4j)
+- **Teste:** `scripts/dev/composes-em-conformidade.spec.ts:171` (o describe: toda
+  porta, api/web/engine no bind, ollama/neo4j no loopback)
+- **Origem:** AT-811 — achado lateral da AT-801 (Rodada 249, 2026-11-07)
+
+## Os tetos da api chegam à instalação pelo compose, com o padrão da api (RN-1074)
+
+### RN-1074 — O compose de instalação repassa os tetos de rate limit e de lockout da api, com o padrão da própria api, e só o compose de teste sobe esses valores {#rn-1074}
+
+A api lê `RATE_LIMIT_ENABLED`, `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_USER`,
+`RATE_LIMIT_IP` e `AUTH_LOCKOUT_IP_THRESHOLDS`. Sem o repasse no
+`docker-compose.install.yml` o E2E do `brabo-qa` não conseguia subir os tetos, e
+a suíte inteira batia em `429` (AT-840, web#48).
+
+**Regra.** O serviço `api` do `docker-compose.install.yml` repassa as cinco com
+o padrão IGUAL ao da api hoje, então a instalação não muda:
+
+- `RATE_LIMIT_ENABLED` → `${RATE_LIMIT_ENABLED:-true}`;
+- `RATE_LIMIT_WINDOW_MS` → `${RATE_LIMIT_WINDOW_MS:-60000}`;
+- `RATE_LIMIT_USER` → `${RATE_LIMIT_USER:-300}`;
+- `RATE_LIMIT_IP` → `${RATE_LIMIT_IP:-600}`;
+- `AUTH_LOCKOUT_IP_THRESHOLDS` → `${AUTH_LOCKOUT_IP_THRESHOLDS:-20:30,30:120}`.
+
+O padrão do lockout é o literal, não `:-` vazio: a api lê a variável com `??`,
+então string vazia não cai no padrão do IP, e sim na escada do e-mail.
+
+Quem sobe tetos maiores é o compose de teste, pelo `.env` do job. A instalação
+e o dev ficam nos padrões. O spec `composes-em-conformidade.spec.ts` trava o
+repasse das cinco no compose de instalação.
+
+- **Código:** `docker/docker-compose.install.yml` (serviço `api`, bloco de
+  `environment`, logo antes de `API_PUBLIC_URL`)
+- **Teste:** `scripts/dev/composes-em-conformidade.spec.ts` (o describe `a api da
+  instalação repassa os tetos de limite`)
+- **Origem:** AT-840 — regressivo vermelho da web#48 (rate limit 429 no E2E,
+  08/11/2026)

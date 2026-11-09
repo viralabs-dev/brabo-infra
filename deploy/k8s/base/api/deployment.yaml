@@ -49,6 +49,12 @@ spec:
               value: "3000"
             - name: OTEL_SERVICE_NAME
               value: brabo-api
+            # Endereço do engine alcançável pelo navegador/runner (RN-419, RN-433).
+            - name: ENGINE_PUBLIC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: brabo-config
+                  key: PUBLIC_ENGINE_URL
             # Precisam ser IDÊNTICOS aos do engine: a api grava o path absoluto
             # do bare repo no banco e o engine o usa literalmente.
             - name: GIT_LOCAL_REPOS_ROOT
