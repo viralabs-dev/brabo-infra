@@ -315,7 +315,7 @@ um:
 - **api ↔ engine.** CORS é mecanismo do navegador; ali quem chama é um
   cliente HTTP do lado do servidor, que ignora esses cabeçalhos. Uma falha nesse
   caminho é o service token (`401`/`403` — veja
-  [rotação](../segredos.md#rotacao-das-chaves-do-auth)) ou o endereço errado
+  [rotação](segredos.md#rotacao-das-chaves-do-auth)) ou o endereço errado
   (`ECONNREFUSED` — veja [a sessão não sai de `created`](#sessao-nao-ativa)).
 - **O canal Phoenix ficando em silêncio.** WebSocket não passa por CORS.
   Quem recusa é o `check_origin` do endpoint, também alimentado por
@@ -634,10 +634,10 @@ nenhum segredo commitado.
 
 Trocar `AUTH_JWT_SECRET` ou `BRABO_SERVICE_TOKEN` sem a
 dança do `_PREVIOUS` tem o mesmo efeito já documentado em
-[Rotação das chaves do auth](../segredos.md#rotacao-das-chaves-do-auth); trocar
+[Rotação das chaves do auth](segredos.md#rotacao-das-chaves-do-auth); trocar
 `CREDENTIALS_MASTER_KEY` sem re-embrulhar tem o mesmo efeito já
 documentado em
-[Rotação da chave mestra](../segredos.md#rotacao-da-chave-mestra). Esta checagem de BOOT não
+[Rotação da chave mestra](segredos.md#rotacao-da-chave-mestra). Esta checagem de BOOT não
 muda nenhum dos dois procedimentos — ela só impede a chave de chegar à produção
 como o literal público deste repositório.
 
@@ -742,7 +742,7 @@ caminho está tirando cabeçalhos desconhecidos.
 Quase sempre um `AUTH_JWT_SECRET` novo pulando o passo de coexistência: o
 access token some junto com ele, mas o sintoma aparece no
 refresh. O procedimento correto está em
-[Rotação das chaves do auth](../segredos.md#rotacao-das-chaves-do-auth).
+[Rotação das chaves do auth](segredos.md#rotacao-das-chaves-do-auth).
 
 #### O `ExternalSecret` nunca fica Ready {#externalsecret-never-becomes-ready}
 
@@ -1001,7 +1001,7 @@ casos, por definição. O que cobre é o `SessionAdoptionWorker`,
 que a cada 30s procura uma linha em `session_states` sem dono `:global`
 e a assume. Se ele não está rodando, a fila do Oban está parada —
 e aí o problema é outro (veja o alerta de fila não
-consumida, em [Observabilidade](../operacao.md#observabilidade)).
+consumida, em [Observabilidade](operacao.md#observabilidade)).
 
 **Um rollout preso no `preStop`.** Sintoma: um pod `Terminating` por exatamente
 90s, toda vez. Quase certamente um `:erpc.call` esperando por um nó que

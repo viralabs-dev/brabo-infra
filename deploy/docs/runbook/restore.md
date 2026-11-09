@@ -248,7 +248,7 @@ restaurado.
   diferente.** O dump leva as DEKs embrulhadas, não as chaves. Restaurar
   num ambiente com outra chave mestra devolve um
   banco intacto com credenciais de LLM e de git inúteis. Veja
-  [Rotação da chave mestra](../segredos.md#rotacao-da-chave-mestra).
+  [Rotação da chave mestra](segredos.md#rotacao-da-chave-mestra).
 - **Nada dos usuários fica de fora.** Desde o corte do Keycloak
   ([ADR 0032](../adr/0032-corte-do-keycloak-e-sessao-em-cookie.md)) não há
   banco de IdP separado: identidades, credenciais argon2id, refresh
@@ -652,7 +652,7 @@ numa agenda, num cluster k3d num runner hospedado pelo GitHub:
    e exige o **mesmo sha256**; depois reprojeta de novo e o exige
    outra vez. Ele não depende de nenhum outro alvo;
 7. roda `make test-rotacao-chave-mestra-k8s` (AT-146), **por último**: os três passos
-   da [rotação da chave mestra](../segredos.md#rotacao-da-chave-mestra) — as duas chaves publicadas
+   da [rotação da chave mestra](segredos.md#rotacao-da-chave-mestra) — as duas chaves publicadas
    no Secret de origem `brabo`, o `ExternalSecret` forçado a sincronizar, a api
    reiniciada, o `rewrap-deks.js` da imagem, a chave anterior removida e a api
    reiniciada de novo — com todo envelope conferido abrindo em cada passo e uma
@@ -801,13 +801,13 @@ ninguém rodá-lo:
 **Medido, e a causa provável desde então corrigida** (AT-078,
 [RN-588](../business-rules/engine.md#rn-588)) — o `Monitor` do pod antigo apagando a
 linha de `session_states` que o par acabara de regravar; veja
-[Provando que nada ficou órfão](../deploy.md#rollout-do-engine) para o que uma órfã nova
+[Provando que nada ficou órfão](deploy.md#rollout-do-engine) para o que uma órfã nova
 registraria. O que segue é o registro de antes da correção. **A prova de rollout
 tinha falhado uma vez em quatro execuções que chegaram a ela** (duas em dez até a execução `35448353884`, 2026-09-19, em que
 as cinco sessões viviam no mesmo pod antigo, quatro foram adotadas e uma terminou
 sem dono e sem drenagem; os únicos logs que a nomeavam morreram com aquele pod —
 e é por isso que a prova agora os guarda, veja
-[Provando que nada ficou órfão](../deploy.md#rollout-do-engine)). Com o mesmo script e a mesma espera fixa, a execução
+[Provando que nada ficou órfão](deploy.md#rollout-do-engine)). Com o mesmo script e a mesma espera fixa, a execução
 `34773908653` passou e a execução `34775712706` informou uma órfã — uma sessão
 `active` na api sem dono em nenhuma das três réplicas do engine, 15 s
 depois de o `rollout status` voltar. As duas execuções com a espera limitada passaram, e

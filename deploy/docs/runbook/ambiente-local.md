@@ -88,7 +88,7 @@ docker compose -f docker/docker-compose.prod.yml \
 
 Numa **instalação** feita pelo `install.sh` o broker é o mesmo serviço,
 da imagem publicada, e o instalador pergunta se deve ligá-lo — veja
-[o broker numa instalação](../instalacao.md#broker-na-instalacao)
+[o broker numa instalação](instalacao.md#broker-na-instalacao)
 ([ADR 0162](../adr/0162-broker-publicado-e-oferecido-pelo-instalador.md)).
 
 **O broker tem DUAS raízes, e nenhuma faz as vezes da outra**
@@ -641,7 +641,7 @@ sós. O que falhou é impresso no fim com o comando exato para repetir.
   `curl -fsSLO …/install.sh && bash install.sh` — nunca `curl … | sh` (o
   download vira o stdin do processo e mata toda pergunta) e nunca
   `sh -c "$(curl …)"`, que não consegue verificar o próprio hash. Os dois são recusados pelo
-  nome; veja [Instalando](../instalacao.md#instalando).
+  nome; veja [Instalando](instalacao.md#instalando).
 
 - **O agente está de pé mas não atende nada.** É o estado normal de uma instalação
   nova: ele espera e consulta de novo até o primeiro projeto no modo `runner` existir
