@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Doc (AT-868): os 18 links das páginas de RN que apontavam para docs de outro repo (`../adr/…`, `api.md`) viram URL do arquivo no GitHub do repo dono, na `dev`. No site continuam relativos.
+- Docs (AT-873): a tabela "Onde se encaixa" do README linka cada repo no GitHub (o do próprio README fica sem link), gerada pelo `mapa-dos-repos.ts` do brabo-ci repinado em `a571e82` (`v1.4.0-dev.28`, ci#63).
 - Docs (AT-869): os links de uma parte do runbook para outra da mesma pasta perdem o `../` que a divisão pôs (`../segredos.md#...` vira `segredos.md#...`). Eram 18 links quebrados no site.
 
 - Docs (AT-869): o `deploy/docs/runbook.md` (275 KB) vira o índice (Triagem, Procedimentos e a grade das 118 âncoras antigas, que seguem existindo) e as seis partes vão para `deploy/docs/runbook/` (`ambiente-local`, `deploy`, `restore`, `segredos`, `operacao`, `instalacao`), cortadas por tema e todas abaixo de 90 KB. Os comandos do monorepo (`pnpm dev`, `pnpm dev:down`, `pnpm dev:obs`, `pnpm obs:down`, `pnpm dev:preflight`, `pnpm dev:gpu`) passam para `make dev` e os `docker compose` equivalentes, também nos comentários dos composes; o docmap aponta para `runbook/deploy.md`. O merge depende da PR A do `brabo` (`docs/runbook-em-partes`), que ensina os checks a lerem o runbook em partes.
