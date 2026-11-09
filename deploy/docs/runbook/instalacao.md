@@ -166,7 +166,7 @@ o comando de uma linha que instala de verdade.
 > registra a metade pública, carimba o `kid` e instala a unit de **máquina**
 > ([ADR 0155](../adr/0155-a-primeira-conta-nasce-no-terminal.md)) — e quando um
 > elo falha ele nomeia o comando a repetir, veja
-> [Quando o instalador não fecha a instalação](../ambiente-local.md#instalador-nao-fecha).
+> [Quando o instalador não fecha a instalação](ambiente-local.md#instalador-nao-fecha).
 > O que fica na tela do projeto é um pareamento **preso a um projeto**: essa chave de
 > dispositivo e o `brabo-runner.config.json` ainda vêm de lá
 > ([ADR 0118](../adr/0118-configuracao-automatica-do-runner-pelo-navegador.md)).
@@ -324,7 +324,7 @@ restore, e então pergunta
 `Apagar os volumes e reinstalar? [s = restaurar / z = do zero / N = parar]`.
 `z` apaga e reinstala **sem restaurar** os dados antigos; o backup provado
 fica na pasta que ele nomeia, e restaurá-lo depois é o
-[Restore](../restore.md#restore). Provado pelo `scripts/dev/install-llm.spec.ts`.
+[Restore](restore.md#restore). Provado pelo `scripts/dev/install-llm.spec.ts`.
 
 ---
 

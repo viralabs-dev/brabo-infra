@@ -136,7 +136,7 @@ atual e aceita os dois:
 Pular o passo 1 e só trocar o valor atual produz `403`/`401`
 durante toda a janela em que um pod antigo continua de qualquer lado — o
 sintoma do
-[diagnóstico acima](../deploy.md#diagnostico-do-deploy).
+[diagnóstico acima](deploy.md#diagnostico-do-deploy).
 
 Verificação: na api, `apps/api/test/infrastructure/security/service-token.spec.ts`
 (describe "rotação do BRABO_SERVICE_TOKEN") e
@@ -497,7 +497,7 @@ ambiente de teste e as credenciais não abrem, não é corrupção:
 confirmar isso numa comparação em vez de por eliminação, lendo o `key_id`
 de qualquer linha e pondo-o ao lado da linha `chave mestra corrente` no
 log de boot da api. Veja
-[Restore](../restore.md#restore).
+[Restore](restore.md#restore).
 
 É por isso que a chave mestra faz parte do plano de recuperação: um backup de banco
 sem a chave correspondente não recupera os segredos do usuário.

@@ -138,7 +138,7 @@ update budgets
 **d) Feche as sessões do projeto.** Último recurso: interrompe trabalho em
 andamento. Use a transição normal (`closing`), nunca `kill` no pod
 — matar o pod não fecha uma sessão, só cria uma órfã
-(veja [Rollout do engine](../deploy.md#rollout-do-engine)).
+(veja [Rollout do engine](deploy.md#rollout-do-engine)).
 
 ### 4. Depois {#4-afterward}
 
@@ -359,9 +359,9 @@ títulos em português — é isso que você procura no Grafana:
 | alerta (título no Grafana) | severidade | dispara depois de | o que investigar |
 |---|---|---|---|
 | *Fila do Oban crescendo sem consumo* | `critical` | 10 min | nenhuma réplica do engine Ready; pool do Postgres esgotado; um worker preso num job |
-| *Sessão presa em closing* | `warning` | 15 min | [o drain não terminou](../deploy.md#quando-a-sessao-escapa), ou a transição para `closed` falhou |
+| *Sessão presa em closing* | `warning` | 15 min | [o drain não terminou](deploy.md#quando-a-sessao-escapa), ou a transição para `closed` falhou |
 | *Custo por hora acima do limite* | `warning` | 5 min | [qual projeto e qual agente](#incidente-de-custo); o orçamento do domínio continua sendo o controle duro |
-| *Backup do Postgres atrasado* — último backup bom com mais de 26 h | `critical` | na hora | o CronJob não rodou, ou rodou e falhou — `brabo_backup_last_status` distingue os dois; veja [Restore](../restore.md#restore). "Nunca teve backup" (`-1`) **não** o dispara |
+| *Backup do Postgres atrasado* — último backup bom com mais de 26 h | `critical` | na hora | o CronJob não rodou, ou rodou e falhou — `brabo_backup_last_status` distingue os dois; veja [Restore](restore.md#restore). "Nunca teve backup" (`-1`) **não** o dispara |
 | *Última execução do backup falhou* | `warning` | na hora | um backup bom de ontem ainda pode existir, e é por isso que este passa despercebido por dias; a causa está em `backup_runs.error_message` |
 
 São regras do **Grafana**, não do Prometheus (desvio registrado no ADR
