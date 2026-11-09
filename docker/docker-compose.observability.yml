@@ -1,11 +1,15 @@
 # Observabilidade local: Prometheus (métrica), Loki (log) e Grafana (as duas).
 #
-# É um OVERLAY opt-in, não parte do `pnpm dev`. O motivo é custo: são quatro
+# É um OVERLAY opt-in, não parte do `make dev`. O motivo é custo: são quatro
 # containers a mais numa máquina que já roda Postgres, Ollama e três apps.
 # Quem não está investigando nada não deve pagar por eles.
 #
-#   pnpm dev:obs        sobe o stack de dev COM observabilidade
-#   pnpm obs:down       derruba só os quatro containers de observabilidade
+#   node scripts/dev/preflight.mjs && docker compose -f docker/docker-compose.yml \
+#     -f docker/docker-compose.observability.yml --env-file .env up -d
+#                       sobe o stack de dev COM observabilidade
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.observability.yml \
+#     --env-file .env rm -sf loki alloy prometheus grafana
+#                       derruba só os quatro containers de observabilidade
 #
 # O que este arquivo NÃO faz, e por quê: não sobe Tempo nem OpenTelemetry
 # Collector. Trace exige o Collector no meio (ADR 0026, decisão 9) e é escopo

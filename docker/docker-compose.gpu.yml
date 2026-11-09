@@ -1,6 +1,6 @@
 # Override OPT-IN: dá a GPU NVIDIA ao Ollama.
 #
-# Uso: pnpm dev:gpu   (ou -f docker-compose.yml -f docker-compose.gpu.yml)
+# Uso: docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml --env-file .env up
 #
 # Não está no compose principal de propósito: sem o `nvidia-container-toolkit`
 # instalado no host, a reserva de device faz o serviço FALHAR ao subir — e a
