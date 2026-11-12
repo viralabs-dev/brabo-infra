@@ -262,16 +262,17 @@ services:
       # do `.env` não ligava nada — o Neo4j subia saudável e a api dizia
       # "NEO4J_* ausentes, grafo desligado" ao lado dele, para sempre.
       #
-      # `NEO4J_URI` vazia é o INTERRUPTOR, e vazia é o default: ausente = grafo
-      # desligado, com as rotas dependentes degradando para 503 (só em produção
-      # as três são obrigatórias e derrubam o boot). Ligar em dev é definir a
-      # URI no `.env` — `bolt://neo4j:7687`, hostname da rede do Compose.
+      # Dev: LIGADO por padrão, igual à instalação (AT-924, decisão do dono de
+      # 11/11). O default é `bolt://neo4j:7687`, hostname da rede do Compose.
+      # Para DESLIGAR, `NEO4J_URI=` vazio no `.env`: a forma `-` (sem dois
+      # pontos) faz a variável vazia valer vazia, e `:-` trocaria o vazio pelo
+      # default. Com a URI vazia a api segue com as rotas dependentes em 503.
       #
       # Usuário e senha herdam os MESMOS defaults do `NEO4J_AUTH` do serviço
       # `neo4j` acima, de propósito: quem trocar a senha no `.env` troca a dos
       # dois lados de uma vez. Dois defaults independentes deixariam a api
       # tentando autenticar com uma senha que o servidor não tem mais.
-      NEO4J_URI: ${NEO4J_URI:-}
+      NEO4J_URI: ${NEO4J_URI-bolt://neo4j:7687}
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-dev-neo4j-password-change-me}
       # A BASE dos projetos no modo "Pasta montada" (ADR 0141, RN-500) — a
