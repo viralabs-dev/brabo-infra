@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Dev (AT-924): o grafo Neo4j vem LIGADO no compose de dev, com `NEO4J_URI` padrão `bolt://neo4j:7687`, como na instalação (`docker/docker-compose.yml`, serviço `api`). Para desligar, `NEO4J_URI=` vazio no `.env`: o default usa a forma `${NEO4J_URI-…}`, sem dois pontos, para que o vazio valha vazio. `.env.example` e o runbook (`runbook/deploy.md`) descrevem o novo padrão. Os composes de instalação e de produção não mudam.
+
 - CI: repina o brabo-ci na release final `v1.4.0` (`5320046`), para a promoção `dev → main` de 09/11/2026 (a `main` só aceita release final).
 - Docs (AT-875): o título da parte `runbook/restore.md` vira "Backup e restore". Antes, o `# Restore` gerava o mesmo `id="restore"` que o `## Restore {#restore}`, e o build do site acusava id repetido.
 
