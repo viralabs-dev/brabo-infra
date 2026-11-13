@@ -570,6 +570,7 @@ services:
   # um DENTRO faz o Compose recusar o arquivo inteiro com "depends on undefined
   # service" — o mesmo achado registrado no serviço `ollama`, acima.
   broker:
+    image: brabo-broker:dev
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-broker
       dockerfile: Dockerfile.dev
@@ -612,6 +613,13 @@ services:
       # override que o broker gera fica aqui. É o tmpfs `/trabalho` abaixo, e não um
       # volume nomeado, porque volume nomeado nasce root sem o chown da imagem.
       BROKER_TRABALHO_DIR: /trabalho
+      # Onde o broker ENXERGA, SOMENTE LEITURA, a pasta gerenciada e a base dos montados
+      # (ADR 0297): a prova de compose confere que o projeto existe antes de montar o
+      # override. Mesmos caminhos que api/engine usam, mais os `:ro` abaixo.
+      PROJECT_WORKSPACES_BROKER_ROOT: /data/project-workspaces
+      BRABO_PROJECTS_BROKER_BASE: ${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}
+      # Imagem com `wget` para a sonda: a do próprio broker.
+      BRABO_PROVA_SONDA_IMAGE: brabo-broker:dev
     # SEM `ports:`. É a primeira camada da contenção: quem alcança este processo
     # alcança o Docker do host por procuração, e nada no host precisa alcançá-lo.
     # `/trabalho` é o diretório de trabalho da prova de compose (AT-922, ADR 0297).
@@ -626,6 +634,10 @@ services:
       # toda operação faz. A contenção real é a de cima (sem porta), a
       # autenticação por token e o fato de a especificação ser computada.
       - /var/run/docker.sock:/var/run/docker.sock
+      # Leitura apenas (ADR 0297): a pasta gerenciada e a base dos montados, nos mesmos
+      # caminhos de api/engine (a base por IDENTIDADE `$X:$X`). Reaproveita os volumes.
+      - ${PROJECT_WORKSPACES_HOST_DIR:-project_workspaces}:/data/project-workspaces:ro
+      - ${BRABO_PROJECTS_BASE:-brabo_projects_base}:${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}:ro
     # O socket é `root:docker` no host, e o processo aqui roda como DEV_UID.
     # `DOCKER_GID` é o gid do grupo `docker` da SUA máquina
     # (`getent group docker | cut -d: -f3`) — o default 999 é o mais comum e
