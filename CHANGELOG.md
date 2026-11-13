@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Broker (AT-922, ADR 0297, complemento): nos três composes o serviço `broker` monta, SOMENTE LEITURA (`:ro`), a pasta gerenciada dos projetos (`/data/project-workspaces`) e a base dos montados (por identidade `$X:$X`), reaproveitando os volumes de api/engine, e define `PROJECT_WORKSPACES_BROKER_ROOT`, `BRABO_PROJECTS_BROKER_BASE` e `BRABO_PROVA_SONDA_IMAGE` (a imagem do próprio broker; no dev ganha `image: brabo-broker:dev`). Travado em `scripts/ci/broker-trabalho-nos-composes.spec.ts`.
+
+- Broker (AT-922, ADR 0297): os três composes do broker (dev, produção e instalação) ganham `BROKER_TRABALHO_DIR=/trabalho` e o tmpfs `/trabalho:mode=1777,size=64m`, o diretório de trabalho da prova de compose do projeto. É tmpfs e não volume nomeado, porque volume nomeado nasce root sem o chown da imagem. O `runbook/instalacao.md` descreve o aviso "sem prova de compose". Teste: `scripts/ci/broker-trabalho-nos-composes.spec.ts`.
+
 - Dev (AT-924): o grafo Neo4j vem LIGADO no compose de dev, com `NEO4J_URI` padrão `bolt://neo4j:7687`, como na instalação (`docker/docker-compose.yml`, serviço `api`). Para desligar, `NEO4J_URI=` vazio no `.env`: o default usa a forma `${NEO4J_URI-…}`, sem dois pontos, para que o vazio valha vazio. `.env.example` e o runbook (`runbook/deploy.md`) descrevem o novo padrão. Os composes de instalação e de produção não mudam.
 
 - CI: repina o brabo-ci na release final `v1.4.0` (`5320046`), para a promoção `dev → main` de 09/11/2026 (a `main` só aceita release final).

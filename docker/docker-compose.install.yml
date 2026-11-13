@@ -441,6 +441,9 @@ services:
     # na imagem); o resto do rootfs é read-only.
     tmpfs:
       - /tmp
+      # `/trabalho` é o diretório de trabalho da prova de compose (AT-922, ADR 0297).
+      # 64 MB bastam: o override e os arquivos temporários; o build vive no daemon.
+      - /trabalho:mode=1777,size=64m
     environment:
       NODE_ENV: production
       BROKER_PORT: 8090
@@ -461,11 +464,25 @@ services:
       # A base dos projetos MONTADOS no host (ADR 0141/0144) — deriva de
       # `BRABO_PROJECTS_BASE`, que já é caminho de host por definição.
       BRABO_PROJECTS_HOST_BASE: ${BRABO_PROJECTS_HOST_BASE:-${BRABO_PROJECTS_BASE:-}}
+      # Diretório de trabalho GRAVÁVEL da prova de compose do projeto (ADR 0297): o
+      # override que o broker gera fica aqui. É o tmpfs `/trabalho` acima, e não um
+      # volume nomeado, porque volume nomeado nasce root sem o chown da imagem.
+      BROKER_TRABALHO_DIR: /trabalho
+      # Onde o broker ENXERGA, SOMENTE LEITURA, a pasta gerenciada e a base dos montados
+      # (ADR 0297). Mesmos caminhos que api/engine usam, mais os `:ro` em `volumes`.
+      PROJECT_WORKSPACES_BROKER_ROOT: /data/project-workspaces
+      BRABO_PROJECTS_BROKER_BASE: ${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}
+      # Imagem com `wget` para a sonda: a do próprio broker.
+      BRABO_PROVA_SONDA_IMAGE: ${BRABO_BROKER_IMAGE}
     # SEM `ports:` — a primeira camada da contenção.
     networks:
       - broker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # Somente leitura (ADR 0297): pasta gerenciada e base dos montados, nos mesmos
+      # caminhos de api/engine (a base por IDENTIDADE). Reaproveita os volumes.
+      - project_workspaces:/data/project-workspaces:ro
+      - ${BRABO_PROJECTS_BASE:-brabo_projects_base}:${BRABO_PROJECTS_BASE:-/data/brabo-projects-base}:ro
     # O gid que o socket tem VISTO DE DENTRO de um container — o instalador o
     # mede com esta mesma imagem, e recusa quando não consegue, em vez de gravar
     # um palpite. O default 999 só vale para quem editar o `.env` à mão, e está
