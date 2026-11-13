@@ -608,8 +608,16 @@ services:
       # um projeto montado recusa NOMEANDO-A, e nunca cai na de cima — o mesmo
       # nome de pasta aponta para projetos diferentes em cada raiz.
       BRABO_PROJECTS_HOST_BASE: ${BRABO_PROJECTS_HOST_BASE:-${BRABO_PROJECTS_BASE:-}}
+      # Diretório de trabalho GRAVÁVEL da prova de compose do projeto (ADR 0297): o
+      # override que o broker gera fica aqui. É o tmpfs `/trabalho` abaixo, e não um
+      # volume nomeado, porque volume nomeado nasce root sem o chown da imagem.
+      BROKER_TRABALHO_DIR: /trabalho
     # SEM `ports:`. É a primeira camada da contenção: quem alcança este processo
     # alcança o Docker do host por procuração, e nada no host precisa alcançá-lo.
+    # `/trabalho` é o diretório de trabalho da prova de compose (AT-922, ADR 0297).
+    # 64 MB bastam: o override e os arquivos temporários; o build vive no daemon.
+    tmpfs:
+      - /trabalho:mode=1777,size=64m
     networks:
       - broker
     volumes:

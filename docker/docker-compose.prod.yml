@@ -409,6 +409,9 @@ services:
     # read-only, como nos outros três.
     tmpfs:
       - /tmp
+      # `/trabalho` é o diretório de trabalho da prova de compose (AT-922, ADR 0297).
+      # 64 MB bastam: o override e os arquivos temporários; o build vive no daemon.
+      - /trabalho:mode=1777,size=64m
     environment:
       NODE_ENV: production
       BROKER_PORT: 8090
@@ -434,6 +437,10 @@ services:
       # DISCRIMINADO, e faltando a raiz o `start` recusa nomeando-a em vez de
       # cair na outra.
       BRABO_PROJECTS_HOST_BASE: ${BRABO_PROJECTS_HOST_BASE:-${BRABO_PROJECTS_BASE:-}}
+      # Diretório de trabalho GRAVÁVEL da prova de compose do projeto (ADR 0297): o
+      # override que o broker gera fica aqui. É o tmpfs `/trabalho` acima, e não um
+      # volume nomeado, porque volume nomeado nasce root sem o chown da imagem.
+      BROKER_TRABALHO_DIR: /trabalho
     # SEM `ports:` — a primeira camada da contenção. Só a api o alcança, pela
     # rede `broker` (`internal: true`), e nada no host precisa dele.
     networks:
