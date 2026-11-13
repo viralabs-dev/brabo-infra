@@ -317,6 +317,52 @@ provadas pelo `scripts/dev/install-llm.spec.ts` em todo PR. O E2E da instalaçã
 responde *não* (baixar modelos custaria GBs por tag), então subir com o
 profile `llm` **não tem verificação de ponta a ponta**.
 
+### O Laya, roteador local de ferramentas, numa instalação {#laya-na-instalacao}
+
+O Laya ([ADR 0290](../adr/0290-o-usuario-escolhe-o-laya-no-lugar-do-jev-quando-a-maquina-tem-gpu.md))
+é o roteador de ferramentas que roda **na sua máquina**, na GPU, no lugar do Jev (serviço de terceiro).
+É a **sexta imagem**, `ghcr.io/viralabs-dev/brabo-laya`, opcional: o serviço `laya` do
+`docker/docker-compose.install.yml` está sob o profile `tool-router-gpu` e **nunca sobe** numa
+instalação que não o ligou, nem em máquina sem GPU.
+
+O que a imagem tem: o Laya `6f0496f`, o torch cu130 e o checkpoint próprio `brabo-router` (modelo
+único 1a, regra `p3`, limiar 0,88) **dentro dela**, conferido por `sha256` no build. Ela não baixa
+modelo no boot: o serviço fica numa rede `internal` (sem internet), sem porta publicada, e só a api o
+alcança.
+
+Quem liga é o `install.sh`, perguntando (só com GPU NVIDIA que o roda): ele grava `BRABO_LAYA_IMAGE`
+(por digest) e `tool-router-gpu` em `COMPOSE_PROFILES` no `.env`. Com a imagem gravada, o compose
+dá à api `TOOL_ROUTER_URL=http://laya:8000`, `TOOL_ROUTER_LAYA_MODELO=brabo-router` e
+`TOOL_ROUTER_LAYA_LIMIAR=0.88`; sem ela a api diz `nao_configurado` e o Jev segue padrão. Ligar o
+serviço só o **instala**: quem escolhe o Laya é o workspace, e só com o `/health` dele
+`proficiente` (GPU, VRAM livre ≥ 2 GiB e p95 da sonda de boot ≤ 500 ms).
+
+A GPU entra pelo **CDI do Docker** (`nvidia.com/gpu=all`, Docker 28.3+ com o `nvidia-container-toolkit`
+e `nvidia-ctk cdi generate`). Docker só com o runtime `nvidia` (sem CDI) não sobe o serviço.
+
+Conferir, na pasta da instalação (a chave do `/health` é a `TOOL_ROUTER_API_KEY`, se houver):
+
+```bash
+docker compose -f docker/docker-compose.install.yml --env-file .env ps laya
+docker compose -f docker/docker-compose.install.yml --env-file .env exec laya \
+  python -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8000/health').read().decode())"
+```
+
+`proficiente: true` e `dispositivo: "cuda"` dizem que o Laya roda bem aqui; `motivo` diz por que não
+(`sem_gpu`, `vram_insuficiente`, `p95_acima_do_teto`, `sonda_em_andamento`). O Ollama do profile `llm`
+na mesma GPU disputa a VRAM com o Laya.
+
+**Para quem publica.** A imagem sai do `release.yml` do `brabo-infra` (job `laya`), numa tag final, com
+Trivy antes da assinatura e `cosign` por digest, e o digest vai no asset `imagem-laya.json` da Release.
+O checkpoint não está no git: o job só roda com as variáveis de repositório `LAYA_CHECKPOINT_URL`
+(um tarball `tar.gz` do diretório do modelo) e `LAYA_CHECKPOINT_SHA256` (o sha256 do tarball). O build
+reprova se o sha256 do tarball ou o do `model.safetensors` (`52c8d2f1…`) divergirem. A receita do
+tarball está no cabeçalho de `docker/laya/Dockerfile`.
+
+Verificação: `scripts/ci/laya-imagem.spec.ts` trava o Dockerfile, o alvo do bake, os dois composes e o
+job do release em todo PR. O build, o `/health` e o consumo do `/v1/systemone` foram provados à mão na
+GPU local; **o job do release e a assinatura só uma tag de verdade prova**.
+
 ### Reinstalando do zero {#reinstalar-do-zero}
 
 Quando uma instalação anterior é encontrada (só conta o projeto compose chamado exatamente

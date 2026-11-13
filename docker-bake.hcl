@@ -193,3 +193,25 @@ target "broker" {
   cache-from = ["type=gha,scope=broker"]
   cache-to   = ["type=gha,scope=broker,mode=max"]
 }
+
+# Sexta imagem, OPCIONAL (AT-626, ADR 0290): o Laya, o roteador local de ferramentas, só
+# com GPU NVIDIA. FORA do grupo `default` de propósito: o `ci.yml` constrói o grupo com
+# `docker buildx bake` e esta imagem é de vários GB (torch + CUDA); só o `release.yml`
+# a constrói, pelo nome. O checkpoint do modelo não mora no git: o Dockerfile o recebe
+# como tarball por URL e confere o sha256 (variáveis abaixo, sem default — o build recusa).
+variable "LAYA_CHECKPOINT_URL" {
+  default = ""
+}
+
+variable "LAYA_CHECKPOINT_SHA256" {
+  default = ""
+}
+
+target "laya" {
+  inherits   = ["_comum"]
+  dockerfile = "docker/laya/Dockerfile"
+  tags       = TAG_EXTRA == "" ? ["${REGISTRY}brabo-laya:${TAG}"] : ["${REGISTRY}brabo-laya:${TAG}", "${REGISTRY}brabo-laya:${TAG_EXTRA}"]
+  args       = { LAYA_CHECKPOINT_URL = LAYA_CHECKPOINT_URL, LAYA_CHECKPOINT_SHA256 = LAYA_CHECKPOINT_SHA256 }
+  cache-from = ["type=gha,scope=laya"]
+  cache-to   = ["type=gha,scope=laya,mode=max"]
+}
