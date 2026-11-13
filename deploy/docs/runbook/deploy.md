@@ -601,22 +601,19 @@ caracteres; um `NEO4J_AUTH` vazio derruba o container `neo4j` primeiro).
 export NEO4J_PASSWORD="$(openssl rand -hex 24)"
 ```
 
-**Em desenvolvimento a chave é `NEO4J_URI`, e ela vem vazia por padrão.** O
-serviço `neo4j` roda no profile padrão do compose de dev, então o servidor está de pé
-falando alguém com ele ou não; a api só conecta quando `NEO4J_URI` está
-definida. Descomente-a no `.env` (`bolt://neo4j:7687`) e recrie a api —
-o `GraphStore` então registra `Neo4j conectado — constraints do grafo garantidas`
-em vez de `NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD ausentes`. Usuário e senha
-chegam ao container com os mesmos defaults que o serviço `neo4j` usa para
-`NEO4J_AUTH`, então defina-os só para TROCAR a senha, e trocá-la ali
+**Em desenvolvimento o grafo vem LIGADO por padrão** (`NEO4J_URI` =
+`bolt://neo4j:7687`, igual à instalação; AT-924). O serviço `neo4j` roda no
+profile padrão do compose de dev, e a api conecta nele sozinha. O
+`GraphStore` registra `Neo4j conectado — constraints do grafo garantidas`.
+Para desligar, defina `NEO4J_URI=` vazio no `.env` e recrie a api: a forma
+sem dois pontos do compose (`${NEO4J_URI-…}`) faz o vazio valer vazio. Usuário
+e senha chegam ao container com os mesmos defaults que o serviço `neo4j` usa
+para `NEO4J_AUTH`, então defina-os só para TROCAR a senha, e trocá-la ali
 muda os dois lados de uma vez.
 
-Até isto ser ligado, o `docker-compose.yml` não passava as três variáveis ao
-serviço `api` de jeito nenhum e o serviço não tem `env_file` — então o bloco
-que o `.env.example` documentava desde que o grafo nasceu não chegava a nada, e
-descomentá-lo não ligava nada. O `docker-compose.prod.yml` as fornecia
-desde o primeiro dia (é por isso que só o desenvolvimento foi afetado): um Neo4j saudável ficava
-ao lado de uma api informando as variáveis ausentes, indefinidamente.
+Antes da AT-924 o dev vinha com `NEO4J_URI` vazia, e o `.env.example` pedia
+para descomentá-la. Quem tem um `.env` antigo com a linha vazia continua
+desligado; para ligar, apague a linha ou defina `NEO4J_URI=bolt://neo4j:7687`.
 
 **HEX, não base64.** O entrypoint do Neo4j lê `NEO4J_AUTH` como
 `usuario/senha` e separa na PRIMEIRA barra — uma senha base64 pode

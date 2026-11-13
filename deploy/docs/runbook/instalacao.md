@@ -240,6 +240,8 @@ variável da imagem, `BRABO_BROKER_IMAGE`, é escrita **ligando-o você ou
 não**: o Compose interpola o arquivo inteiro antes de filtrar por profile, então uma
 variável obrigatória num serviço desligado ainda recusa o arquivo.
 
+Com o broker ligado, a prova de compose do projeto (ADR 0297) não exige configuração: o broker escreve o override de limites e de rede em `/trabalho`, um tmpfs de 64 MB que o compose declara (`BROKER_TRABALHO_DIR`). Sem broker (instalação em Kubernetes, ou projeto no modo `runner`) o parecer aprova com o aviso "sem prova de compose". O broker também enxerga, só para leitura (`:ro`), a pasta gerenciada dos projetos e a base dos montados, nos mesmos caminhos de api e engine (`PROJECT_WORKSPACES_BROKER_ROOT`, `BRABO_PROJECTS_BROKER_BASE`), e usa a própria imagem como imagem da sonda (`BRABO_PROVA_SONDA_IMAGE`); nada disso exige configuração.
+
 **Ligando depois** (mesma pasta do `.env`):
 
 ```bash
