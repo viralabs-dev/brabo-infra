@@ -52,6 +52,9 @@ describe('o Dockerfile do Laya', () => {
     expect(oferta).toBeGreaterThan(-1);
     expect(oferta).toBeLessThan(user);
     expect(dockerfile).toMatch(/^FROM \S+ AS runtime$/m); // o `no-cache-filter` do bake
+    // CVEs do setuptools do sistema (Trivy)
+    expect(dockerfile.split(/ AS runtime$/m)[1]).toMatch(/pip uninstall -y [^\n]*setuptools/);
+    expect(dockerfile.split(/ AS build$/m)[1].split(/ AS runtime$/m)[0]).toMatch(/python -m pip uninstall -y pip$/m);
   });
 });
 
