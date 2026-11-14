@@ -38,13 +38,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
  && rm -rf /var/lib/apt/lists/*
 RUN python -m venv --upgrade-deps /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+# O `pip` sai do venv no fim: a imagem não instala nada em execução, e o `pip` 26 vendoriza o
+# `pkg_resources` do setuptools 70.3 (CVE-2025-47273 no Trivy).
 # shortcut: torch e dependências por versão, sem `--require-hashes`; subir para hashes quando o Dependabot de pip entrar neste repo.
 RUN pip install "torch==${TORCH_VERSION}" --index-url "https://download.pytorch.org/whl/${TORCH_INDEX}" \
  && python -c "import torch; assert torch.version.cuda, 'o wheel não é CUDA'" \
  && git init -q /src && git -C /src fetch -q --depth 1 https://github.com/NandhaKishorM/laya.git "${LAYA_COMMIT}" \
  && git -C /src checkout -q FETCH_HEAD \
  && test "$(git -C /src rev-parse HEAD)" = "${LAYA_COMMIT}" \
- && pip install "/src[serve]" && pip check
+ && pip install "/src[serve]" && pip check \
+ && python -m pip uninstall -y pip
 
 # --- a imagem final. O nome `runtime` é o do `no-cache-filter` do bake ---
 FROM python:3.11-slim-trixie@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535 AS runtime
@@ -55,9 +58,12 @@ LABEL org.opencontainers.image.title="brabo-laya" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 # `apt-get upgrade` pelo mesmo motivo do `apk upgrade` das outras: a base é pinada e congela os patches.
+# O `setuptools` do Python do SISTEMA sai: o serviço roda no venv, e o da base vendoriza o
+# `jaraco.context` 5.3.0 e o `wheel` 0.45.1, que reprovam no Trivy (CVE-2026-23949, CVE-2026-24049).
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/* \
+ && python -m pip uninstall -y --root-user-action=ignore setuptools \
  && groupadd --gid 10001 laya && useradd --uid 10001 --gid laya --create-home laya
 
 # A oferta escrita de fonte (AT-120): dono root, 0644, ANTES do USER.
