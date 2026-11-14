@@ -212,3 +212,18 @@ three copyright notices, and is served publicly next to the files:
 clause of IBM Plex.
 
 Apart from the fonts, no vendored third-party code was found in the repository.
+
+## 6. Laya image (optional)
+
+`brabo-laya` is a **sixth** image, optional (GPU only; [ADR 0290](docs/adr/0290-o-usuario-escolhe-o-laya-no-lugar-do-jev-quando-a-maquina-tem-gpu.md)),
+published together with the others. It carries: Debian 13 (`python:3.11-slim-trixie`, the same
+distro-level licenses as section 1, GPL packages included); Python 3.11 (PSF); **Laya** `6f0496f`
+(Apache-2.0, `NandhaKishorM/laya`); PyTorch 2.14 (BSD-3-Clause) with the **NVIDIA CUDA 13 libraries**
+that its wheels bundle (NVIDIA proprietary license, redistributable inside the wheel; see
+`/opt/venv/lib/python3.11/site-packages/nvidia*/`); `transformers`, `safetensors`, `fastapi`, `uvicorn`
+(Apache-2.0/MIT/BSD); and the **`brabo-router` checkpoint**, a fine-tune of Laya `multilingual`
+(`7b928d8`, Apache-2.0) over `jhu-clsp/mmBERT-base` (MIT). The model was trained only on test
+sessions of the maintainer's own test app and on synthetic data; no user data.
+
+> **TODO(humano):** the license of the CUDA libraries and of the checkpoint (ficha in the AT-627) were
+> not reviewed by a lawyer. Review before the first tag that publishes this image.

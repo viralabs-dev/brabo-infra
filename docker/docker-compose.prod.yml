@@ -256,6 +256,15 @@ services:
       # sem o profile `container-broker` o serviço nem sobe, e quem lê o estado
       # observado declara "não observado" em vez de herdar o registrado.
       BROKER_URL: ${BROKER_URL:-}
+      # O roteador local de ferramentas, o Laya (AT-626, ADR 0290). A URL só existe
+      # quando o instalador ligou o Laya (grava BRABO_LAYA_IMAGE): sem ela a api
+      # diz `nao_configurado` e o Jev segue padrão; com a imagem e o serviço caído,
+      # diz `sem_resposta`. O modelo e o limiar são os do `brabo-router` (modelo
+      # único 1a, regra p3, limiar 0,88 da validação de 20%).
+      TOOL_ROUTER_URL: ${TOOL_ROUTER_URL:-${BRABO_LAYA_IMAGE:+http://laya:8000}}
+      TOOL_ROUTER_API_KEY: ${TOOL_ROUTER_API_KEY:-}
+      TOOL_ROUTER_LAYA_MODELO: ${TOOL_ROUTER_LAYA_MODELO:-brabo-router}
+      TOOL_ROUTER_LAYA_LIMIAR: ${TOOL_ROUTER_LAYA_LIMIAR:-0.88}
     ports:
       - "${BRABO_BIND:-127.0.0.1}:${API_PORT:-3000}:3000"
     networks:
@@ -264,6 +273,7 @@ services:
       # postgres, do neo4j e do engine.
       - default
       - broker
+      - laya
     volumes:
       - git_local_repos:/data/git-repos
       - project_workspaces:/data/project-workspaces
@@ -567,6 +577,52 @@ services:
       engine:
         condition: service_healthy
 
+  # O Laya (AT-626, ADR 0290): o roteador local de ferramentas, a SEXTA imagem do
+  # produto, OPCIONAL e só com GPU NVIDIA. Sob profile, e quem o liga é o
+  # INSTALADOR, perguntando (`tool-router-gpu` no `COMPOSE_PROFILES` do `.env`, mais
+  # `BRABO_LAYA_IMAGE`): máquina sem GPU nunca o sobe, e o Jev segue o padrão.
+  #
+  # Sem `ports:` e numa rede PRÓPRIA `internal: true` (sem egress), só a api do outro
+  # lado: o modelo está dentro da imagem e o serviço nunca baixa nada. A GPU entra pelo
+  # CDI do Docker (`nvidia.com/gpu=all`, Docker 28.3+ com o nvidia-container-toolkit).
+  # NENHUM serviço tem `depends_on` dele (fora do profile dependendo de dentro o
+  # Compose recusa o arquivo), e o `/health` dele é vivacidade: o estado
+  # "proficiente" (p95 da sonda de boot e VRAM livre) a api lê do corpo.
+  laya:
+    image: brabo-laya:prod
+    build:
+      context: ..
+      dockerfile: docker/laya/Dockerfile
+      args:
+        # O checkpoint não mora no git (ver o cabeçalho do Dockerfile): sem estas duas o build recusa.
+        LAYA_CHECKPOINT_URL: ${LAYA_CHECKPOINT_URL:-}
+        LAYA_CHECKPOINT_SHA256: ${LAYA_CHECKPOINT_SHA256:-}
+    profiles: ["tool-router-gpu"]
+    <<: *app-hardening
+    # O torch e o tokenizador escrevem temporários; o resto do rootfs é read-only.
+    tmpfs:
+      - /tmp
+    environment:
+      # A chave é opcional e a MESMA da api (`TOOL_ROUTER_API_KEY`); a rede já é interna.
+      LAYA_API_KEY: ${TOOL_ROUTER_API_KEY:-}
+    networks:
+      - laya
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: cdi
+              device_ids: ["nvidia.com/gpu=all"]
+              capabilities: [gpu]
+    healthcheck:
+      # A imagem não tem curl nem wget: o próprio python.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # Carrega o modelo na GPU e roda a sonda de boot.
+      start_period: 120s
+
   # -------------------------------------------------------------------------
   # LLM local. Sob profile: em produção o provider é externo, e baixar ~2GB de
   # imagem + modelo tornaria o smoke test do CI inviável. Nenhum serviço
@@ -625,6 +681,10 @@ networks:
   # alcançam (não estão nela), e o broker não alcança a internet. Só a api está
   # dos dois lados. Camada de baixo do token de serviço, nunca substituta dele.
   broker:
+    internal: true
+  # Rede PRÓPRIA do Laya, `internal: true`: só a api e ele a alcançam, e ele não
+  # alcança a internet (o modelo está na imagem).
+  laya:
     internal: true
 
 volumes:
