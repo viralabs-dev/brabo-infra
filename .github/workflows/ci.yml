@@ -27,7 +27,7 @@ jobs:
   # Não é check obrigatório. O SHA é o do brabo-ci (R1 da AT-770) e vale também para `ci_ref`.
   contracts-alinhado:
     name: Contracts alinhado
-    uses: viralabs-dev/brabo-ci/.github/workflows/contracts-alinhado.yml@53200467cadc73c5c23b90545474d4948764932f  # v1.4.0
+    uses: viralabs-dev/brabo-ci/.github/workflows/contracts-alinhado.yml@a99f4892edb8e318ce06ddf61b229eb2022506ba  # v1.5.1
     with:
       ci_ref: 53200467cadc73c5c23b90545474d4948764932f  # v1.4.0
 
