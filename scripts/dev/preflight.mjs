@@ -570,7 +570,8 @@ async function main() {
   } else {
     console.error(
       '\nLibere as portas acima, ou aponte outras pelo `.env`\n' +
-        '(API_PORT, ENGINE_PORT, WEB_PORT, OLLAMA_PORT).\n',
+        '(API_PORT, ENGINE_PORT, WEB_PORT, POSTGRES_PORT, NEO4J_BOLT_PORT,\n' +
+        'NEO4J_HTTP_PORT, OLLAMA_PORT).\n',
     );
   }
 

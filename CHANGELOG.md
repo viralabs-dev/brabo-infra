@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Dev (AT-1025): a porta do Postgres no compose de dev sai de `POSTGRES_PORT` (padrão 5432, sempre em 127.0.0.1), para o dev subir quando a 5432 da máquina está ocupada por outro projeto. A porta interna segue 5432. `.env.example` e o runbook `ambiente-local.md` descrevem a variável; a mensagem de porta ocupada do `preflight.mjs` passa a listar `POSTGRES_PORT`, `NEO4J_BOLT_PORT` e `NEO4J_HTTP_PORT`. Teste: `scripts/dev/composes-em-conformidade.spec.ts`.
+
 - Doc (AT-1011): `.claude/rules/broker-e-containers.md` diz oito operações da `DockerPort` (eram seis; o código conta oito).
 
 - Laya (AT-626): o Trivy do job `Imagem do Laya` reprovava a imagem com 3 HIGH, e nenhum deles estava no que o serviço usa. A imagem final desinstala o `setuptools` do Python do sistema, que vendoriza o `jaraco.context` 5.3.0 (CVE-2026-23949) e o `wheel` 0.45.1 (CVE-2026-24049). O venv perde o `pip`, que vendoriza o `pkg_resources` do setuptools 70.3.0 (CVE-2025-47273). O serviço roda no venv e não instala nada em execução. `laya-imagem.spec.ts` trava as duas remoções.

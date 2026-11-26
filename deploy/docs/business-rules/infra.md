@@ -822,3 +822,23 @@ repasse das cinco no compose de instalação.
   instalação repassa os tetos de limite`)
 - **Origem:** AT-840 — regressivo vermelho da web#48 (rate limit 429 no E2E,
   08/11/2026)
+
+## A porta do Postgres no dev vem de `POSTGRES_PORT` (RN-1511)
+
+### RN-1511 — O dev publica o Postgres em `POSTGRES_PORT` (padrão 5432, sempre em 127.0.0.1), e a mensagem de porta ocupada do preflight nomeia a variável que resolve cada porta {#rn-1511}
+
+Com a 5432 da máquina ocupada por outro projeto, o `make dev` não subia e a
+mensagem só oferecia trocar as portas da api, do engine, do web e do ollama.
+
+**Regra.** A porta de HOST do Postgres no compose de dev é
+`127.0.0.1:${POSTGRES_PORT:-5432}:5432`. O padrão segue 5432, então quem não
+define a variável não muda de comportamento. A porta INTERNA segue 5432, e
+nenhum `DATABASE_URL` entre containers muda. A mensagem de porta ocupada do
+`scripts/dev/preflight.mjs` lista `POSTGRES_PORT`, `NEO4J_BOLT_PORT`,
+`NEO4J_HTTP_PORT`, além de `API_PORT`, `ENGINE_PORT`, `WEB_PORT` e `OLLAMA_PORT`.
+
+- **Código:** `docker/docker-compose.yml` (serviço `postgres`, `ports`),
+  `scripts/dev/preflight.mjs` (mensagem final de porta ocupada), `.env.example`
+- **Teste:** `scripts/dev/composes-em-conformidade.spec.ts` (o caso `o postgres
+  publica em POSTGRES_PORT, com padrão 5432`)
+- **Origem:** AT-1025 — achado da TP-01 30ª (26/11/2026)
