@@ -254,6 +254,11 @@ describe('o dev não publica porta fora do bind', () => {
   const portas = (s: string): string[] =>
     (composes.dev.services[s]?.ports ?? []).map(String);
 
+  // AT-1025: a porta de HOST do Postgres segue POSTGRES_PORT (padrão 5432).
+  it('o postgres publica em POSTGRES_PORT, com padrão 5432', () => {
+    expect(portas('postgres')).toEqual(['127.0.0.1:${POSTGRES_PORT:-5432}:5432']);
+  });
+
   it('toda porta publicada começa com o bind ou com 127.0.0.1', () => {
     for (const [arq, c] of Object.entries(composes)) {
       for (const [nome, s] of Object.entries(c.services)) {
