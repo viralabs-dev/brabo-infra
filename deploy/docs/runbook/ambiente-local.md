@@ -10,6 +10,8 @@ description: Broker, pasta montada, runner, agente de máquina, reset total e br
 
 Parte do [Runbook operacional](../runbook.md). Comece pela triagem do índice.
 
+**Porta do Postgres ocupada.** O dev publica o Postgres em `127.0.0.1:${POSTGRES_PORT}` (padrão 5432). Se outro projeto já usa a 5432 da sua máquina, ponha `POSTGRES_PORT=15432` (ou outra livre) no `.env`: o `make dev` passa a usar essa porta, e a mensagem do preflight lista a variável.
+
 ## O broker de containers {#broker-de-container}
 
 O broker ([ADR 0130](../adr/0130-broker-de-container.md)) é o único processo do
