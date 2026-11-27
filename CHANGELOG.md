@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Dev (AT-1015, RN-1541): o dev não sobe mais um broker velho sem avisar. `make dev` e `pnpm dev` sobem com `up --build` (o broker é o único serviço com o código dentro da imagem). O `preflight.mjs` recusa a imagem `brabo-broker:dev` que não é a do clone do broker, em linguagem simples e com o comando de conserto: compara o rótulo `org.opencontainers.image.revision` (build-arg `BROKER_REVISION`, que o compose passa e o `make dev`/`pnpm dev` exportam com o HEAD do clone) com o HEAD do clone e, enquanto o rótulo não existe, a data da imagem com a do último commit, com aviso. Novo teste de corrente `scripts/dev/prova-servicos-do-trabalho.spec.ts` (só com `BRABO_DOCKER_REAL=1`, projeto compose `prova-1015`, imagem própria `brabo-broker:prova-1015` removida no fim): serviço de dados completo sobe como 999:999 sem volume e responde em 127.0.0.1:5432; sem `usuario` é recusado; serviço que morre falha com `servico_de_dados_morreu`. Teste da guarda: `scripts/dev/broker-do-clone.spec.ts`.
+
 - Dev (AT-1025): a porta do Postgres no compose de dev sai de `POSTGRES_PORT` (padrão 5432, sempre em 127.0.0.1), para o dev subir quando a 5432 da máquina está ocupada por outro projeto. A porta interna segue 5432. `.env.example` e o runbook `ambiente-local.md` descrevem a variável; a mensagem de porta ocupada do `preflight.mjs` passa a listar `POSTGRES_PORT`, `NEO4J_BOLT_PORT` e `NEO4J_HTTP_PORT`. Teste: `scripts/dev/composes-em-conformidade.spec.ts`.
 
 - Doc (AT-1011): `.claude/rules/broker-e-containers.md` diz oito operações da `DockerPort` (eram seis; o código conta oito).

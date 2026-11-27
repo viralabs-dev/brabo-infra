@@ -63,6 +63,12 @@ import {
   volumesDeDevOrfaos,
   volumesSoDeDev,
 } from './instalacao-na-maquina.mjs';
+import {
+  ROTULO_DE_REVISAO,
+  avaliarBrokerDoClone,
+  mensagemDoBroker,
+  recusa as brokerRecusado,
+} from './broker-do-clone.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -462,6 +468,43 @@ function prepararIrmaos() {
   return true;
 }
 
+/**
+ * Confere que a imagem `brabo-broker:dev` é a do clone do broker (RN-1541).
+ * Devolve `true` quando é para PARAR. Com `BRABO_UP_COM_BUILD=1` (o `make dev`
+ * e o `pnpm dev`, que sobem com `--build`) a imagem velha vai ser refeita no
+ * `up`, então a guarda não recusa. Docker ou git mudos: não afirma nada.
+ */
+function brokerVelho() {
+  if (process.env.BRABO_UP_COM_BUILD === '1') return false;
+  const clone = join(irmaos, 'brabo-broker');
+  if (!existsSync(clone)) return false; // `prepararIrmaos` já recusou
+  let dados = null;
+  try {
+    const [rotulos, criadaEm] = rodar('docker', [
+      'image', 'inspect', 'brabo-broker:dev', '--format', '{{json .Config.Labels}}§{{.Created}}',
+    ]).trim().split('§');
+    const git = (...a) => rodar('git', ['-C', clone, ...a]).trim();
+    dados = {
+      revisaoDaImagem: JSON.parse(rotulos)?.[ROTULO_DE_REVISAO] ?? null,
+      criadaEm,
+      headDoClone: git('rev-parse', 'HEAD'),
+      ultimoCommitEm: git('log', '-1', '--format=%cI'),
+    };
+  } catch {
+    // Sem imagem (o `up` constrói) ou sem docker/git: nada a afirmar.
+    return false;
+  }
+  const veredito = avaliarBrokerDoClone(dados);
+  const mensagem = mensagemDoBroker(veredito);
+  if (mensagem === null) return false;
+  if (brokerRecusado(veredito)) {
+    console.error(mensagem);
+    return true;
+  }
+  console.warn(mensagem);
+  return false;
+}
+
 async function main() {
   // ANTES de qualquer coisa: não depende de Docker, e é a única checagem aqui
   // que impede um dano em vez de um inconveniente.
@@ -477,6 +520,7 @@ async function main() {
   relatarDockerGid();
   relatarPastaGerenciada();
   if (!prepararIrmaos()) process.exit(1);
+  if (brokerVelho()) process.exit(1);
 
   let compose;
   try {
