@@ -860,7 +860,9 @@ corresponde ao clone do broker em `BRABO_IRMAOS`, dizendo em linguagem simples o
 que houve e o comando de conserto
 (`docker compose -f docker/docker-compose.yml --env-file .env build broker`).
 O critério é o rótulo `org.opencontainers.image.revision` da imagem contra o
-`HEAD` do clone; o compose o alimenta pelo build-arg `BROKER_REVISION`, que o `make dev` e o `pnpm dev` exportam como `git -C $BRABO_IRMAOS/brabo-broker rev-parse HEAD`, e o
+`HEAD` do clone; o compose o alimenta pelo build-arg `BROKER_REVISION`, que o `make dev` e o `pnpm dev` exportam como `git -C $BRABO_IRMAOS/brabo-broker rev-parse HEAD`; o
+`scripts/dev/bootstrap.sh` (itens de build e Create) e o `scripts/dev/reset-total.sh` exportam o mesmo
+valor antes de chamar o compose, de modo que todo caminho que constrói a imagem do broker grava o rótulo; o
 `Dockerfile.dev` do broker precisa declarar `ARG BROKER_REVISION` e
 `LABEL org.opencontainers.image.revision=$BROKER_REVISION`. Enquanto a imagem não
 tiver o rótulo, vale a data: imagem mais velha que o último commit do clone
@@ -870,7 +872,7 @@ git, a guarda não afirma nada. Com `BRABO_UP_COM_BUILD=1` (o `make dev` e o
 
 - **Código:** `Makefile` (alvo `dev`), `package.json` (script `dev`),
   `docker/docker-compose.yml` (serviço `broker`, `build.args`),
-  `scripts/dev/broker-do-clone.mjs`, `scripts/dev/preflight.mjs`
+  `scripts/dev/bootstrap.sh`, `scripts/dev/reset-total.sh`, `scripts/dev/broker-do-clone.mjs`, `scripts/dev/preflight.mjs`
 - **Teste:** `scripts/dev/broker-do-clone.spec.ts`; a corrente com Docker real
   (`BRABO_DOCKER_REAL=1`) em `scripts/dev/prova-servicos-do-trabalho.spec.ts`
   (casos 1 a 3: subida, recusa sem `usuario`, serviço que morre; casos 4 e 5, AT-1037: o
