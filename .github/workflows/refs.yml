@@ -1,0 +1,20 @@
+name: refs
+
+# RN única entre repos (AT-1029 F5): a PR que define uma RN já definida na dev de outro repo reprova.
+# Reutilizável do brabo-ci. NÃO é check obrigatório.
+# refs-com-simbolo e refs-entre-repos não estão ligados: o brabo-ci não conhece o prefixo `brabo-infra`
+# (fontes.yml do brabo diz `infra: .`) e os dois saem com erro 2 nesse repo.
+run-name: "refs ← #${{ github.event.pull_request.number }} (${{ github.head_ref }})"
+
+on:
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  rn-unica:
+    uses: viralabs-dev/brabo-ci/.github/workflows/rn-unica.yml@e212b715d669c0388ce3bb9526278f1820f094c1  # v1.6.0
+    with:
+      ci_ref: e212b715d669c0388ce3bb9526278f1820f094c1  # v1.6.0
