@@ -873,4 +873,7 @@ git, a guarda não afirma nada. Com `BRABO_UP_COM_BUILD=1` (o `make dev` e o
   `scripts/dev/broker-do-clone.mjs`, `scripts/dev/preflight.mjs`
 - **Teste:** `scripts/dev/broker-do-clone.spec.ts`; a corrente com Docker real
   (`BRABO_DOCKER_REAL=1`) em `scripts/dev/prova-servicos-do-trabalho.spec.ts`
+  (casos 1 a 3: subida, recusa sem `usuario`, serviço que morre; casos 4 e 5, AT-1037: o
+  reinício do trabalho religa o banco na rede nova e avisa o agente, e caçar o app por
+  texto não derruba o container)
 - **Origem:** AT-1015 — diagnóstico da TP-01 31ª (27/11/2026)
