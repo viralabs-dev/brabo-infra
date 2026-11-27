@@ -574,6 +574,10 @@ services:
     build:
       context: ${BRABO_IRMAOS:-../..}/brabo-broker
       dockerfile: Dockerfile.dev
+      # Vira o rótulo `org.opencontainers.image.revision` da imagem, que o
+      # preflight compara com o HEAD do clone (RN-1541). Vazio = sem rótulo.
+      args:
+        BROKER_REVISION: ${BROKER_REVISION:-}
       secrets:
         - npmrc
     environment:

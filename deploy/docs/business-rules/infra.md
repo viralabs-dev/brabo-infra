@@ -842,3 +842,35 @@ nenhum `DATABASE_URL` entre containers muda. A mensagem de porta ocupada do
 - **Teste:** `scripts/dev/composes-em-conformidade.spec.ts` (o caso `o postgres
   publica em POSTGRES_PORT, com padrão 5432`)
 - **Origem:** AT-1025 — achado da TP-01 30ª (26/11/2026)
+
+## O dev sobe o broker do clone (RN-1541)
+
+### RN-1541 — O ambiente de dev não roda um broker que não é o do clone: `make dev` reconstrói a imagem e o preflight recusa a imagem `brabo-broker:dev` de outra revisão {#rn-1541}
+
+O broker é o único serviço do compose de dev com o código dentro da imagem; api e
+engine montam o clone. Um `up` sem `--build` reaproveita a imagem antiga e o
+ambiente roda um broker diferente do que está no disco, sem aviso. Foi assim que
+o TP-01 31ª (27/11/2026) rodou com um broker de dois dias atrás e descartou em
+silêncio o repasse dos serviços de dados.
+
+**Regra.** (1) `make dev` e `pnpm dev` sobem com `up --build`. (2) O
+`scripts/dev/preflight.mjs` recusa a subida (sem `--build`, como o condutor do
+TP-01 e o `bootstrap.sh` sobem) quando a imagem `brabo-broker:dev` não
+corresponde ao clone do broker em `BRABO_IRMAOS`, dizendo em linguagem simples o
+que houve e o comando de conserto
+(`docker compose -f docker/docker-compose.yml --env-file .env build broker`).
+O critério é o rótulo `org.opencontainers.image.revision` da imagem contra o
+`HEAD` do clone; o compose o alimenta pelo build-arg `BROKER_REVISION`, e o
+`Dockerfile.dev` do broker precisa declarar `ARG BROKER_REVISION` e
+`LABEL org.opencontainers.image.revision=$BROKER_REVISION`. Enquanto a imagem não
+tiver o rótulo, vale a data: imagem mais velha que o último commit do clone
+recusa, e o preflight AVISA que o rótulo falta. Sem imagem, sem Docker ou sem
+git, a guarda não afirma nada. Com `BRABO_UP_COM_BUILD=1` (o `make dev` e o
+`pnpm dev`) ela não recusa, porque o `up --build` refaz a imagem.
+
+- **Código:** `Makefile` (alvo `dev`), `package.json` (script `dev`),
+  `docker/docker-compose.yml` (serviço `broker`, `build.args`),
+  `scripts/dev/broker-do-clone.mjs`, `scripts/dev/preflight.mjs`
+- **Teste:** `scripts/dev/broker-do-clone.spec.ts`; a corrente com Docker real
+  (`BRABO_DOCKER_REAL=1`) em `scripts/dev/prova-servicos-do-trabalho.spec.ts`
+- **Origem:** AT-1015 — diagnóstico da TP-01 31ª (27/11/2026)
