@@ -860,7 +860,7 @@ corresponde ao clone do broker em `BRABO_IRMAOS`, dizendo em linguagem simples o
 que houve e o comando de conserto
 (`docker compose -f docker/docker-compose.yml --env-file .env build broker`).
 O critério é o rótulo `org.opencontainers.image.revision` da imagem contra o
-`HEAD` do clone; o compose o alimenta pelo build-arg `BROKER_REVISION`, e o
+`HEAD` do clone; o compose o alimenta pelo build-arg `BROKER_REVISION`, que o `make dev` e o `pnpm dev` exportam como `git -C $BRABO_IRMAOS/brabo-broker rev-parse HEAD`, e o
 `Dockerfile.dev` do broker precisa declarar `ARG BROKER_REVISION` e
 `LABEL org.opencontainers.image.revision=$BROKER_REVISION`. Enquanto a imagem não
 tiver o rótulo, vale a data: imagem mais velha que o último commit do clone

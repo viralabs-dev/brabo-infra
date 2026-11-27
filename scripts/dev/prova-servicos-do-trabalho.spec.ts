@@ -26,9 +26,18 @@ const REAL = process.env.BRABO_DOCKER_REAL === '1';
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PROJETO = 'prova-1015';
 const PREFIXO = 'prova1015';
+const IMAGEM_DO_BROKER = 'brabo-broker:prova-1015'; // tag própria: nunca a `brabo-broker:dev` do ambiente
 const TOKEN = 'token-da-prova-1015';
 const IMAGEM_DO_TRABALHO = 'node:22-bookworm-slim';
-const IMAGEM_DO_BANCO = process.env.PROVA_1015_IMAGEM_DO_BANCO ?? 'postgres:16';
+// O broker só aceita imagem de serviço por digest: usa o do `postgres:16` já baixado (RepoDigests).
+const digestLocal = (tag: string) => {
+  try {
+    return execFileSync('docker', ['image', 'inspect', tag, '--format', '{{index .RepoDigests 0}}'], { encoding: 'utf8' }).trim();
+  } catch {
+    return tag;
+  }
+};
+const IMAGEM_DO_BANCO = process.env.PROVA_1015_IMAGEM_DO_BANCO ?? (REAL ? digestLocal('postgres:16') : 'postgres:16');
 
 const servicoDeBanco = (extra: Record<string, unknown>) => ({
   name: 'db',
@@ -113,13 +122,15 @@ describe.skipIf(!REAL)('prova de corrente: serviços do container de trabalho (A
       path.join(pasta, 'override.yml'),
       `services:
   broker:
+    image: ${IMAGEM_DO_BROKER}
     environment:
+      BRABO_PROVA_SONDA_IMAGE: ${IMAGEM_DO_BROKER}
       API_URL: http://api-falsa:3000
       BRABO_SERVICE_TOKEN: ${TOKEN}
       BRABO_SERVICE_TOKEN_PREVIOUS: ""
     networks: [broker]
   api-falsa:
-    image: brabo-broker:dev
+    image: ${IMAGEM_DO_BROKER}
     command: ["node", "/api.js"]
     volumes:
       - ${pasta}/specs.json:/specs.json:ro
@@ -130,6 +141,7 @@ describe.skipIf(!REAL)('prova de corrente: serviços do container de trabalho (A
     env = {
       ...process.env,
       PROJECT_WORKSPACES_HOST_DIR: projetos,
+      BROKER_REVISION: process.env.BROKER_REVISION ?? '',
       DOCKER_GID: String(execFileSync('stat', ['-c', '%g', '/var/run/docker.sock'], { encoding: 'utf8' }).trim()),
     };
     const sobe = compose('up', '--build', '--detach', '--wait', 'broker', 'api-falsa');
@@ -141,7 +153,7 @@ describe.skipIf(!REAL)('prova de corrente: serviços do container de trabalho (A
       docker(['rm', '--force', '--volumes', n]);
     }
     if (pasta) {
-      compose('down', '--volumes', '--remove-orphans');
+      compose('down', '--volumes', '--remove-orphans', '--rmi', 'local');
       rmSync(pasta, { recursive: true, force: true });
     }
   }, 120_000);

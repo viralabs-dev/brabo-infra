@@ -51,6 +51,9 @@ describe('o dev sobe o broker do clone', () => {
   it('`make dev` e `pnpm dev` sobem com --build, e o compose passa a revisão como build-arg', () => {
     expect(ler('Makefile')).toMatch(/dev:.*\n\t@BRABO_UP_COM_BUILD=1 node scripts\/dev\/preflight\.mjs .* up --build/);
     expect(ler('package.json')).toMatch(/BRABO_UP_COM_BUILD=1 node scripts\/dev\/preflight\.mjs .* up --build/);
+    // a revisão do clone vai exportada para o build, para a label sair preenchida
+    expect(ler('Makefile')).toContain('BROKER_REVISION=$$(git -C $${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD');
+    expect(ler('package.json')).toContain('BROKER_REVISION=$(git -C ${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD');
     expect(ler('docker/docker-compose.yml')).toMatch(/BROKER_REVISION: \$\{BROKER_REVISION:-\}/);
   });
 });
