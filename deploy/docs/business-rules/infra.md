@@ -264,9 +264,9 @@ Reconfigurar Ollama", que apaga as chaves gravadas — nunca uma pergunta
 espontânea de novo enquanto elas existirem.
 
 - **Onde:** `scripts/dev/env-file.mjs:41` (`escreverEnv`),
-  `scripts/dev/preflight.mjs:157` (`ehOllama`),
-  `scripts/dev/preflight.mjs:202` (`perguntarUsoDoOllama`),
-  `scripts/dev/preflight.mjs:238` (`detectarOllamaNativo`),
+  `scripts/dev/preflight.mjs:164` (`ehOllama`),
+  `scripts/dev/preflight.mjs:209` (`perguntarUsoDoOllama`),
+  `scripts/dev/preflight.mjs:245` (`detectarOllamaNativo`),
   `scripts/dev/reconfigurar-ollama.sh`, `scripts/dev/perfil-ollama.sh`,
   `docker/docker-compose.yml:82,119` (`profiles: ["local-llm"]`)
 - **Teste:** `scripts/dev/bootstrap.spec.ts` (cobre a fiação do menu — o
@@ -741,7 +741,7 @@ certo, gravar as DUAS variáveis juntas, decidir o que fazer com um volume
 - **Código:** `docker/docker-compose.yml:266` (o default de `BROKER_URL`),
   `:571` (a derivação de `PROJECT_WORKSPACES_HOST_ROOT`);
   `scripts/dev/pasta-gerenciada.mjs:63` (`avaliarPastaGerenciada`), `:89`
-  (`mensagemDaPastaGerenciada`); `scripts/dev/preflight.mjs:424`
+  (`mensagemDaPastaGerenciada`); `scripts/dev/preflight.mjs:431`
   (`relatarPastaGerenciada`)
 - **Teste:** `scripts/dev/broker-url-no-dev.spec.ts:42` (o default existe),
   `:47` (aponta para o serviço e a porta do arquivo), `:64` (produção e
