@@ -56,4 +56,12 @@ describe('o dev sobe o broker do clone', () => {
     expect(ler('package.json')).toContain('BROKER_REVISION=$(git -C ${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD');
     expect(ler('docker/docker-compose.yml')).toMatch(/BROKER_REVISION: \$\{BROKER_REVISION:-\}/);
   });
+  it('bootstrap.sh e reset-total.sh exportam BROKER_REVISION (HEAD do clone) antes de qualquer chamada ao compose', () => {
+    for (const rel of ['scripts/dev/bootstrap.sh', 'scripts/dev/reset-total.sh']) {
+      const s = ler(rel);
+      const exporta = s.search(/^BROKER_REVISION="\$\(git -C ".*\/brabo-broker" rev-parse HEAD/m);
+      expect(exporta, rel).toBeGreaterThan(-1);
+      expect(exporta, rel).toBeLessThan(s.search(/^COMPOSE=/m));
+    }
+  });
 });

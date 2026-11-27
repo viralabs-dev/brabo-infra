@@ -64,6 +64,9 @@ IRMAOS="$(cd "${BRABO_IRMAOS:-${REPO_ROOT}/..}" && pwd)"
 IRMAO_API="${IRMAOS}/brabo-api"
 IRMAO_ENGINE="${IRMAOS}/brabo-engine"
 
+# RN-1541: a revisão do clone do broker vai ao build, para a imagem sair com o rótulo da revisão.
+BROKER_REVISION="$(git -C "${IRMAOS}/brabo-broker" rev-parse HEAD 2>/dev/null || true)"
+export BROKER_REVISION
 COMPOSE=(docker compose -f docker/docker-compose.yml --env-file .env)
 
 # shellcheck source=scripts/dev/reset-total-lib.sh

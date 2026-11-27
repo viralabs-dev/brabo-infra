@@ -174,6 +174,9 @@ corrigir_donos() {
 # ---------------------------------------------------------------------------
 declare -A ROTULO CMD FILHOS ESTADO NOTA
 
+# RN-1541: a revisão do clone do broker vai ao build, para a imagem sair com o rótulo da revisão.
+BROKER_REVISION="$(git -C "${BRABO_IRMAOS:-${REPO_ROOT}/..}/brabo-broker" rev-parse HEAD 2>/dev/null || true)"
+export BROKER_REVISION
 COMPOSE="docker compose -f docker/docker-compose.yml --env-file .env"
 
 ROTULO["."]="Brabo";     FILHOS["."]="1 2 3 4"

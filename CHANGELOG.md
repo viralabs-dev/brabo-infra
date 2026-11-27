@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Dev (AT-1035 F1, RN-1541): `bootstrap.sh` e `reset-total.sh` exportam `BROKER_REVISION` (HEAD do clone do broker) antes do compose, então a imagem `brabo-broker:dev` sai sempre com o rótulo `org.opencontainers.image.revision` e a guarda não cai no critério da data. Teste em `scripts/dev/broker-do-clone.spec.ts`.
+
 - CI (AT-1029 F5): repina todos os `uses:` e `ci_ref` do `brabo-ci` de `v1.4.0` para `v1.6.0` (`e212b71`; só acrescentou workflows, sem input alterado nos chamadores) e liga `refs.yml` com o check `RN única entre repos` (`rn-unica.yml`). `refs-com-simbolo` e `refs-entre-repos` ficam desligados neste repo: saem com erro 2 por prefixo desconhecido (`brabo-infra`).
 
 - Doc (AT-1028): as refs `arquivo:linha` de `deploy/docs/business-rules/infra.md` para outros repos seguem o código depois da AT-1037 (só números de linha; sem mudança de regra).
