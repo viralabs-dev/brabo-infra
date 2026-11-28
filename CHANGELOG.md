@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- CI (AT-1039 F2): repina todos os `uses:` e `ci_ref` do `brabo-ci` de `v1.6.0` para `v1.7.0` (`dfd333f`; os reutilizáveis chamados não mudaram `inputs` nem `secrets`, então nenhum chamador muda). `refs.yml` liga `refs-com-simbolo`, `refs-entre-repos` e `indice-de-rn` (`v1.7.0`, que já conhecem o prefixo `brabo-infra`), e sai o comentário que dizia o contrário. Verificado localmente com os scripts de `v1.7.0`: todos saem 0 (`pins-do-brabo-ci` com `GITHUB_TOKEN`).
+
+- Dev (AT-1035 F1, RN-1541): `bootstrap.sh` e `reset-total.sh` exportam `BROKER_REVISION` (HEAD do clone do broker) antes do compose, então a imagem `brabo-broker:dev` sai sempre com o rótulo `org.opencontainers.image.revision` e a guarda não cai no critério da data. Teste em `scripts/dev/broker-do-clone.spec.ts`.
+
+- CI (AT-1029 F5): repina todos os `uses:` e `ci_ref` do `brabo-ci` de `v1.4.0` para `v1.6.0` (`e212b71`; só acrescentou workflows, sem input alterado nos chamadores) e liga `refs.yml` com o check `RN única entre repos` (`rn-unica.yml`). `refs-com-simbolo` e `refs-entre-repos` ficam desligados neste repo: saem com erro 2 por prefixo desconhecido (`brabo-infra`).
+
 - Doc (AT-1028): as refs `arquivo:linha` de `deploy/docs/business-rules/infra.md` para outros repos seguem o código depois da AT-1037 (só números de linha; sem mudança de regra).
 
 - Teste (AT-1037, RN-1541): a corrente `scripts/dev/prova-servicos-do-trabalho.spec.ts` ganha os casos 4 e 5. Caso 4: com o trabalho e o `-db` de pé, matar o PID 1 do trabalho (o `unless-stopped` o religa) e rodar um `exec` pelo broker: o banco precisa voltar à MESMA rede do trabalho, responder em 127.0.0.1:5432 e a saída precisa começar com o aviso de ambiente reiniciado. Caso 5: um `pkill -f` do comando do app, de dentro do trabalho, não pode reiniciar o container (`RestartCount` igual) nem achar o comando no argv do PID 1. Os dois falham com o broker da `dev` de hoje e passam quando a correção do docker-port (contracts) for repinada no broker.

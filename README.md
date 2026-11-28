@@ -115,6 +115,10 @@ Só `pr-police` e `escada` (workflow `politica`) são exigidos pelo ruleset. Os 
 - **`Provas de propriedade`** (`propriedades.yml`, agendado e manual): as provas no k3d, o restore da instalação por compose e o restore em banco vazio.
 - **`Dependências de merge`** (`dependencias.yml`): a PR declara o que espera com `Depende-de:`.
 - **`Regressivo do brabo-qa`** (`qa-e2e.yml`): só atesta, nunca é exigido.
+- **`RN única entre repos`** (`refs.yml`): a PR que define uma RN cujo número já está na `dev` de outro repo reprova.
+- **`Refs com símbolo`** (`refs.yml`): cada ref `caminho:N` (`símbolo`) das RNs da infra aponta para onde o símbolo mora; ref para outro repo só é listada.
+- **`Refs entre repos`** (`refs.yml`): as refs das RNs da infra para outros repos batem com a `dev` deles, e a PR não quebra as refs que os vizinhos citam para a infra.
+- **`Índice de RN e peso das páginas`** (`refs.yml`): o índice `business-rules.md` é o gerado das partes, e nenhuma página de RN passa de 99,8 KB de Markdown.
 - **`readme-esqueleto` e `mapa-alinhado`** (`ci.yml`): o README segue o esqueleto e o bloco "Onde se encaixa" está em dia com o `repos.yml` do brabo.
 
 ## Documentação

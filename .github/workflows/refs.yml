@@ -1,0 +1,33 @@
+name: refs
+
+# RN única entre repos (AT-1029 F5): a PR que define uma RN já definida na dev de outro repo reprova.
+# Reutilizável do brabo-ci. NÃO é check obrigatório.
+run-name: "refs ← #${{ github.event.pull_request.number }} (${{ github.head_ref }})"
+
+on:
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  rn-unica:
+    uses: viralabs-dev/brabo-ci/.github/workflows/rn-unica.yml@dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0
+    with:
+      ci_ref: dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0
+
+  refs-com-simbolo:
+    uses: viralabs-dev/brabo-ci/.github/workflows/refs-com-simbolo.yml@dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0
+    with:
+      ci_ref: dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0
+
+  refs-entre-repos:
+    uses: viralabs-dev/brabo-ci/.github/workflows/refs-entre-repos.yml@dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0
+    with:
+      ci_ref: dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0
+
+  indice-de-rn:
+    uses: viralabs-dev/brabo-ci/.github/workflows/indice-de-rn.yml@dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0
+    with:
+      ci_ref: dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0
