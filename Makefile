@@ -16,7 +16,7 @@ OVERLAY ?= prod
 # Sobe o ambiente de DEV a partir da pasta-mãe dos clones irmãos (BRABO_IRMAOS, padrão `..`):
 # o preflight confere que os irmãos existem e cria os pontos de montagem; depois, `compose up`.
 dev: ## Brings up the dev environment (preflight + docker compose up) from the sibling clones
-	@BRABO_UP_COM_BUILD=1 BROKER_REVISION=$$(git -C $${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD 2>/dev/null) node scripts/dev/preflight.mjs && docker compose -f docker/docker-compose.yml --env-file .env up --build
+	@export BROKER_REVISION=$$(git -C $${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD 2>/dev/null); BRABO_UP_COM_BUILD=1 node scripts/dev/preflight.mjs && docker compose -f docker/docker-compose.yml --env-file .env up --build
 
 help: ## Lists the available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \

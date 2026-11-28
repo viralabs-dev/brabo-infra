@@ -1,4 +1,8 @@
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error -- módulo .mjs sem tipos; é script de dev.
 import { ESTADO, ROTULO_DE_REVISAO, avaliarBrokerDoClone, mensagemDoBroker, recusa } from './broker-do-clone.mjs';
@@ -49,12 +53,38 @@ describe('avaliarBrokerDoClone', () => {
 describe('o dev sobe o broker do clone', () => {
   const ler = (rel: string) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
   it('`make dev` e `pnpm dev` sobem com --build, e o compose passa a revisão como build-arg', () => {
-    expect(ler('Makefile')).toMatch(/dev:.*\n\t@BRABO_UP_COM_BUILD=1 .* node scripts\/dev\/preflight\.mjs .* up --build/);
-    expect(ler('package.json')).toMatch(/BRABO_UP_COM_BUILD=1 .* node scripts\/dev\/preflight\.mjs .* up --build/);
+    expect(ler('Makefile')).toMatch(/dev:.*\n\t@export BROKER_REVISION=.*; BRABO_UP_COM_BUILD=1 (.* )?node scripts\/dev\/preflight\.mjs .* up --build/);
+    expect(ler('package.json')).toMatch(/export BROKER_REVISION=.*; BRABO_UP_COM_BUILD=1 (.* )?node scripts\/dev\/preflight\.mjs .* up --build/);
     // a revisão do clone vai exportada para o build, para a label sair preenchida
-    expect(ler('Makefile')).toContain('BROKER_REVISION=$$(git -C $${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD');
-    expect(ler('package.json')).toContain('BROKER_REVISION=$(git -C ${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD');
+    // exportada (`export`), não prefixo da linha: prefixo só vale para o `node`, e o compose depois do `&&` ficava sem ela (AT-1041)
+    expect(ler('Makefile')).toContain('export BROKER_REVISION=$$(git -C $${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD');
+    expect(ler('package.json')).toContain('export BROKER_REVISION=$(git -C ${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD');
     expect(ler('docker/docker-compose.yml')).toMatch(/BROKER_REVISION: \$\{BROKER_REVISION:-\}/);
+  });
+  it('`make dev` entrega BROKER_REVISION ao docker compose, não só ao preflight (AT-1041)', () => {
+    // Roda a receita de verdade, com `node` (preflight) e `docker` (compose) substituídos por stubs no PATH.
+    const dir = mkdtempSync(join(tmpdir(), 'at1041-'));
+    try {
+      const irmaos = join(dir, 'irmaos');
+      const broker = join(irmaos, 'brabo-broker');
+      mkdirSync(broker, { recursive: true });
+      execFileSync('git', ['init', '-q'], { cwd: broker });
+      execFileSync('git', ['-c', 'user.email=t@t.t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init'], { cwd: broker });
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: broker }).toString().trim();
+      const bin = join(dir, 'bin');
+      const registro = join(dir, 'revisao-no-compose.txt');
+      mkdirSync(bin);
+      writeFileSync(join(bin, 'node'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+      writeFileSync(join(bin, 'docker'), `#!/bin/sh\nprintf '%s' "$BROKER_REVISION" > "${registro}"\nexit 0\n`, { mode: 0o755 });
+      const { BROKER_REVISION: _ignorada, ...env } = process.env;
+      execFileSync('make', ['-C', fileURLToPath(new URL('../..', import.meta.url)), 'dev'], {
+        env: { ...env, PATH: `${bin}:${env.PATH ?? ''}`, BRABO_IRMAOS: irmaos },
+        stdio: 'ignore',
+      });
+      expect(readFileSync(registro, 'utf8')).toBe(head);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
   it('bootstrap.sh e reset-total.sh exportam BROKER_REVISION (HEAD do clone) antes de qualquer chamada ao compose', () => {
     for (const rel of ['scripts/dev/bootstrap.sh', 'scripts/dev/reset-total.sh']) {

@@ -7,7 +7,7 @@
   "description": "Composes, Kubernetes, backup, observabilidade, scripts de ambiente e as aferições cruzadas do Brabo (AT-701).",
   "type": "module",
   "scripts": {
-    "dev": "BRABO_UP_COM_BUILD=1 BROKER_REVISION=$(git -C ${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD 2>/dev/null) node scripts/dev/preflight.mjs && docker compose -f docker/docker-compose.yml --env-file .env up --build",
+    "dev": "export BROKER_REVISION=$(git -C ${BRABO_IRMAOS:-..}/brabo-broker rev-parse HEAD 2>/dev/null); BRABO_UP_COM_BUILD=1 node scripts/dev/preflight.mjs && docker compose -f docker/docker-compose.yml --env-file .env up --build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
