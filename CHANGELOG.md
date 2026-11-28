@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- CI (AT-1039 F2): repina todos os `uses:` e `ci_ref` do `brabo-ci` de `v1.6.0` para `v1.7.0` (`dfd333f`; os reutilizáveis chamados não mudaram `inputs` nem `secrets`, então nenhum chamador muda). `refs.yml` liga `refs-com-simbolo`, `refs-entre-repos` e `indice-de-rn` (`v1.7.0`, que já conhecem o prefixo `brabo-infra`), e sai o comentário que dizia o contrário. Verificado localmente com os scripts de `v1.7.0`: todos saem 0 (`pins-do-brabo-ci` com `GITHUB_TOKEN`).
+
 - Dev (AT-1035 F1, RN-1541): `bootstrap.sh` e `reset-total.sh` exportam `BROKER_REVISION` (HEAD do clone do broker) antes do compose, então a imagem `brabo-broker:dev` sai sempre com o rótulo `org.opencontainers.image.revision` e a guarda não cai no critério da data. Teste em `scripts/dev/broker-do-clone.spec.ts`.
 
 - CI (AT-1029 F5): repina todos os `uses:` e `ci_ref` do `brabo-ci` de `v1.4.0` para `v1.6.0` (`e212b71`; só acrescentou workflows, sem input alterado nos chamadores) e liga `refs.yml` com o check `RN única entre repos` (`rn-unica.yml`). `refs-com-simbolo` e `refs-entre-repos` ficam desligados neste repo: saem com erro 2 por prefixo desconhecido (`brabo-infra`).

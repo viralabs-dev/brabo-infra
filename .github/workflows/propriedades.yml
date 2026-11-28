@@ -139,7 +139,7 @@ jobs:
 
       - name: Vínculos do run (origem, irmãos e destino no Summary)
         id: vinculos
-        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@e212b715d669c0388ce3bb9526278f1820f094c1  # v1.6.0 (AT-773)
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0 (AT-773)
         with:
           irmaos: |
             irmaos/brabo-api
@@ -500,7 +500,7 @@ jobs:
 
       - name: Vínculos do run (origem, irmãos e destino no Summary)
         id: vinculos
-        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@e212b715d669c0388ce3bb9526278f1820f094c1  # v1.6.0 (AT-773)
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0 (AT-773)
         with:
           irmaos: |
             irmaos/brabo-api
@@ -638,7 +638,7 @@ jobs:
 
       - name: Vínculos do run (origem e destino no Summary)
         id: vinculos
-        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@e212b715d669c0388ce3bb9526278f1820f094c1  # v1.6.0 (AT-773)
+        uses: viralabs-dev/brabo-ci/.github/actions/vinculos@dfd333f49dea28cc73f6268b328ee1208de53b92  # v1.7.0 (AT-773)
 
       - name: Build da imagem de backup
         run: docker build -f docker/backup/Dockerfile.prod -t "${BRABO_BACKUP_IMAGE}" .
